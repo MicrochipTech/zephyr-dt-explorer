@@ -16,6 +16,8 @@ After a rebuild press **Reload**. The UI is English and uses dark mode.
 
 Direct link to a node: `http://localhost:8765/?build=apps/lab1/build_same54_xpro&node=/my_led@41008000`
 
+**Full GUI guide with screenshots: [docs/GUI.md](docs/GUI.md)**
+
 ## What it shows
 
 | Element | Meaning |

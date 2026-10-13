@@ -455,10 +455,12 @@ TABLE_LINK_SLOT = """<q-td :props="props"><a href="#" style="color:#90caf9; text
 
 @ui.page("/")
 def page(build: str | None = None, node: str | None = None, src: str | None = None,
-         line: int | None = None, tab: str | None = None):
+         line: int | None = None, tab: str | None = None, file: str | None = None,
+         macros: int = 0):
     """Optional via URL: /?build=apps/lab1/build_same54_xpro&node=/my_led@41008000
     plus &src=<file relative to the west workspace>&line=<n> to open a source file,
-    and &tab=include to start on the include tree."""
+    &tab=include to start on the include tree, &file=<relative path> to select a file
+    in the include tree, &macros=1 to expand the generated-macro section."""
     ui.page_title("Devicetree Explorer")
     ui.dark_mode(True)
     ui.add_css(SOURCE_CSS)
@@ -771,7 +773,7 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                     src_link(f"{r['file']}:{r['line']}", r["file"], r["line"])
                     ui.label(r["code"]).classes("font-mono text-sm")
 
-        with ui.expansion("Generated C macros (devicetree_generated.h)").classes("w-full"):
+        with ui.expansion("Generated C macros (devicetree_generated.h)", value=bool(macros)).classes("w-full"):
             ident = node_ident(n.path)
             ui.label(f"Node identifier: {ident}   ·   Ordinal: {n.dep_ordinal}") \
                 .classes("font-mono text-sm")
@@ -785,8 +787,12 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         select(node)
     else:
         select(None)
-    if tab == "include":
+    if tab == "include" or file:
         tabs.set_value(tab_inc)
+    if file:
+        fid = next((k for k, v in inc_files.items() if fkey(v["rel"]) == fkey(file)), None)
+        if fid:
+            show_file(fid)
     if src:
         open_source(src, line, m.node_lines(node, src) if node else ())
 
