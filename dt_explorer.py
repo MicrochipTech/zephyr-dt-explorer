@@ -64,6 +64,7 @@ ORIGIN_STYLE = {          # category -> (colour on dark background, caption)
     "board":   ("#64b5f6", "Board"),
     "soc":     ("#b0bec5", "SoC / Zephyr"),
     "module":  ("#ce93d8", "Module"),
+    "default": ("#ffd54f", "Binding default"),   # value not in any .dts, only `default:` in the binding
     "other":   ("#ffb74d", "Other"),
 }
 STATE_STYLE = {           # traffic light -> (Quasar colour, short text)
@@ -72,6 +73,7 @@ STATE_STYLE = {           # traffic light -> (Quasar colour, short text)
     "nodevice": ("red",    "Driver built, no device"),
     "disabled": ("grey-7", "Disabled"),
     "neutral":  ("blue-grey-4", "No driver"),
+    "nobinding": ("deep-orange", "No binding found"),
 }
 GPIO_FLAGS = [(0x1, "ACTIVE_LOW"), (0x2, "SINGLE_ENDED"), (0x4, "OPEN_DRAIN"),
               (0x10, "PULL_UP"), (0x20, "PULL_DOWN")]
@@ -254,15 +256,27 @@ class BuildModel:
         self.device_ords = self._device_ords(cache, zdir)
         self.compiled = self._compiled_files(build)
 
-        module_dirs = []
+        module_dirs, all_modules = [], []
         mods = build / "zephyr_modules.txt"
         if mods.exists():
             for ln in mods.read_text(encoding="utf-8").splitlines():
                 parts = re.findall(r'"([^"]*)"', ln)
-                if len(parts) >= 2 and parts[0] not in ("cmsis", "cmsis_6", "picolibc", "atmel"):
-                    module_dirs.append(Path(parts[1]).resolve())
+                if len(parts) >= 2:
+                    all_modules.append(Path(parts[1]).resolve())
+                    if parts[0] not in ("cmsis", "cmsis_6", "picolibc", "atmel"):
+                        module_dirs.append(Path(parts[1]).resolve())
         scan = [self.zephyr_base / "drivers", self.zephyr_base / "soc", self.app_dir] + module_dirs
         self.drivers = DriverIndex.get([d for d in scan if d.exists()])
+
+        # binding search path (same dts_root order Zephyr uses: app, modules, zephyr)
+        roots = [self.app_dir] + all_modules + [self.zephyr_base]
+        self.yaml_index: dict = {}
+        for r in roots:
+            bdir = r / "dts" / "bindings"
+            if bdir.exists():
+                for y in bdir.rglob("*.yaml"):
+                    self.yaml_index.setdefault(y.name, y.resolve())
+        self._yaml_cache: dict = {}
 
         self.by_path = {n.path: n for n in self.edt.nodes}
         # alias2node returns dtlib nodes -> map to edtlib nodes via their path
@@ -337,6 +351,67 @@ class BuildModel:
         lines = {o.line} if fkey(o.file) == k else set()
         return lines | {p.line for p in o.props.values() if fkey(p.file) == k}
 
+    # ---- bindings ----------------------------------------------------------------
+    def _yaml(self, path: Path) -> dict:
+        import yaml
+        key = str(Path(path).resolve())
+        if key not in self._yaml_cache:
+            try:
+                self._yaml_cache[key] = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                self._yaml_cache[key] = {}
+        return self._yaml_cache[key]
+
+    @staticmethod
+    def _include_names(raw: dict) -> list:
+        inc = raw.get("include")
+        if not inc:
+            return []
+        items = inc if isinstance(inc, list) else [inc]
+        names = []
+        for it in items:
+            if isinstance(it, str):
+                names.append(it)
+            elif isinstance(it, dict) and "name" in it:
+                names.append(it["name"])
+        return names
+
+    def binding_chain(self, path, seen=None) -> dict:
+        """Binding file with its include: hierarchy -> {'path', 'children'}."""
+        seen = set() if seen is None else seen
+        p = Path(path).resolve()
+        node = {"path": p, "children": []}
+        if str(p) in seen:
+            return node
+        seen.add(str(p))
+        for name in self._include_names(self._yaml(p)):
+            inc = self.yaml_index.get(name)
+            if inc:
+                node["children"].append(self.binding_chain(inc, seen))
+            else:
+                node["children"].append({"path": Path(name), "children": [], "missing": True})
+        return node
+
+    def prop_declared_in(self, chain: dict, prop: str):
+        """First file in the include hierarchy (own file first) that declares `prop`."""
+        if not chain.get("missing") and prop in (self._yaml(chain["path"]).get("properties") or {}):
+            return chain["path"]
+        for c in chain["children"]:
+            hit = self.prop_declared_in(c, prop)
+            if hit:
+                return hit
+        return None
+
+    @staticmethod
+    def yaml_line(path: Path, prop: str) -> int | None:
+        try:
+            for i, ln in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+                if re.match(rf"^\s+{re.escape(prop)}\s*:\s*$", ln):
+                    return i
+        except OSError:
+            pass
+        return None
+
     # ---- node assessment -------------------------------------------------------
     def drivers_for(self, node) -> list:
         files = set()
@@ -356,6 +431,13 @@ class BuildModel:
                                    "gets no device of its own. The app reads its properties directly, "
                                    "e.g. with GPIO_DT_SPEC_GET().")
             return "neutral", "No compatible - pure structural node (container, group)."
+        if node.path == "/" or "simple-bus" in node.compats:
+            return "neutral", "Structural node (root / simple-bus) - no binding or driver needed."
+        if not node.binding_path:
+            return "nobinding", (f'No binding found for compatible "{node.compats[0]}". Its properties are not '
+                                 "evaluated and no DT_PROP() macros are generated. Check the spelling, and "
+                                 "for out-of-tree bindings the dts_root in zephyr/module.yaml or the "
+                                 "app's dts/bindings folder.")
         drv = self.drivers_for(node)
         if not drv:
             return "neutral", ("No driver with a matching DT_DRV_COMPAT found - normal for e.g. CPU, "
@@ -497,11 +579,12 @@ TABLE_LINK_SLOT = """<q-td :props="props"><a href="#" style="color:#90caf9; text
 @ui.page("/")
 def page(build: str | None = None, node: str | None = None, src: str | None = None,
          line: int | None = None, tab: str | None = None, file: str | None = None,
-         macros: int = 0):
+         macros: int = 0, bprops: int = 0):
     """Optional via URL: /?build=apps/lab1/build_same54_xpro&node=/my_led@41008000
     plus &src=<file relative to the west workspace>&line=<n> to open a source file,
     &tab=include to start on the include tree, &file=<relative path> to select a file
-    in the include tree, &macros=1 to expand the generated-macro section."""
+    in the include tree, &macros=1 to expand the generated-macro section, &bprops=1 to expand
+    the list of all properties the binding allows."""
     ui.page_title("Devicetree Explorer")
     ui.dark_mode(True)
     ui.add_css(SOURCE_CSS)
@@ -746,6 +829,93 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                 ui.label("Nothing from this file survives in the final devicetree "
                          "(everything was overridden or it only includes other files).").classes("text-sm")
 
+    def show_binding(n):
+        with ui.card().classes("w-full"):
+            ui.label("compatible / binding").classes("font-bold")
+            if n.compats:
+                ui.label(", ".join(f'"{c}"' for c in n.compats)).classes("font-mono text-sm")
+            if not n.binding_path:
+                ui.label("No binding found for this compatible.").classes("text-deep-orange-4 text-sm")
+                return
+            b = n._binding
+            if n.description:
+                ui.label(n.description.strip()).classes("text-sm whitespace-pre-wrap")
+
+            facts = []
+            if b.on_bus:
+                facts.append(f"on-bus: {b.on_bus}  (this node sits on a {b.on_bus} bus; reg = bus address)")
+            if b.buses:
+                facts.append(f"bus: {', '.join(b.buses)}  (child nodes are devices on this bus)")
+            for space, cells in (b.specifier2cells or {}).items():
+                facts.append(f"{space}-cells: {', '.join(cells)}  "
+                             f"(a reference <&this {' '.join(cells)}> passes these values)")
+            if b.child_binding:
+                facts.append("child-binding: child nodes are described by this binding")
+            for f in facts:
+                ui.label(f).classes("font-mono text-xs")
+
+            ui.label("Binding file and its include: hierarchy").classes("text-sm font-bold mt-1")
+            chain = m.binding_chain(n.binding_path)
+
+            def render(c, depth):
+                with ui.row().classes("items-center gap-1").style(f"margin-left: {depth * 18}px"):
+                    ui.icon("subdirectory_arrow_right" if depth else "description", size="16px") \
+                        .classes("text-grey-6")
+                    if c.get("missing"):
+                        ui.label(f"{c['path']} (not found)").classes("font-mono text-xs text-red-4")
+                    else:
+                        src_link(m.rel(c["path"]), c["path"])
+                for k in c["children"]:
+                    render(k, depth + 1)
+            render(chain, 0)
+
+            # all properties the binding allows
+            rows = []
+            own = Path(n.binding_path).resolve()
+            o = m.origins.get(n.path, NodeOrigin())
+            for name, spec in b.prop2specs.items():
+                decl = m.prop_declared_in(chain, name) or own
+                if name in o.props:
+                    st = "set"
+                elif spec.default is not None:
+                    st = "default"
+                else:
+                    st = "not set"
+                allowed = ", ".join(map(str, spec.enum)) if spec.enum else \
+                    (f"const {spec.const}" if spec.const is not None else "")
+                rows.append(dict(name=name, type=spec.type, req="yes" if spec.required else "",
+                                 default="" if spec.default is None else str(spec.default),
+                                 allowed=allowed, state=st, decl=Path(decl).name, file=str(decl),
+                                 line=m.yaml_line(decl, name) or 1, generic=Path(decl).resolve() != own,
+                                 desc=(spec.description or "").strip().split("\n")[0]))
+            rows.sort(key=lambda r: ({"set": 0, "default": 1, "not set": 2}[r["state"]], r["req"] != "yes"))
+            cols = [dict(name="name", label="Property", field="name", align="left"),
+                    dict(name="type", label="Type", field="type", align="left"),
+                    dict(name="req", label="Required", field="req", align="left"),
+                    dict(name="state", label="In this node", field="state", align="left"),
+                    dict(name="default", label="Default", field="default", align="left"),
+                    dict(name="allowed", label="Allowed values", field="allowed", align="left"),
+                    dict(name="decl", label="Declared in (click)", field="decl", align="left"),
+                    dict(name="desc", label="Description", field="desc", align="left")]
+            with ui.expansion(f"All {len(rows)} properties this binding allows", value=bool(bprops)) \
+                    .classes("w-full"):
+                show_generic = ui.switch("Include generic properties from base.yaml etc. that are not set") \
+                    .props("dense")
+                tbl = ui.table(columns=cols, rows=[], row_key="name").classes("w-full") \
+                    .props("dense flat wrap-cells")
+                tbl.add_slot("body-cell-decl", TABLE_LINK_SLOT)
+                tbl.add_slot("body-cell-state", r"""
+                    <q-td :props="props"><span :style="{color: {'set': '#81c784', 'default': '#ffd54f',
+                      'not set': '#9e9e9e'}[props.value]}">{{ props.value }}</span></q-td>""")
+                tbl.on("open", lambda e: open_source(e.args["file"], e.args["line"]))
+
+                def refresh():
+                    tbl.rows = [r for r in rows if show_generic.value or not r["generic"]
+                                or r["state"] != "not set" or r["req"]]
+                    tbl.update()
+                show_generic.on_value_change(lambda _: refresh())
+                refresh()
+
     def show_node(n):
         o = m.origins.get(n.path, NodeOrigin())
         st, why = m.state(n)
@@ -776,14 +946,7 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                     ui.label(f"({built})").classes("text-xs")
 
         if n.compats or n.binding_path:
-            with ui.card().classes("w-full"):
-                ui.label("compatible / binding").classes("font-bold")
-                if n.compats:
-                    ui.label(", ".join(f'"{c}"' for c in n.compats)).classes("font-mono text-sm")
-                if n.binding_path:
-                    src_link(m.rel(n.binding_path), n.binding_path)
-                if n.description:
-                    ui.label(n.description.strip()).classes("text-sm whitespace-pre-wrap")
+            show_binding(n)
 
         if n.regs:
             ui.label("Registers: " + ", ".join(
@@ -798,6 +961,18 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                              origin=f"{p.file}:{p.line}", file=p.file, line=p.line,
                              kind=ORIGIN_STYLE[origin_kind(p.file)][1],
                              desc=(spec.description or "").strip().split("\n")[0] if spec else ""))
+        # values that only come from `default:` in the binding (not written in any .dts file)
+        if n.binding_path:
+            chain = m.binding_chain(n.binding_path)
+            for name, prop in n.props.items():
+                if name in o.props or prop.spec.default is None:
+                    continue
+                decl = m.prop_declared_in(chain, name) or Path(n.binding_path)
+                ln = m.yaml_line(decl, name) or 1
+                rows.append(dict(name=name, text="(not written)", val=fmt_value(m, n, name),
+                                 origin=f"{m.rel(decl)}:{ln}", file=str(decl), line=ln,
+                                 kind=ORIGIN_STYLE["default"][1],
+                                 desc=(prop.spec.description or "").strip().split("\n")[0]))
         cols = [dict(name="name", label="Property", field="name", align="left"),
                 dict(name="text", label="As written", field="text", align="left"),
                 dict(name="val", label="Interpreted", field="val", align="left"),

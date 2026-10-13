@@ -17,7 +17,7 @@ IMG = Path(__file__).parent / "img"
 SHOTS = {  # name -> (query, width, height)
     "overview":     ("build=apps/lab3/build_same54_xpro", 1500, 1000),
     "node_led":     ("build=apps/lab1/build_same54_xpro&node=" + quote("/my_led@41008000", safe="")
-                     + "&macros=1", 1500, 1500),
+                     + "&macros=1", 1500, 1700),
     "node_button":  ("build=apps/lab0/build_same54_xpro&node=" + quote("/buttons/button_0", safe=""), 1500, 1000),
     "tree_full":    ("build=apps/lab0/build_same54_xpro", 1500, 3000),
     "include_file": ("build=apps/lab3/build_same54_xpro&file=" + quote(r"zephyr\dts\arm\atmel\same5x.dtsi", safe=""),
@@ -27,16 +27,21 @@ SHOTS = {  # name -> (query, width, height)
     "source":       ("build=apps/lab3/build_same54_xpro&node=" + quote("/soc/sercom@41014000", safe="")
                      + "&src=" + quote(r"apps\lab3\boards\same54_xpro.overlay", safe="") + "&line=20", 1500, 1000),
     "orphan":       ("build=_soltest/apps/lab1_leer/build_same54_xpro", 1500, 700),
+    "node_binding": ("build=apps/lab3/build_same54_xpro&node=" + quote("/soc/sercom@41014000/mytemp@4f", safe="")
+                     + "&bprops=1", 1500, 1200),
+    "node_nobinding": ("build=apps/lab3/build_same54_xpro&node="
+                       + quote("/soc/sercom@43000c00/eeprom@5e", safe=""), 1500, 700),
 }
 
 
 CROPS = {  # element image -> (source screenshot, box (left, top, right, bottom))
-    "el_header":        ("node_led", (0, 0, 1500, 72)),
-    "el_tree":          ("node_led", (0, 72, 515, 620)),
-    "el_node_head":     ("node_led", (515, 95, 1490, 340)),
-    "el_binding":       ("node_led", (515, 345, 1490, 570)),
-    "el_props":         ("node_led", (515, 575, 1490, 888)),
-    "el_code_macros":   ("node_led", (515, 893, 1490, 1480)),
+    "el_header":        ("node_led", (0, 0, 1500, 74)),
+    "el_tree":          ("node_led", (0, 74, 515, 620)),
+    "el_node_head":     ("node_led", (515, 97, 1490, 342)),
+    "el_props":         ("node_led", (515, 758, 1490, 1070)),
+    "el_code_macros":   ("node_led", (515, 1075, 1490, 1670)),
+    "el_binding":       ("node_binding", (515, 312, 1490, 1122)),
+    "el_nobinding":     ("node_nobinding", (515, 97, 1490, 462)),
     "el_coderefs":      ("overview", (515, 228, 1490, 715)),
     "el_child_state":   ("node_button", (515, 95, 1490, 320)),
     "el_include_tree":  ("include_file", (0, 72, 515, 825)),

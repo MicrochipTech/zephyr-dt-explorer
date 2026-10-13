@@ -42,6 +42,7 @@ workspace, an app folder or a single build folder; every build below it is offer
 | blue | Board | `zephyr/boards/.../<board>.dts`, `...-pinctrl.dtsi` |
 | grey | SoC / Zephyr | `zephyr/dts/arm/...dtsi`, `zephyr/include/.../dt-bindings/*.h` |
 | purple | Module | `modules/...` (e.g. pinctrl headers from `hal_atmel`) |
+| yellow | Binding default | Value written in no `.dts` file; it comes only from `default:` in the binding YAML |
 
 ---
 
@@ -84,6 +85,7 @@ The file path in the banner opens the driver source.
 | red: *Driver built, no device* | The driver was compiled, but no device exists for this node. | Yes. Check the driver macro and the binding. |
 | dark grey: *Disabled* | `status = "disabled"`. | Only if you expected it to be on. |
 | blue-grey: *No driver* | CPU, memory, a container, or a child node that the parent or the app reads directly. | Usually fine. |
+| deep orange: *No binding found* | The node has a `compatible`, but no binding YAML matches it. Zephyr does not evaluate its properties and generates no `DT_PROP()` macros. | Yes, if your code uses the node. Typical causes: a typo in `compatible`, or a missing `dts_root` / `dts/bindings` folder for out-of-tree bindings. |
 
 ---
 
@@ -125,10 +127,37 @@ card explains that the parent's binding describes them and that the app reads th
 
 ![Binding card](img/el_binding.png)
 
-- **`compatible`** strings of the node.
-- **Binding file**: the YAML file Zephyr matched to this `compatible`. Click it to open the file.
-- **Description** taken from the binding.
-- **Registers**: the decoded `reg` entries (address and size).
+The example shows the I2C temperature sensor of lab3, whose binding lives in the app.
+
+- **`compatible`** strings of the node and the **description** from the binding.
+- **Binding facts** (shown when they apply):
+  - `on-bus`: the node is a device on that bus, and its `reg` is the bus address (here I2C 0x4f).
+  - `bus`: child nodes of this node are devices on that bus.
+  - `<space>-cells`: the names of the cells that a reference passes. For example,
+    `gpio-cells: pin, flags` explains why `<&portb 31 0x11>` means pin 31 with flags 0x11.
+  - `child-binding`: the child nodes are described by this binding.
+- **Binding file and its include: hierarchy**: the matched YAML file and every file it includes,
+  recursively. Here the chain is `my-temp-sensor.yaml` → `i2c-device.yaml` → `base.yaml` / `pm.yaml`,
+  plus `power.yaml`. Click any file to open it.
+- **All N properties this binding allows** (expandable table):
+
+| Column | Meaning |
+|---|---|
+| Type, Required | As declared in the binding |
+| In this node | **set** (written in a `.dts` file) · **default** (only the binding's `default:` applies) · **not set** |
+| Default, Allowed values | `default:` and `enum:` / `const:` from the binding |
+| Declared in | Which YAML file in the hierarchy declares the property. Click it to open the file at the declaration |
+
+  The table shows set, required and own properties. The switch adds the generic, unset
+  properties that come from `base.yaml` and similar files.
+
+In this example the binding default of `resolution-bits` is 12, and the overlay sets it to 9.
+
+If no binding matches, the card says so and the status card turns deep orange:
+
+![No binding found](img/el_nobinding.png)
+
+Below the card, **Registers** shows the decoded `reg` entries (address and size).
 
 ### 5.3 Properties
 
@@ -139,7 +168,7 @@ card explains that the parent's binding describes them and that the app reads th
 | Property | Name as in the devicetree |
 | As written | Value as it appears in `zephyr.dts`, with references like `&portb` |
 | Interpreted | Value as Zephyr understands it through the binding. Numbers are shown in decimal and hex, references are resolved, and GPIO flags are decoded, e.g. `0x11 = ACTIVE_LOW \| PULL_UP` |
-| Origin | Category of the file that **set this value last** (see legend) |
+| Origin | Category of the file that **set this value last** (see legend). **Binding default** rows (yellow) list values that no `.dts` file contains. They still end up in the generated C macros. |
 | File:line | That exact location. **Click** to open the source |
 | Meaning (binding) | First line of the property description in the binding |
 
@@ -217,6 +246,7 @@ Every view can be opened directly, for example from slides or lab instructions:
 | `build` | `build=apps/lab1/build_same54_xpro` | Load this build (path relative to the workspace) |
 | `node` | `node=/my_led@41008000` | Select this node |
 | `macros=1` | | Expand the generated-macro section |
+| `bprops=1` | | Expand the table of all binding properties |
 | `tab=include` | | Start on the include tree |
 | `file` | `file=zephyr\dts\arm\atmel\same5x.dtsi` | Select this file in the include tree |
 | `src`, `line` | `src=apps\lab3\boards\same54_xpro.overlay&line=20` | Open the source viewer |
