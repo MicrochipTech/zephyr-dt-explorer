@@ -6,9 +6,14 @@ from, which driver handles it, and whether a device actually ended up in the ima
 ## Start
 
 ```cmd
-dt_explorer.bat                         :: scans C:\Masters\26020_RTOS4\zephyrproject
-dt_explorer.bat D:\other\zephyrproject  :: different west workspace
+dt_explorer.bat                         :: asks for the folder with a folder dialog
+dt_explorer.bat D:\other\zephyrproject  :: no dialog, use this folder
 ```
+
+The folder can be a west workspace, an app folder or a single build folder; every folder below it
+that contains `zephyr/edt.pickle` is offered as a build. The last choice is remembered in
+`%USERPROFILE%\.dt_explorer.json` and pre-selected next time. The folder button in the header
+switches to another folder without restarting.
 
 Opens `http://localhost:8765`. Stop with Ctrl+C in the console window.
 Build first (`west build …`) — the explorer reads the build folder, not the sources.

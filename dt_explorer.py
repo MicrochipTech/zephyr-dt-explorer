@@ -23,9 +23,41 @@ from pathlib import Path
 from nicegui import ui
 
 DEFAULT_ROOT = Path(r"C:\Masters\26020_RTOS4\zephyrproject")
+CONFIG_FILE = Path.home() / ".dt_explorer.json"     # remembers the last chosen folder
 _ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
-ROOT = Path(_ARGS[0]) if _ARGS else DEFAULT_ROOT
+ROOT: Path | None = Path(_ARGS[0]) if _ARGS else None   # None -> ask with a folder dialog
 SHOW_BROWSER = "--no-browser" not in sys.argv
+
+
+def last_folder() -> Path:
+    try:
+        p = Path(json.loads(CONFIG_FILE.read_text(encoding="utf-8"))["last_folder"])
+        if p.exists():
+            return p
+    except (OSError, ValueError, KeyError):
+        pass
+    return DEFAULT_ROOT if DEFAULT_ROOT.exists() else Path.home()
+
+
+def remember_folder(p: Path):
+    try:
+        CONFIG_FILE.write_text(json.dumps({"last_folder": str(p)}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def ask_folder(initial: Path) -> Path | None:
+    """Native folder dialog (tkinter). Returns None if cancelled."""
+    import tkinter as tk
+    from tkinter import filedialog
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    chosen = filedialog.askdirectory(
+        parent=root, initialdir=str(initial), mustexist=True,
+        title="Devicetree Explorer - select a Zephyr workspace, app or build folder")
+    root.destroy()
+    return Path(chosen) if chosen else None
 
 ORIGIN_STYLE = {          # category -> (colour on dark background, caption)
     "overlay": ("#81c784", "Overlay (app)"),
@@ -360,7 +392,10 @@ class BuildModel:
 
 
 def find_builds(root: Path) -> list:
-    return sorted({p.parent.parent for p in root.glob("**/build*/zephyr/edt.pickle")
+    """Build folders = folders that contain zephyr/edt.pickle. `root` may itself be one."""
+    if (root / "zephyr" / "edt.pickle").exists():
+        return [root]
+    return sorted({p.parent.parent for p in root.glob("**/zephyr/edt.pickle")
                    if "zephyr\\samples" not in str(p) and "\\tests\\" not in str(p)},
                   key=lambda p: str(p).lower())
 
@@ -406,8 +441,14 @@ def fmt_value(model: BuildModel, node, name: str) -> str:
 # ---------------------------------------------------------------------------------
 class App:
     def __init__(self):
-        self.builds = find_builds(ROOT)
+        self.builds: list = []
         self.model: BuildModel | None = None
+
+    def set_root(self, root: Path):
+        global ROOT
+        ROOT = root
+        self.builds = find_builds(root)
+        self.model = None
 
     def load(self, build: Path):
         self.model = BuildModel(build)
@@ -465,8 +506,21 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
     ui.dark_mode(True)
     ui.add_css(SOURCE_CSS)
     ui.query("body").style("background-color: #121212")
+
+    def choose_folder():
+        chosen = ask_folder(ROOT or last_folder())
+        if chosen:
+            remember_folder(chosen)
+            state.set_root(chosen)
+            ui.navigate.to("/")
+
     if not state.builds:
-        ui.label(f"No builds found under {ROOT} (searched: **/build*/zephyr/edt.pickle).")
+        with ui.column().classes("p-6 gap-3"):
+            ui.label("Devicetree Explorer").classes("text-xl font-bold")
+            ui.label(f"No Zephyr build found under {ROOT}.")
+            ui.label("A build folder contains zephyr/edt.pickle - run `west build` first, then select the "
+                     "workspace, the app folder or the build folder itself.").classes("text-sm text-grey-5")
+            ui.button("Open folder", icon="folder_open", on_click=choose_folder)
         return
     if build:
         want = (ROOT / build).resolve()
@@ -476,10 +530,12 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         state.load(state.builds[0])
 
     def build_label(p):
-        return str(p.relative_to(ROOT)) if ROOT in p.parents else str(p)
+        return str(p.relative_to(ROOT)) if ROOT in p.parents else p.name
 
     with ui.header().classes("items-center gap-4").style("background-color: #1e293b"):
         ui.label("Devicetree Explorer").classes("text-lg font-bold")
+        ui.button(icon="folder_open", on_click=choose_folder).props("flat round color=white") \
+            .tooltip(f"Open folder (current: {ROOT})")
         sel = ui.select({str(p): build_label(p) for p in state.builds}, value=str(state.model.build),
                         label="Build").classes("w-96").props("dark dense options-dense")
         ui.button("Reload", icon="refresh", on_click=lambda: reload(sel.value)).props("flat color=white")
@@ -798,4 +854,12 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
 
 
 if __name__ in {"__main__", "__mp_main__"}:
+    if ROOT is None:
+        ROOT = ask_folder(last_folder())
+        if ROOT is None:
+            print("No folder selected - exiting.")
+            sys.exit(0)
+    remember_folder(ROOT)
+    state.set_root(ROOT)
+    print(f"Folder: {ROOT}  ->  {len(state.builds)} build(s) found")
     ui.run(title="Devicetree Explorer", port=8765, reload=False, show=SHOW_BROWSER, dark=True)

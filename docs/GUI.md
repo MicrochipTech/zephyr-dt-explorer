@@ -16,10 +16,19 @@ The window has three areas:
 
 ---
 
+## 0. Start
+
+When started without an argument, the tool first opens a **folder dialog**. Select a west
+workspace, an app folder or a single build folder; every build below it is offered in the
+**Build** list. The dialog starts in the last folder you used. With a path argument
+(`dt_explorer.bat D:\ws`), the tool skips the dialog.
+
 ## 1. Header
 
 ![Header](img/el_header.png)
 
+- **Folder button** (left): opens the folder dialog again and switches to another workspace
+  without restarting. Its tooltip shows the current folder.
 - **Build**: lists every Zephyr build folder found under the workspace, i.e. every folder that
   contains `zephyr/edt.pickle`. Picking an entry loads that build.
 - **Reload**: scans for builds again and reloads the current one. Press it after every
