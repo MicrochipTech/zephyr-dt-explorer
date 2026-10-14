@@ -438,7 +438,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | ID | Status | Commit |
 |---|---|---|
 | P6.0 | done | f084991 |
-| P6.1 | running | |
+| P6.1 | done | b993082 |
 | P6.2 | open | |
 
 **P6.0 Research: two Zephyr versions in one process.** *light*, PS.
@@ -559,4 +559,5 @@ surprising, and anything you were unsure about.
 | P5.3 | [P5.3.md](evidence/P5.3.md) | lab1: 3 covered (sercom2 uart, sercom4 spi, sercom7 i2c), 41 uncovered enabled (34 SoC, 6 board, 1 overlay); lab3: 4 covered (+ sercom3 i2c PA22/PA23), 42 uncovered. Per-node and whole-draft edtlib compare: all MATCH (28 MATCH lines, 0 mismatch). Lifts only what board/app wrote (origin comments). Not representable yet: child nodes on buses (`eeprom@5e`, `mytemp@4f`) → phase 8. Builder re-run 3 passed |
 | P6.0 | [P6.0.md](evidence/P6.0.md) | `zephyr-main` = Zephyr 4.5.0-rc1, uses SDK 1.0.1 (installed); cmake-only pic32cx_sg41_cult hello_world 161 s. edtlib.py +753/−52 (new `_LocalProps`, `MapEntry`, `HexInt`). Plain sys.path add fails (`_LocalProps`); swap+purge works but is order dependent; **both module sets alive + `Unpickler.find_class` mapping works** (0.17 s), also across Python 3.12/3.14; subprocess JSON 0.45 s as fallback. Recommendation: `core/model_host.py` `EdtlibHost` per src dir, BuildModel changes only the unpickle lines |
 | P1.7 | [P1.7.md](evidence/P1.7.md) | 9 geometry tests (pin 1 left/top, 32 per side, pin 33 first on bottom, BGA A1 top-left, TFBGA120 15×15 rows A–R without I/O/Q); screenshots TQFP128/TFBGA120 checked by the builder (pin 100 = PB24, PC18 conflict orange). Builder follow-up: conftest keeps built-in plugins that were first imported during a test; full suite 281 passed, 4 skipped |
+| P6.1 | [P6.1.md](evidence/P6.1.md) | lab1 (86 nodes, v4.3.0) and main pic32cx_sg41_cult hello_world (111 nodes, 4.5.0-rc1) open together in both orders; lab1 still equals its golden; no `devicetree*` left in sys.modules/sys.path; validate() works on both. `kconfig_suggest.py` still patches sys.path itself (main builds not covered there). Full suite 286 passed, 0 skipped (all three env vars). Builder re-run of test_model_host passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
