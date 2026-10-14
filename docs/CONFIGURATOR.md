@@ -215,6 +215,39 @@ installed packs.
   light shows the state the node is expected to have after a rebuild.
 - **Pin map (by-product).** A table of the package pins: who uses each pin and which functions are
   possible on it. It is useful even without the generator.
+- **Graphical package view.** See *Graphical package pin configurator*.
+
+### Graphical package pin configurator
+
+A drawing of the package in the browser, like the MCC Pin Manager or the CubeMX chip view.
+
+**Data.** The ATDF already contains everything needed (checked in `ATSAME54P20A.atdf`):
+- one `<pinout>` per package: TQFP128 as `<pin position="1" pad="PA00"/>` … `128`, TFBGA120 with
+  ball names `<pin position="A1" pad="PA00"/>`;
+- the package type and pin count in `<variant package="TQFP128" pinout="SAMD51P"/>`.
+
+No vendor graphics are needed. The drawing is computed from the package type:
+- **QFP/QFN:** pins spread evenly on four sides, counter-clockwise from pin 1;
+- **BGA:** a grid of rows and columns. Ball names such as `A1` already are grid coordinates.
+
+**Interaction:**
+- The package is drawn as SVG; NiceGUI embeds it and handles clicks on the pins.
+- **Colours:** each pin is coloured by its peripheral. Used, free, conflict and draft states are
+  distinct, and provider constraints (IOSET) show yellow.
+- **Click a pin:** a menu lists every function the provider offers for it, e.g. for PB25:
+  `SERCOM2/PAD0 (D)`, the other SERCOM and TCC functions, GPIO. The choice goes into the draft,
+  and the overlay snippet updates.
+- **Other direction:** a pin chosen in the form lights up in the package. The form and the drawing
+  show the same draft.
+- **Porting:** source and target package side by side. Pins that do not exist on the target are
+  marked, e.g. PB26–PB29 and PC04 on the SG61.
+
+**Vendor neutrality:**
+- The model carries `Package.kind` (QFP, QFN, BGA, …) and an opaque `position` per pin, supplied
+  by the provider.
+- The layout functions per package kind live in the core. They are vendor-neutral, because QFP and
+  BGA geometry is the same for every vendor. A provider for another vendor gets the drawing for
+  free.
 
 ## Architecture: vendor plugins
 
@@ -275,9 +308,16 @@ The model is deliberately small. Everything vendor-specific is either opaque to 
 @dataclass
 class DeviceModel:
     name: str                       # "ATSAME54P20A"
-    packages: list[Package]         # pad id -> package pin/ball
+    packages: list[Package]
     instances: dict[str, Instance]  # "SERCOM2" -> Instance
     constraints: list[Constraint]
+
+@dataclass
+class Package:
+    name: str                       # "TQFP128"
+    kind: str                       # "QFP" | "QFN" | "BGA" | ...; selects the layout function
+    pin_count: int
+    pins: dict[str, str]            # position ("1", "A1") -> pad id or power/other pin name
 
 @dataclass
 class Instance:
@@ -557,10 +597,12 @@ is changed.
    package and add the neutral device model, the plugin registry with entry points and the API
    version check. Only then write the ATDF provider and the `atmel,sam0-pinctrl` formatter as the
    first plugins. The pin map tests all of this against the SAM E54 labs. This phase brings the
-   first pytest tests into the repo, plus `LICENSE` and `CONTRIBUTING.md`.
+   first pytest tests into the repo, plus `LICENSE` and `CONTRIBUTING.md`. The graphical package
+   view comes in this phase too, read-only (QFP and BGA layouts).
 2. **"New build…" with board selection**, `--cmake-only`, the "not linked yet" state and
    "Full build". It comes early because phase 5 needs a `sam_e54_xpro` build anyway.
-3. **SERCOM configurator for UART/I2C/SPI**, with the Draft tab and the fast check.
+3. **SERCOM configurator for UART/I2C/SPI**, with the Draft tab and the fast check. The graphical
+   package view becomes clickable and is linked to the form through the draft.
 4. **"Verify with west"** and writing to a file. It comes before porting, because a port must be
    checked by Zephyr itself.
 5. **Translate the driver family (core of the main use case).** `same54_xpro` → `sam_e54_xpro`
