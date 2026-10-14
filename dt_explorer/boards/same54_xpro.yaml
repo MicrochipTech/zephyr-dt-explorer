@@ -1,0 +1,303 @@
+schema_version: 1
+board: same54_xpro
+source:
+  package: SAM_E54_Xplained_Pro_R11
+  file: SAM_E54_Xplained_Pro_R11.PcbDoc
+  revision: '11'
+  units: mm
+  generator: dt_explorer.importers.pipeline
+mcu:
+  soc: ATSAME54P20A
+  designator: U200
+  package: TQFP128
+  fit: 1.0
+connectors:
+- name: EXT1
+  designator: J401
+  type: xplained_pro_ext
+  zephyr_binding: atmel-xplained-pro-header
+  detection_score: 1.0
+  status: reviewed
+  reason: silkscreen 'EXT1' fits type xplained_pro_ext, score 1.0, GND/VCC pins as in the standard, 16/16
+    signal pins traced to the MCU
+  reviewed: builder
+  position:
+    x: 218.38
+    y: 162.32
+    rotation: 270.0
+    layer: top
+  pins:
+    '1':
+      role: ID
+      pad: null
+      net: ID1
+      gap: 'routed through part with more than 2 pads: U800 (100 pads)'
+    '2':
+      role: GND
+      pad: null
+      net: GND
+    '3':
+      role: ADC+
+      pad: PB04
+      net: PB04_ADC1_AIN6
+    '4':
+      role: ADC-
+      pad: PB05
+      net: PB05_ADC1_AIN7
+    '5':
+      role: GPIO1
+      pad: PA06
+      net: PA06_GPIO_S0P2_RTS
+    '6':
+      role: GPIO2
+      pad: PA07
+      net: PA07_GPIO_S0P3_CTS
+    '7':
+      role: PWM+
+      pad: PB08
+      net: PB08_TC4_WO0
+    '8':
+      role: PWM-
+      pad: PB09
+      net: PB09_TC4_WO1
+    '9':
+      role: IRQ
+      pad: PB07
+      net: PB07_GPIO_EXTINT7
+    '10':
+      role: SPI_SS_B
+      pad: PA27
+      net: PA27_GPIO_SPI_SS_B
+    '11':
+      role: I2C_SDA
+      pad: PA22
+      net: PA22_S3P0_I2C_SDA
+    '12':
+      role: I2C_SCL
+      pad: PA23
+      net: PA23_S3P1_I2C_SCL
+    '13':
+      role: UART_RX
+      pad: PA05
+      net: PA05_S0P1_UART_RX
+    '14':
+      role: UART_TX
+      pad: PA04
+      net: PA04_S0P0_UART_TX
+    '15':
+      role: SPI_SS_A
+      pad: PB28
+      net: PB28_S4P2_SPI_SS
+    '16':
+      role: SPI_MOSI
+      pad: PB27
+      net: PB27_S4P0_SPI_MOSI
+    '17':
+      role: SPI_MISO
+      pad: PB29
+      net: PB29_S4P3_SPI_MISO
+    '18':
+      role: SPI_SCK
+      pad: PB26
+      net: PB26_S4P1_SPI_SCK
+    '19':
+      role: GND
+      pad: null
+      net: GND
+    '20':
+      role: VCC
+      pad: null
+      net: VCC_TARGET_P3V3
+- name: EXT2
+  designator: J402
+  type: xplained_pro_ext
+  zephyr_binding: atmel-xplained-pro-header
+  detection_score: 1.0
+  status: reviewed
+  reason: silkscreen 'EXT2' fits type xplained_pro_ext, score 1.0, GND/VCC pins as in the standard, 16/16
+    signal pins traced to the MCU
+  reviewed: builder
+  position:
+    x: 218.38
+    y: 126.76
+    rotation: 270.0
+    layer: top
+  pins:
+    '1':
+      role: ID
+      pad: null
+      net: ID2
+      gap: 'routed through part with more than 2 pads: U800 (100 pads)'
+    '2':
+      role: GND
+      pad: null
+      net: GND
+    '3':
+      role: ADC+
+      pad: PB00
+      net: PB00_ADC0_AIN12
+    '4':
+      role: ADC-
+      pad: PA03
+      net: PA03_ADC0_AIN1
+    '5':
+      role: GPIO1
+      pad: PB01
+      net: PB01_GPIO
+    '6':
+      role: GPIO2
+      pad: PB06
+      net: PB06_GPIO
+    '7':
+      role: PWM+
+      pad: PB14
+      net: PB14_TCC4_WO0
+    '8':
+      role: PWM-
+      pad: PB15
+      net: PB15_TCC4_WO1
+    '9':
+      role: IRQ
+      pad: PD00
+      net: PD00_GPIO_EXTINT0
+    '10':
+      role: SPI_SS_B
+      pad: PB02
+      net: PB02_GPIO_SPI_SS_B
+    '11':
+      role: I2C_SDA
+      pad: PD08
+      net: PD08_S7P0_I2C_SDA
+    '12':
+      role: I2C_SCL
+      pad: PD09
+      net: PD09_S7P1_I2C_SCL
+    '13':
+      role: UART_RX
+      pad: PB17
+      net: PB17_S5P1_UART_RX
+    '14':
+      role: UART_TX
+      pad: PB16
+      net: PB16_S5P0_UART_TX
+    '15':
+      role: SPI_SS_A
+      pad: PC06
+      net: PC06_S6P2_SPI_SS
+    '16':
+      role: SPI_MOSI
+      pad: PC04
+      net: PC04_S6P0_SPI_MOSI
+    '17':
+      role: SPI_MISO
+      pad: PC07
+      net: PC07_S6P3_SPI_MISO
+    '18':
+      role: SPI_SCK
+      pad: PC05
+      net: PC05_S6P1_SPI_SCK
+    '19':
+      role: GND
+      pad: null
+      net: GND
+    '20':
+      role: VCC
+      pad: null
+      net: VCC_TARGET_P3V3
+- name: EXT3
+  designator: J403
+  type: xplained_pro_ext
+  zephyr_binding: atmel-xplained-pro-header
+  detection_score: 1.0
+  status: reviewed
+  reason: silkscreen 'EXT3' fits type xplained_pro_ext, score 1.0, GND/VCC pins as in the standard, 16/16
+    signal pins traced to the MCU
+  reviewed: builder
+  position:
+    x: 194.08
+    y: 108.18
+    rotation: 180.0
+    layer: top
+  pins:
+    '1':
+      role: ID
+      pad: null
+      net: ID3
+      gap: 'routed through part with more than 2 pads: U800 (100 pads)'
+    '2':
+      role: GND
+      pad: null
+      net: GND
+    '3':
+      role: ADC+
+      pad: PC02
+      net: PC02_ADC1_AIN4
+    '4':
+      role: ADC-
+      pad: PC03
+      net: PC03_ADC1_AIN5
+    '5':
+      role: GPIO1
+      pad: PC01
+      net: PC01_GPIO
+    '6':
+      role: GPIO2
+      pad: PC10
+      net: PC10_GPIO
+    '7':
+      role: PWM+
+      pad: PD10
+      net: PD10_TCC0_WO3
+    '8':
+      role: PWM-
+      pad: PD11
+      net: PD11_TCC0_WO4
+    '9':
+      role: IRQ
+      pad: PC30
+      net: PC30_GPIO_EXTINT14
+    '10':
+      role: SPI_SS_B
+      pad: PC31
+      net: PC31_GPIO_SPI_SS_B
+    '11':
+      role: I2C_SDA
+      pad: PD08
+      net: PD08_S7P0_I2C_SDA
+    '12':
+      role: I2C_SCL
+      pad: PD09
+      net: PD09_S7P1_I2C_SCL
+    '13':
+      role: UART_RX
+      pad: PC23
+      net: PC23_S1P1_UART_RX
+    '14':
+      role: UART_TX
+      pad: PC22
+      net: PC22_S1P0_UART_TX
+    '15':
+      role: SPI_SS_A
+      pad: PC14
+      net: PC14_EXT3_SPI_SS
+    '16':
+      role: SPI_MOSI
+      pad: PC04
+      net: PC04_S6P0_SPI_MOSI
+    '17':
+      role: SPI_MISO
+      pad: PC07
+      net: PC07_S6P3_SPI_MISO
+    '18':
+      role: SPI_SCK
+      pad: PC05
+      net: PC05_S6P1_SPI_SCK
+    '19':
+      role: GND
+      pad: null
+      net: GND
+    '20':
+      role: VCC
+      pad: null
+      net: VCC_TARGET_P3V3
+gaps: []
