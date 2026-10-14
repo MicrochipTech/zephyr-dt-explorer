@@ -265,6 +265,7 @@ gets no special treatment.
 | **Pinctrl formatter** | neutral signal ↔ overlay notation of one Zephyr pinctrl binding | compatible of the build's pinctrl node | `atmel,sam0-pinctrl`, `microchip,port-g1-pinctrl` |
 | **Recipe** | driver knowledge: named pin roles, derived properties, Kconfig table | driver compatible (`atmel,sam0-uart`, …) | SERCOM UART/I2C/SPI |
 | **Binding translation** | one driver family's binding → another family's binding for the same hardware | pair (source compatible, target compatible) | `atmel,sam0-*` → `microchip,*-g1` |
+| **Board description** | board design files → connectors, on-board parts, drawing (YAML) | board name | SAME54 Xplained Pro, PIC32CX SG41/SG61 Curiosity Ultra |
 
 Providers belong to the vendor's *file format*. Formatters belong to the *Zephyr side*. Keeping the
 two apart matters:
@@ -416,6 +417,9 @@ dt_explorer/
     atmel_sam0_sercom.py
   translations/
     atmel_sam0_to_mchp_g1.yaml
+  boards/           generated board YAML (no design files)
+  importers/
+    netlist.py      design files -> board YAML
 tests/              per plugin, with small fixture files
 dt_explorer.py      thin launcher, so dt_explorer.bat keeps working
 ```
@@ -562,6 +566,67 @@ under `boards/<vendor>/<board>/`:
 
 Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 
+## Graphical board configurator
+
+A schematic drawing of the evaluation board, with its connectors, LEDs, buttons and other on-board
+parts. The first boards are the **SAME54 Xplained Pro**, the **PIC32CX SG41 Curiosity Ultra** and the
+**PIC32CX SG61 Curiosity Ultra**.
+
+### What Zephyr provides and what is missing
+
+- **Available in the board `.dts`:** LEDs, buttons, the console UART (SERCOM4 on the Curiosity Ultra
+  boards), crystals and flash partitions. That tells which pins the board itself already uses.
+- **Missing: the connector pinout.** Zephyr has standard bindings for it: `atmel-xplained-pro-header`
+  (EXT1–EXT7, with defined positions on the board), `arduino-header-r3` and `mikro-bus`. They map
+  connector pins to SoC pins. But `same54_xpro`, `pic32cx_sg41_cult` and `pic32cx_sg61_cult` do not
+  use them, upstream `main` included (checked 2026-10-14). Among the Microchip boards only sam4e_xpro,
+  sam_v71_xult and samr21_xpro do.
+
+### Board description (fifth plugin kind)
+
+One YAML file per board:
+- **connectors:** name, type (Xplained Pro, Arduino, mikroBUS, …), position on the board, and the
+  SoC pad behind each pin;
+- **on-board parts** that are missing from the `.dts` (Ethernet PHY, CAN transceiver, QSPI flash, …)
+  with the pads they use;
+- **board outline and part positions** for the drawing.
+
+If the board `.dts` has standard connector nodes, the tool reads them and the YAML only adds what is
+missing.
+
+### Importer: board design files → board YAML
+
+The YAML is not typed in from the user guide. It is generated from the board's design files, which
+Microchip publishes for practically every evaluation board:
+
+| Input | Gives | Priority |
+|---|---|---|
+| Netlist (IPC-D-356, Altium/KiCad/OrCAD export) | connector pin → SoC pad, on-board parts on SoC pads | required |
+| Pick-and-place / centroid file plus board outline (Gerber outline layer or assembly drawing) | real positions of connectors, LEDs and buttons | for the drawing |
+| BOM | names and types of the on-board parts | optional |
+| Schematic PDF | cross-check, signal names | fallback |
+
+- **Tracing:** the importer follows each connector pin (`J…`) through its net to a SoC pad (`U…`).
+  It passes through series resistors, 0-Ω links and solder jumpers and reports where a jumper
+  decides the routing.
+- **Native Altium files** (`.SchDoc`/`.PcbDoc`) are binary. Exported text netlists are preferred.
+- **Licensing:** the design files are copyrighted by the board vendor and are **not** committed to
+  the repo. They are kept outside, e.g. `C:\Masters\board_design_files\<board>\`. Only the generated
+  YAML, which holds facts such as "EXT1 pin 11 → PA22", is committed.
+- The same data can later produce the connector nodes for an upstream Zephyr PR, so the tool and
+  Zephyr shields both benefit.
+
+### UI
+
+- **Drawing:** schematic, not photos (photos raise copyright questions and change with every board
+  revision). Board outline, connectors as pin rows at their positions, LEDs and buttons.
+- **Click a connector pin:** connector pin → SoC pad → the provider's functions, as in the package
+  view. The tool warns when the board already uses the pin (LED, PHY, …).
+- **Linked views:** board, package and form show the same draft.
+- **Porting:** this is where the board view helps most. Example: *"Your I2C sensor was on SAME54
+  Xplained Pro EXT1 pins 11/12. On the PIC32CX SG41 Curiosity Ultra, connect it to connector X pins
+  a/b."* The software port alone cannot answer that.
+
 ## Porting
 
 Moving an app from one device or vendor to another is the configurator run in both directions. It
@@ -626,11 +691,14 @@ is changed.
    change within the new family, with source builds from the RTOS4 workspace. Target boards are
    `pic32cx_sg41_cult` and `pic32cx_sg61_cult`. Acceptance test: the RTOS4 labs build for both, and
    the SG61 report lists exactly the conflicts with PB26–PB29/PC04.
-7. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
+7. **Graphical board configurator** for SAME54 Xplained Pro and PIC32CX SG41/SG61 Curiosity Ultra:
+   netlist importer, board YAML, board view, connector hints in the porting report. Needs the
+   boards' design files.
+8. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
    `on-bus: i2c`) and the generic binding form for other peripherals (ADC, TC, …). The matching
    translations follow with them.
-8. **Custom board wizard** (see *Creating a custom board*).
-9. **Class-based porting** for pairs without a translation, up to other vendors (see *Porting*).
+9. **Custom board wizard** (see *Creating a custom board*).
+10. **Class-based porting** for pairs without a translation, up to other vendors (see *Porting*).
 
 ## Decisions (2026-10-14)
 
@@ -645,6 +713,7 @@ is changed.
 | Main use case | Port SAME54 projects (old `atmel` port) to PIC32CX SG41/SG61: first translate the driver family, then change the device |
 | Same-IP porting | Direct binding translation tables (YAML), not class-based mapping |
 | Zephyr for PIC32CX SG | Second workspace `C:\Masters\zephyr-main` with current Zephyr; the RTOS4 workspace stays unchanged |
+| Board data | Generated from the boards' design files (netlist first); design files stay outside the repo, only the generated YAML is committed |
 
 ## Open questions
 
