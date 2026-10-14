@@ -601,7 +601,7 @@ Microchip publishes for practically every evaluation board:
 
 | Input | Gives | Priority |
 |---|---|---|
-| Netlist (IPC-D-356, Altium/KiCad/OrCAD export) | connector pin → SoC pad, on-board parts on SoC pads | required |
+| Netlist: Altium `.PcbDoc` (checked, see below), or an IPC-D-356/KiCad/OrCAD export | connector pin → SoC pad, on-board parts on SoC pads | required |
 | Pick-and-place / centroid file plus board outline (Gerber outline layer or assembly drawing) | real positions of connectors, LEDs and buttons | for the drawing |
 | BOM | names and types of the on-board parts | optional |
 | Schematic PDF | cross-check, signal names | fallback |
@@ -615,6 +615,73 @@ Microchip publishes for practically every evaluation board:
   YAML, which holds facts such as "EXT1 pin 11 → PA22", is committed.
 - The same data can later produce the connector nodes for an upstream Zephyr PR, so the tool and
   Zephyr shields both benefit.
+
+### Checked with real design files (2026-10-14)
+
+**What the Microchip design packages contain.** Neither package ships a text netlist:
+
+| Package | Contents |
+|---|---|
+| SAM E54 Xplained Pro Rev 11 | Altium sources (`.PrjPCB`, `.SchDoc`, `.PcbDoc`) in an inner `CAD_Source_R11.zip`, schematic/assembly/fabrication PDFs, user guide PDF, simplified BOM (`.xlsx`) |
+| PIC32CX SG41 Curiosity Ultra R5 | Altium sources, Gerbers, pick-and-place (`.csv`/`.txt`, mm), BOM (`.xls`), schematic and assembly PDFs |
+
+The extracted files live in `C:\Masters\board_design_files\<board>\`, outside the repo.
+
+**Reading the `.PcbDoc` works without Altium.** The file is an OLE compound document (read with
+`olefile`). Three streams are enough:
+- `Nets6/Data`: text records (`u32 length` + `|KEY=VALUE|…`); the record index is the net index.
+- `Components6/Data`: text records with `SOURCEDESIGNATOR`, `X`/`Y` (mil), `ROTATION`, `LAYER`,
+  `PATTERN`, `SOURCEDESCRIPTION`.
+- `Pads6/Data`: binary. Each record is type byte `0x02`, subrecord 1 = pad name (Pascal string),
+  subrecords 2–4 skipped, subrecord 5 = `u8 layer, u8, u8, u16 net, u16 skip, u16 component, …`.
+  `0xFFFF` means no net / no component. This is the layout KiCad's Altium importer uses.
+
+A prototype is in `prototypes/altium_pcbdoc_trace.py`. It finds the MCU (the `U…` with the most
+pads), maps MCU pad numbers to pin names through the ATDF `<pinout>`, and traces every connector pin
+(`J…`) to the MCU. It passes through 2-pad `R`/`J`/`FB` parts, but never through supply rails or nets
+with more than 4 connections (otherwise pull-ups lead into every rail).
+
+**Results.** Xplained Pro extension headers, traced from the PCB:
+
+| Pin | E54 Xpro EXT1 (J401) | E54 Xpro EXT2 (J402) | E54 Xpro EXT3 (J403) | SG41 CUlt EXT1 (J602) | SG41 CUlt EXT2 (J603) |
+|---|---|---|---|---|---|
+| 3 ADC(+) | PB04 | PB00 | PC02 | PB08 | PB08 |
+| 4 ADC(−) | PB05 | PA03 | PC03 | PB09 | PB09 |
+| 5 GPIO | PA06 | PB01 | PC01 | PD10 | PC05 |
+| 6 GPIO | PA07 | PB06 | PC10 | PD11 | PC07 |
+| 7 PWM(+) | PB08 | PB14 | PD10 | via `TCC4/WO0` net | via `TCC4/WO0` net |
+| 8 PWM(−) | PB09 | PB15 | PD11 | via `TCC4/WO1` net | – |
+| 9 IRQ | PB07 | PD00 | PC30 | PD12 | PB01 |
+| 10 SPI SS_B | PA27 | PB02 | PC31 | PB05 | PC06 |
+| 11 TWI SDA | PA22 | PD08 | PD08 | PD09 | PD09 |
+| 12 TWI SCL | PA23 | PD09 | PD09 | PD08 | PD08 |
+| 13 UART RX | PA05 | PB17 | PC23 | PC13 | PB30 |
+| 14 UART TX | PA04 | PB16 | PC22 | PC12 | PB31 |
+| 15 SPI SS_A | PB28 | PC06 | PC14 | PC24 | PA06 |
+| 16 SPI MOSI | PB27 | PC04 | PC04 | PB24 | PB24 |
+| 17 SPI MISO | PB29 | PC07 | PC07 | PC25 | PC25 |
+| 18 SPI SCK | PB26 | PC05 | PC05 | — (`NetJ602_18`) | — (`NetJ603_18`) |
+
+The signal names in the first column are the Xplained Pro standard pin functions, not read from
+the files; check them against the user guides. The SG41 Curiosity Ultra has no EXT3.
+
+Findings that matter for porting:
+- **J602/J603 on the Curiosity Ultra sit at exactly the same coordinates as J401/J402 on the Xplained
+  Pro** (x = 8597.64 mil, y = 6390.55 / 4990.55 mil). It is the same Xplained Pro extension form
+  factor, so an extension board fits both.
+- **The E54 Xpro EXT1 SPI uses PB26–PB29.** These are exactly the pins the SG61 lacks. A project that
+  uses SPI on EXT1 cannot keep those pins on an SG61 board.
+- Same connector, different pins: the porting report must translate per connector pin, not per
+  SoC pin.
+- Two kinds of gaps the importer must report instead of guessing: pins routed through parts with
+  more than 2 pads (the `TCC4/WO0`/`WO1` nets, probably a jumper or switch) and pins whose net ends
+  without reaching the MCU (`NetJ602_18`).
+- Also traced on the SG41 Curiosity Ultra: Arduino headers J500–J504, mikroBUS J900/J901, X32 audio
+  J800/J802, debug J400/J601, microSD J704.
+
+**Connector names** ("EXT1", "mikroBUS", …) are not in the component records. They only appear as
+silkscreen text in the PCB. The importer assigns them by proximity of the text to the connector and
+the YAML lets a human confirm or fix the assignment.
 
 ### UI
 
