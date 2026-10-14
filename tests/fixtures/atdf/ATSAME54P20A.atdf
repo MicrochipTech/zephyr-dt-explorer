@@ -1,0 +1,556 @@
+<?xml version="1.0"?>
+<!-- Trimmed excerpt of ATSAME54P20A.atdf from hal_microchip (Apache-2.0, Copyright Microchip Technology Inc.).
+     Kept: variants, pinouts, SERCOM and EIC instances. See README.md. -->
+<avr-tools-device-file xmlns:ns1="http://www.atmel.com/schemas/avr-tools-device-file/mhc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" schema-version="4.4" xsi:noNamespaceSchemaLocation="../../schema/avr_tools_device_file.xsd">
+  <file timestamp="2023-03-17T09:50:08Z" />
+  <variants>
+    <variant ordercode="SAME54P20A-CTU" ns1:ordercode="ATSAME54P20A-CTU" package="TFBGA120" pinout="SAMD51PC" speedmax="120000000" tempmin="-40" tempmax="85" vccmin="1.71" vccmax="3.63" />
+    <variant ordercode="SAME54P20A-CTF" ns1:ordercode="ATSAME54P20A-CTF" package="TFBGA120" pinout="SAMD51PC" speedmax="100000000" tempmin="-40" tempmax="125" vccmin="1.71" vccmax="3.63" />
+    <variant ordercode="SAME54P20A-CTZ" ns1:ordercode="ATSAME54P20A-CTZ" package="TFBGA120" pinout="SAMD51PC" speedmax="100000000" tempmin="-40" tempmax="125" vccmin="1.71" vccmax="3.63" />
+    <variant ordercode="SAME54P20A-AU" ns1:ordercode="ATSAME54P20A-AU" package="TQFP128" pinout="SAMD51P" speedmax="120000000" tempmin="-40" tempmax="85" vccmin="1.71" vccmax="3.63" />
+    <variant ordercode="SAME54P20A-AF" ns1:ordercode="ATSAME54P20A-AF" package="TQFP128" pinout="SAMD51P" speedmax="100000000" tempmin="-40" tempmax="125" vccmin="1.71" vccmax="3.63" />
+    <variant ordercode="SAME54P20A-AZ" ns1:ordercode="ATSAME54P20A-AZ" package="TQFP128" pinout="SAMD51P" speedmax="100000000" tempmin="-40" tempmax="125" vccmin="1.71" vccmax="3.63" />
+  </variants>
+  <devices>
+    <device name="ATSAME54P20A" architecture="CORTEX-M4" family="SAME" series="SAME54">
+      <peripherals>
+        <module name="EIC" id="U2254" version="3.0.0">
+          <instance name="EIC">
+            <register-group name="EIC" name-in-module="EIC" address-space="base" offset="0x40002800" />
+            <signals>
+              <signal group="EXTINT" index="0" function="A" pad="PA00" />
+              <signal group="EXTINT" index="0" function="A" pad="PA16" />
+              <signal group="EXTINT" index="0" function="A" pad="PB00" />
+              <signal group="EXTINT" index="0" function="A" pad="PB16" />
+              <signal group="EXTINT" index="0" function="A" pad="PC00" />
+              <signal group="EXTINT" index="0" function="A" pad="PC16" />
+              <signal group="EXTINT" index="0" function="A" pad="PD00" />
+              <signal group="EXTINT" index="1" function="A" pad="PA01" />
+              <signal group="EXTINT" index="1" function="A" pad="PA17" />
+              <signal group="EXTINT" index="1" function="A" pad="PB01" />
+              <signal group="EXTINT" index="1" function="A" pad="PB17" />
+              <signal group="EXTINT" index="1" function="A" pad="PC01" />
+              <signal group="EXTINT" index="1" function="A" pad="PC17" />
+              <signal group="EXTINT" index="1" function="A" pad="PD01" />
+              <signal group="EXTINT" index="2" function="A" pad="PA02" />
+              <signal group="EXTINT" index="2" function="A" pad="PA18" />
+              <signal group="EXTINT" index="2" function="A" pad="PB02" />
+              <signal group="EXTINT" index="2" function="A" pad="PB18" />
+              <signal group="EXTINT" index="2" function="A" pad="PC02" />
+              <signal group="EXTINT" index="2" function="A" pad="PC18" />
+              <signal group="EXTINT" index="3" function="A" pad="PA03" />
+              <signal group="EXTINT" index="3" function="A" pad="PA19" />
+              <signal group="EXTINT" index="3" function="A" pad="PB03" />
+              <signal group="EXTINT" index="3" function="A" pad="PB19" />
+              <signal group="EXTINT" index="3" function="A" pad="PC03" />
+              <signal group="EXTINT" index="3" function="A" pad="PC19" />
+              <signal group="EXTINT" index="3" function="A" pad="PD08" />
+              <signal group="EXTINT" index="4" function="A" pad="PA04" />
+              <signal group="EXTINT" index="4" function="A" pad="PA20" />
+              <signal group="EXTINT" index="4" function="A" pad="PB04" />
+              <signal group="EXTINT" index="4" function="A" pad="PB20" />
+              <signal group="EXTINT" index="4" function="A" pad="PC04" />
+              <signal group="EXTINT" index="4" function="A" pad="PC20" />
+              <signal group="EXTINT" index="4" function="A" pad="PD09" />
+              <signal group="EXTINT" index="5" function="A" pad="PA05" />
+              <signal group="EXTINT" index="5" function="A" pad="PA21" />
+              <signal group="EXTINT" index="5" function="A" pad="PB05" />
+              <signal group="EXTINT" index="5" function="A" pad="PB21" />
+              <signal group="EXTINT" index="5" function="A" pad="PC05" />
+              <signal group="EXTINT" index="5" function="A" pad="PC21" />
+              <signal group="EXTINT" index="5" function="A" pad="PD10" />
+              <signal group="EXTINT" index="6" function="A" pad="PA06" />
+              <signal group="EXTINT" index="6" function="A" pad="PA22" />
+              <signal group="EXTINT" index="6" function="A" pad="PB06" />
+              <signal group="EXTINT" index="6" function="A" pad="PB22" />
+              <signal group="EXTINT" index="6" function="A" pad="PC06" />
+              <signal group="EXTINT" index="6" function="A" pad="PC22" />
+              <signal group="EXTINT" index="6" function="A" pad="PD11" />
+              <signal group="EXTINT" index="7" function="A" pad="PA07" />
+              <signal group="EXTINT" index="7" function="A" pad="PA23" />
+              <signal group="EXTINT" index="7" function="A" pad="PB07" />
+              <signal group="EXTINT" index="7" function="A" pad="PB23" />
+              <signal group="EXTINT" index="7" function="A" pad="PC23" />
+              <signal group="EXTINT" index="7" function="A" pad="PD12" />
+              <signal group="EXTINT" index="8" function="A" pad="PA24" />
+              <signal group="EXTINT" index="8" function="A" pad="PB08" />
+              <signal group="EXTINT" index="8" function="A" pad="PB24" />
+              <signal group="EXTINT" index="8" function="A" pad="PC24" />
+              <signal group="EXTINT" index="9" function="A" pad="PA09" />
+              <signal group="EXTINT" index="9" function="A" pad="PA25" />
+              <signal group="EXTINT" index="9" function="A" pad="PB09" />
+              <signal group="EXTINT" index="9" function="A" pad="PB25" />
+              <signal group="EXTINT" index="9" function="A" pad="PC07" />
+              <signal group="EXTINT" index="9" function="A" pad="PC25" />
+              <signal group="EXTINT" index="10" function="A" pad="PA10" />
+              <signal group="EXTINT" index="10" function="A" pad="PB10" />
+              <signal group="EXTINT" index="10" function="A" pad="PC10" />
+              <signal group="EXTINT" index="10" function="A" pad="PC26" />
+              <signal group="EXTINT" index="10" function="A" pad="PD20" />
+              <signal group="EXTINT" index="11" function="A" pad="PA11" />
+              <signal group="EXTINT" index="11" function="A" pad="PA27" />
+              <signal group="EXTINT" index="11" function="A" pad="PB11" />
+              <signal group="EXTINT" index="11" function="A" pad="PC11" />
+              <signal group="EXTINT" index="11" function="A" pad="PC27" />
+              <signal group="EXTINT" index="11" function="A" pad="PD21" />
+              <signal group="EXTINT" index="12" function="A" pad="PA12" />
+              <signal group="EXTINT" index="12" function="A" pad="PB12" />
+              <signal group="EXTINT" index="12" function="A" pad="PB26" />
+              <signal group="EXTINT" index="12" function="A" pad="PC12" />
+              <signal group="EXTINT" index="12" function="A" pad="PC28" />
+              <signal group="EXTINT" index="13" function="A" pad="PA13" />
+              <signal group="EXTINT" index="13" function="A" pad="PB13" />
+              <signal group="EXTINT" index="13" function="A" pad="PB27" />
+              <signal group="EXTINT" index="13" function="A" pad="PC13" />
+              <signal group="EXTINT" index="14" function="A" pad="PA30" />
+              <signal group="EXTINT" index="14" function="A" pad="PB14" />
+              <signal group="EXTINT" index="14" function="A" pad="PB28" />
+              <signal group="EXTINT" index="14" function="A" pad="PB30" />
+              <signal group="EXTINT" index="14" function="A" pad="PC14" />
+              <signal group="EXTINT" index="14" function="A" pad="PC30" />
+              <signal group="EXTINT" index="14" function="A" pad="PA14" />
+              <signal group="EXTINT" index="15" function="A" pad="PA15" />
+              <signal group="EXTINT" index="15" function="A" pad="PA31" />
+              <signal group="EXTINT" index="15" function="A" pad="PB15" />
+              <signal group="EXTINT" index="15" function="A" pad="PB29" />
+              <signal group="EXTINT" index="15" function="A" pad="PB31" />
+              <signal group="EXTINT" index="15" function="A" pad="PC15" />
+              <signal group="EXTINT" index="15" function="A" pad="PC31" />
+              <signal group="NMI" function="A" pad="PA08" />
+            </signals>
+          </instance>
+        </module>
+        <module name="SERCOM" id="U2201" version="5.0.0">
+          <instance name="SERCOM0">
+            <register-group name="SERCOM0" name-in-module="SERCOM" address-space="base" offset="0x40003000" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PA04" ioset="3" />
+              <signal group="PAD" index="0" function="D" pad="PC17" ioset="4" />
+              <signal group="PAD" index="0" function="C" pad="PA08" ioset="1" />
+              <signal group="PAD" index="0" function="C" pad="PB24" ioset="2" />
+              <signal group="PAD" index="1" function="D" pad="PA05" ioset="3" />
+              <signal group="PAD" index="1" function="D" pad="PC16" ioset="4" />
+              <signal group="PAD" index="1" function="C" pad="PA09" ioset="1" />
+              <signal group="PAD" index="1" function="C" pad="PB25" ioset="2" />
+              <signal group="PAD" index="2" function="D" pad="PA06" ioset="3" />
+              <signal group="PAD" index="2" function="D" pad="PC18" ioset="4" />
+              <signal group="PAD" index="2" function="C" pad="PA10" ioset="1" />
+              <signal group="PAD" index="2" function="C" pad="PC24" ioset="2" />
+              <signal group="PAD" index="3" function="D" pad="PA07" ioset="3" />
+              <signal group="PAD" index="3" function="D" pad="PC19" ioset="4" />
+              <signal group="PAD" index="3" function="C" pad="PA11" ioset="1" />
+              <signal group="PAD" index="3" function="C" pad="PC25" ioset="2" />
+            </signals>
+          </instance>
+          <instance name="SERCOM1">
+            <register-group name="SERCOM1" name-in-module="SERCOM" address-space="base" offset="0x40003400" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PA00" ioset="4" />
+              <signal group="PAD" index="0" function="C" pad="PA16" ioset="1" />
+              <signal group="PAD" index="0" function="C" pad="PC22" ioset="2" />
+              <signal group="PAD" index="0" function="C" pad="PC27" ioset="3" />
+              <signal group="PAD" index="1" function="D" pad="PA01" ioset="4" />
+              <signal group="PAD" index="1" function="C" pad="PA17" ioset="1" />
+              <signal group="PAD" index="1" function="C" pad="PC23" ioset="2" />
+              <signal group="PAD" index="1" function="C" pad="PC28" ioset="3" />
+              <signal group="PAD" index="2" function="D" pad="PA30" ioset="4" />
+              <signal group="PAD" index="2" function="C" pad="PA18" ioset="1" />
+              <signal group="PAD" index="2" function="C" pad="PB22" ioset="3" />
+              <signal group="PAD" index="2" function="C" pad="PD20" ioset="2" />
+              <signal group="PAD" index="3" function="D" pad="PA31" ioset="4" />
+              <signal group="PAD" index="3" function="C" pad="PA19" ioset="1" />
+              <signal group="PAD" index="3" function="C" pad="PB23" ioset="3" />
+              <signal group="PAD" index="3" function="C" pad="PD21" ioset="2" />
+            </signals>
+          </instance>
+          <instance name="SERCOM2">
+            <register-group name="SERCOM2" name-in-module="SERCOM" address-space="base" offset="0x41012000" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PA09" ioset="3" />
+              <signal group="PAD" index="0" function="D" pad="PB25" ioset="4" />
+              <signal group="PAD" index="0" function="C" pad="PA12" ioset="1" />
+              <signal group="PAD" index="0" function="C" pad="PB26" ioset="2" />
+              <signal group="PAD" index="1" function="D" pad="PA08" ioset="3" />
+              <signal group="PAD" index="1" function="D" pad="PB24" ioset="4" />
+              <signal group="PAD" index="1" function="C" pad="PA13" ioset="1" />
+              <signal group="PAD" index="1" function="C" pad="PB27" ioset="2" />
+              <signal group="PAD" index="2" function="D" pad="PA10" ioset="3" />
+              <signal group="PAD" index="2" function="D" pad="PC24" ioset="4" />
+              <signal group="PAD" index="2" function="C" pad="PB28" ioset="2" />
+              <signal group="PAD" index="2" function="C" pad="PA14" ioset="1" />
+              <signal group="PAD" index="3" function="D" pad="PA11" ioset="3" />
+              <signal group="PAD" index="3" function="D" pad="PC25" ioset="4" />
+              <signal group="PAD" index="3" function="C" pad="PB29" ioset="2" />
+              <signal group="PAD" index="3" function="C" pad="PA15" ioset="1" />
+            </signals>
+          </instance>
+          <instance name="SERCOM3">
+            <register-group name="SERCOM3" name-in-module="SERCOM" address-space="base" offset="0x41014000" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PA17" ioset="3" />
+              <signal group="PAD" index="0" function="D" pad="PC23" ioset="4" />
+              <signal group="PAD" index="0" function="C" pad="PA22" ioset="1" />
+              <signal group="PAD" index="0" function="C" pad="PB20" ioset="2" />
+              <signal group="PAD" index="1" function="D" pad="PA16" ioset="3" />
+              <signal group="PAD" index="1" function="D" pad="PC22" ioset="4" />
+              <signal group="PAD" index="1" function="C" pad="PA23" ioset="1" />
+              <signal group="PAD" index="1" function="C" pad="PB21" ioset="2" />
+              <signal group="PAD" index="2" function="D" pad="PA18" ioset="3" />
+              <signal group="PAD" index="2" function="D" pad="PA20" ioset="2" />
+              <signal group="PAD" index="2" function="D" pad="PD20" ioset="4" />
+              <signal group="PAD" index="2" function="C" pad="PA24" ioset="1" />
+              <signal group="PAD" index="3" function="D" pad="PA19" ioset="3" />
+              <signal group="PAD" index="3" function="D" pad="PA21" ioset="2" />
+              <signal group="PAD" index="3" function="D" pad="PD21" ioset="4" />
+              <signal group="PAD" index="3" function="C" pad="PA25" ioset="1" />
+            </signals>
+          </instance>
+          <instance name="SERCOM4">
+            <register-group name="SERCOM4" name-in-module="SERCOM" address-space="base" offset="0x43000000" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PA13" ioset="3" />
+              <signal group="PAD" index="0" function="D" pad="PB08" ioset="2" />
+              <signal group="PAD" index="0" function="D" pad="PB27" ioset="4" />
+              <signal group="PAD" index="0" function="C" pad="PB12" ioset="1" />
+              <signal group="PAD" index="1" function="D" pad="PA12" ioset="3" />
+              <signal group="PAD" index="1" function="D" pad="PB09" ioset="2" />
+              <signal group="PAD" index="1" function="D" pad="PB26" ioset="4" />
+              <signal group="PAD" index="1" function="C" pad="PB13" ioset="1" />
+              <signal group="PAD" index="2" function="D" pad="PA14" ioset="3" />
+              <signal group="PAD" index="2" function="D" pad="PB10" ioset="2" />
+              <signal group="PAD" index="2" function="D" pad="PB28" ioset="4" />
+              <signal group="PAD" index="2" function="C" pad="PB14" ioset="1" />
+              <signal group="PAD" index="3" function="D" pad="PB11" ioset="2" />
+              <signal group="PAD" index="3" function="D" pad="PB29" ioset="4" />
+              <signal group="PAD" index="3" function="D" pad="PA15" ioset="3" />
+              <signal group="PAD" index="3" function="C" pad="PB15" ioset="1" />
+            </signals>
+          </instance>
+          <instance name="SERCOM5">
+            <register-group name="SERCOM5" name-in-module="SERCOM" address-space="base" offset="0x43000400" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PA23" ioset="2 3 4" />
+              <signal group="PAD" index="0" function="D" pad="PB02" ioset="6" />
+              <signal group="PAD" index="0" function="D" pad="PB31" ioset="5" />
+              <signal group="PAD" index="0" function="C" pad="PB16" ioset="1" />
+              <signal group="PAD" index="1" function="D" pad="PA22" ioset="2 3 4" />
+              <signal group="PAD" index="1" function="D" pad="PB03" ioset="6" />
+              <signal group="PAD" index="1" function="D" pad="PB30" ioset="5" />
+              <signal group="PAD" index="1" function="C" pad="PB17" ioset="1" />
+              <signal group="PAD" index="2" function="D" pad="PA24" ioset="3" />
+              <signal group="PAD" index="2" function="D" pad="PB00" ioset="5 6" />
+              <signal group="PAD" index="2" function="D" pad="PB22" ioset="4" />
+              <signal group="PAD" index="2" function="C" pad="PA20" ioset="2" />
+              <signal group="PAD" index="2" function="C" pad="PB18" ioset="1" />
+              <signal group="PAD" index="3" function="D" pad="PA25" ioset="3" />
+              <signal group="PAD" index="3" function="D" pad="PB01" ioset="5 6" />
+              <signal group="PAD" index="3" function="D" pad="PB23" ioset="4" />
+              <signal group="PAD" index="3" function="C" pad="PA21" ioset="2" />
+              <signal group="PAD" index="3" function="C" pad="PB19" ioset="1" />
+            </signals>
+          </instance>
+          <instance name="SERCOM6">
+            <register-group name="SERCOM6" name-in-module="SERCOM" address-space="base" offset="0x43000800" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PD09" ioset="3" />
+              <signal group="PAD" index="0" function="D" pad="PC13" ioset="4 5" />
+              <signal group="PAD" index="0" function="C" pad="PC04" ioset="2" />
+              <signal group="PAD" index="0" function="C" pad="PC16" ioset="1" />
+              <signal group="PAD" index="1" function="D" pad="PD08" ioset="3" />
+              <signal group="PAD" index="1" function="D" pad="PC12" ioset="4 5" />
+              <signal group="PAD" index="1" function="C" pad="PC05" ioset="2" />
+              <signal group="PAD" index="1" function="C" pad="PC17" ioset="1" />
+              <signal group="PAD" index="2" function="D" pad="PC14" ioset="4" />
+              <signal group="PAD" index="2" function="D" pad="PD10" ioset="3" />
+              <signal group="PAD" index="2" function="C" pad="PC06" ioset="2" />
+              <signal group="PAD" index="2" function="C" pad="PC10" ioset="5" />
+              <signal group="PAD" index="2" function="C" pad="PC18" ioset="1" />
+              <signal group="PAD" index="3" function="D" pad="PC15" ioset="4" />
+              <signal group="PAD" index="3" function="D" pad="PD11" ioset="3" />
+              <signal group="PAD" index="3" function="C" pad="PC07" ioset="2" />
+              <signal group="PAD" index="3" function="C" pad="PC11" ioset="5" />
+              <signal group="PAD" index="3" function="C" pad="PC19" ioset="1" />
+            </signals>
+          </instance>
+          <instance name="SERCOM7">
+            <register-group name="SERCOM7" name-in-module="SERCOM" address-space="base" offset="0x43000C00" />
+            <signals>
+              <signal group="PAD" index="0" function="D" pad="PB21" ioset="4" />
+              <signal group="PAD" index="0" function="C" pad="PD08" ioset="2" />
+              <signal group="PAD" index="0" function="C" pad="PB30" ioset="5" />
+              <signal group="PAD" index="0" function="C" pad="PC12" ioset="1 3" />
+              <signal group="PAD" index="1" function="D" pad="PB20" ioset="4" />
+              <signal group="PAD" index="1" function="C" pad="PD09" ioset="2" />
+              <signal group="PAD" index="1" function="C" pad="PB31" ioset="5" />
+              <signal group="PAD" index="1" function="C" pad="PC13" ioset="1 3" />
+              <signal group="PAD" index="2" function="D" pad="PB18" ioset="4" />
+              <signal group="PAD" index="2" function="D" pad="PC10" ioset="3" />
+              <signal group="PAD" index="2" function="C" pad="PC14" ioset="1" />
+              <signal group="PAD" index="2" function="C" pad="PD10" ioset="2" />
+              <signal group="PAD" index="2" function="C" pad="PA30" ioset="5" />
+              <signal group="PAD" index="3" function="D" pad="PB19" ioset="4" />
+              <signal group="PAD" index="3" function="D" pad="PC11" ioset="3" />
+              <signal group="PAD" index="3" function="C" pad="PC15" ioset="1" />
+              <signal group="PAD" index="3" function="C" pad="PD11" ioset="2" />
+              <signal group="PAD" index="3" function="C" pad="PA31" ioset="5" />
+            </signals>
+          </instance>
+        </module>
+      </peripherals>
+    </device>
+  </devices>
+  <pinouts>
+    <pinout name="SAMD51PC" caption="SAMD51PC">
+      <pin position="A1" pad="PA00" />
+      <pin position="A2" pad="PB02" />
+      <pin position="A3" pad="PB00" />
+      <pin position="A4" pad="PC30" />
+      <pin position="A5" pad="PB30" />
+      <pin position="A6" pad="VSW" />
+      <pin position="A7" pad="VDDCORE" />
+      <pin position="A8" pad="RESET_N" />
+      <pin position="A9" pad="PC27" />
+      <pin position="A10" pad="PC26" />
+      <pin position="A11" pad="PC24" />
+      <pin position="A12" pad="PB28" />
+      <pin position="A13" pad="PB26" />
+      <pin position="A14" pad="PB23" />
+      <pin position="A15" pad="PB22" />
+      <pin position="B1" pad="PA01" />
+      <pin position="B2" pad="PB03" />
+      <pin position="B3" pad="PB01" />
+      <pin position="B4" pad="PC31" />
+      <pin position="B5" pad="PB31" />
+      <pin position="B6" pad="PA31" />
+      <pin position="B7" pad="PA30" />
+      <pin position="B8" pad="PA27" />
+      <pin position="B9" pad="PC28" />
+      <pin position="B10" pad="PC25" />
+      <pin position="B11" pad="PB29" />
+      <pin position="B12" pad="PB27" />
+      <pin position="B13" pad="PB25" />
+      <pin position="B14" pad="PB24" />
+      <pin position="B15" pad="PA25" />
+      <pin position="C1" pad="PC00" />
+      <pin position="C2" pad="PC01" />
+      <pin position="C14" pad="PA23" />
+      <pin position="C15" pad="PA24" />
+      <pin position="D1" pad="PC02" />
+      <pin position="D2" pad="GNDIO" />
+      <pin position="D14" pad="PA22" />
+      <pin position="D15" pad="PA21" />
+      <pin position="E1" pad="PA02" />
+      <pin position="E2" pad="PC03" />
+      <pin position="E14" pad="PA20" />
+      <pin position="E15" pad="PB21" />
+      <pin position="F1" pad="PB04" />
+      <pin position="F2" pad="PA03" />
+      <pin position="F6" pad="GNDIO" />
+      <pin position="F7" pad="VDDIO" />
+      <pin position="F8" pad="VDDIO" />
+      <pin position="F9" pad="GNDIO" />
+      <pin position="F10" pad="VDDIO" />
+      <pin position="F14" pad="PB20" />
+      <pin position="F15" pad="PB19" />
+      <pin position="G1" pad="PB05" />
+      <pin position="G2" pad="PD00" />
+      <pin position="G6" pad="VDDANA" />
+      <pin position="G10" pad="GNDIO" />
+      <pin position="G14" pad="PB18" />
+      <pin position="G15" pad="PB17" />
+      <pin position="H1" pad="PD01" />
+      <pin position="H2" pad="PB06" />
+      <pin position="H6" pad="GNDANA" />
+      <pin position="H10" pad="VDDIO" />
+      <pin position="H14" pad="PD21" />
+      <pin position="H15" pad="PB16" />
+      <pin position="J1" pad="PB07" />
+      <pin position="J2" pad="PB08" />
+      <pin position="J6" pad="GNDIO" />
+      <pin position="J10" pad="GNDIO" />
+      <pin position="J14" pad="PC23" />
+      <pin position="J15" pad="PD20" />
+      <pin position="K1" pad="PB09" />
+      <pin position="K2" pad="PA04" />
+      <pin position="K6" pad="VDDIO" />
+      <pin position="K7" pad="VDDIO" />
+      <pin position="K8" pad="GNDIO" />
+      <pin position="K9" pad="GNDIO" />
+      <pin position="K10" pad="VDDIO" />
+      <pin position="K14" pad="PC21" />
+      <pin position="K15" pad="PC22" />
+      <pin position="L1" pad="PA05" />
+      <pin position="L2" pad="PA06" />
+      <pin position="L14" pad="PC19" />
+      <pin position="L15" pad="PC20" />
+      <pin position="M1" pad="PA07" />
+      <pin position="M2" pad="VDDANA" />
+      <pin position="M14" pad="PC17" />
+      <pin position="M15" pad="PC18" />
+      <pin position="N1" pad="PC04" />
+      <pin position="N2" pad="PC05" />
+      <pin position="N14" pad="PA19" />
+      <pin position="N15" pad="PC16" />
+      <pin position="P1" pad="PC06" />
+      <pin position="P2" pad="PC07" />
+      <pin position="P3" pad="PA09" />
+      <pin position="P4" pad="PA11" />
+      <pin position="P5" pad="PB11" />
+      <pin position="P6" pad="PB13" />
+      <pin position="P7" pad="PB15" />
+      <pin position="P8" pad="PD09" />
+      <pin position="P9" pad="PD11" />
+      <pin position="P10" pad="PC10" />
+      <pin position="P11" pad="PC13" />
+      <pin position="P12" pad="PC15" />
+      <pin position="P13" pad="PA13" />
+      <pin position="P14" pad="PA17" />
+      <pin position="P15" pad="PA18" />
+      <pin position="R1" pad="PA08" />
+      <pin position="R2" pad="PA10" />
+      <pin position="R3" pad="PB10" />
+      <pin position="R4" pad="PB12" />
+      <pin position="R5" pad="PB14" />
+      <pin position="R6" pad="PD08" />
+      <pin position="R7" pad="PD10" />
+      <pin position="R8" pad="PD12" />
+      <pin position="R9" pad="PC11" />
+      <pin position="R10" pad="PC12" />
+      <pin position="R11" pad="PC14" />
+      <pin position="R12" pad="PA12" />
+      <pin position="R13" pad="PA14" />
+      <pin position="R14" pad="PA15" />
+      <pin position="R15" pad="PA16" />
+    </pinout>
+    <pinout name="SAMD51P" caption="SAMD51P">
+      <pin position="1" pad="PA00" />
+      <pin position="2" pad="PA01" />
+      <pin position="3" pad="PC00" />
+      <pin position="4" pad="PC01" />
+      <pin position="5" pad="NC" />
+      <pin position="6" pad="VDDANA" />
+      <pin position="7" pad="PC02" />
+      <pin position="8" pad="PC03" />
+      <pin position="9" pad="PA02" />
+      <pin position="10" pad="PA03" />
+      <pin position="11" pad="PB04" />
+      <pin position="12" pad="PB05" />
+      <pin position="13" pad="PD00" />
+      <pin position="14" pad="GNDANA" />
+      <pin position="15" pad="VDDANA" />
+      <pin position="16" pad="PD01" />
+      <pin position="17" pad="PB06" />
+      <pin position="18" pad="PB07" />
+      <pin position="19" pad="PB08" />
+      <pin position="20" pad="PB09" />
+      <pin position="21" pad="PA04" />
+      <pin position="22" pad="PA05" />
+      <pin position="23" pad="PA06" />
+      <pin position="24" pad="PA07" />
+      <pin position="25" pad="GNDANA" />
+      <pin position="26" pad="VDDANA" />
+      <pin position="27" pad="PC04" />
+      <pin position="28" pad="PC05" />
+      <pin position="29" pad="PC06" />
+      <pin position="30" pad="PC07" />
+      <pin position="31" pad="GND" />
+      <pin position="32" pad="VDDIO" />
+      <pin position="33" pad="PA08" />
+      <pin position="34" pad="PA09" />
+      <pin position="35" pad="PA10" />
+      <pin position="36" pad="PA11" />
+      <pin position="37" pad="VDDIO" />
+      <pin position="38" pad="GND" />
+      <pin position="39" pad="PB10" />
+      <pin position="40" pad="PB11" />
+      <pin position="41" pad="PB12" />
+      <pin position="42" pad="PB13" />
+      <pin position="43" pad="PB14" />
+      <pin position="44" pad="PB15" />
+      <pin position="45" pad="GND" />
+      <pin position="46" pad="VDDIO" />
+      <pin position="47" pad="PD08" />
+      <pin position="48" pad="PD09" />
+      <pin position="49" pad="PD10" />
+      <pin position="50" pad="PD11" />
+      <pin position="51" pad="PD12" />
+      <pin position="52" pad="PC10" />
+      <pin position="53" pad="GND" />
+      <pin position="54" pad="VDDIO" />
+      <pin position="55" pad="PC11" />
+      <pin position="56" pad="PC12" />
+      <pin position="57" pad="PC13" />
+      <pin position="58" pad="PC14" />
+      <pin position="59" pad="PC15" />
+      <pin position="60" pad="PA12" />
+      <pin position="61" pad="PA13" />
+      <pin position="62" pad="PA14" />
+      <pin position="63" pad="PA15" />
+      <pin position="64" pad="GND" />
+      <pin position="65" pad="VDDIO" />
+      <pin position="66" pad="PA16" />
+      <pin position="67" pad="PA17" />
+      <pin position="68" pad="PA18" />
+      <pin position="69" pad="PA19" />
+      <pin position="70" pad="PC16" />
+      <pin position="71" pad="PC17" />
+      <pin position="72" pad="PC18" />
+      <pin position="73" pad="PC19" />
+      <pin position="74" pad="PC20" />
+      <pin position="75" pad="PC21" />
+      <pin position="76" pad="PC22" />
+      <pin position="77" pad="PC23" />
+      <pin position="78" pad="GND" />
+      <pin position="79" pad="VDDIO" />
+      <pin position="80" pad="PD20" />
+      <pin position="81" pad="PD21" />
+      <pin position="82" pad="PB16" />
+      <pin position="83" pad="PB17" />
+      <pin position="84" pad="PB18" />
+      <pin position="85" pad="PB19" />
+      <pin position="86" pad="PB20" />
+      <pin position="87" pad="PB21" />
+      <pin position="88" pad="PA20" />
+      <pin position="89" pad="PA21" />
+      <pin position="90" pad="GND" />
+      <pin position="91" pad="VDDIO" />
+      <pin position="92" pad="PA22" />
+      <pin position="93" pad="PA23" />
+      <pin position="94" pad="PA24" />
+      <pin position="95" pad="PA25" />
+      <pin position="96" pad="GND" />
+      <pin position="97" pad="VDDIO" />
+      <pin position="98" pad="PB22" />
+      <pin position="99" pad="PB23" />
+      <pin position="100" pad="PB24" />
+      <pin position="101" pad="PB25" />
+      <pin position="102" pad="PB26" />
+      <pin position="103" pad="PB27" />
+      <pin position="104" pad="PB28" />
+      <pin position="105" pad="PB29" />
+      <pin position="106" pad="GND" />
+      <pin position="107" pad="VDDIO" />
+      <pin position="108" pad="PC24" />
+      <pin position="109" pad="PC25" />
+      <pin position="110" pad="PC26" />
+      <pin position="111" pad="PC27" />
+      <pin position="112" pad="PC28" />
+      <pin position="113" pad="PA27" />
+      <pin position="114" pad="RESET_N" />
+      <pin position="115" pad="VDDCORE" />
+      <pin position="116" pad="GND" />
+      <pin position="117" pad="VSW" />
+      <pin position="118" pad="VDDIO" />
+      <pin position="119" pad="PA30" />
+      <pin position="120" pad="PA31" />
+      <pin position="121" pad="PB30" />
+      <pin position="122" pad="PB31" />
+      <pin position="123" pad="PC30" />
+      <pin position="124" pad="PC31" />
+      <pin position="125" pad="PB00" />
+      <pin position="126" pad="PB01" />
+      <pin position="127" pad="PB02" />
+      <pin position="128" pad="PB03" />
+    </pinout>
+  </pinouts>
+</avr-tools-device-file>
