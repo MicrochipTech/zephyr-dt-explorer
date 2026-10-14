@@ -465,7 +465,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P7.1 | done | e5fcf55 → master |
 | P7.2 | done | 1d23b26 → master |
 | P7.3 | done | 7d3f349 → master |
-| P7.3b | blocked | SG61 design files missing (HC-5); unblocks when `C:\Masters\board_design_files\pic32cx_sg61_cult\` exists |
+| P7.3b | done | cb702b2 → master |
 | P7.4 | open | |
 
 **P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
@@ -550,4 +550,5 @@ surprising, and anything you were unsure about.
 | P3.2 | [P3.2.md](evidence/P3.2.md) | SERCOM2 lift TX=PB25 RX=PB24; exhaustive check accepts exactly UART 6 / SPI 6 / I2C 1 assignments (618/618/23 rejected); board nodes: SPI sercom4 MOSI PB27 SCK PB26 MISO PB29, I2C sercom7 SDA PD08 SCL PD09. Tables from ATDF value groups (binding has no SPI table; E5x offers only dopo 0/2). API extension: `pin_roles(instance, compatible=None)`, `kconfig(compatible=None)` — the Recipe protocol cannot name the class otherwise. Builder re-run 50 passed |
 | P1.8 | [P1.8.md](evidence/P1.8.md) | LICENSE = canonical Apache-2.0 (builder diffed against Zephyr's copy: only the `[]`/`{}` placeholder variant differs); CONTRIBUTING covers all 13 protocol methods and six plugin kinds; copyright "The Devicetree Explorer contributors". Builder follow-up: `app.load_plugins()` imports the built-in plugin packages and calls `discover_entry_points()` at startup; `readers/` registers on import. Open: vendor defaults in core/ui (`west_tools.DEFAULT_VENDORS`, `ui/new_build.py`) → card P2.3 |
 | P2.3 | [P2.3.md](evidence/P2.3.md) | 27 boards with provider vendors (builder reproduced), 823 with all vendors; no vendor strings in west_tools/new_build |
+| P7.3b | [P7.3b.md](evidence/P7.3b.md) | Human provided the SG61 files 2026-10-15; builder found the CAD folder byte-identical to SG41 (same PCB "SGxx" R5); BOM EV09H35A rev 5.0: U401 = PIC32CX1025SG61128-E/XCB. EXT1/EXT2 identical to SG41 (40 pins, 0 differences): the U401 pads at positions 27, 102–105 (PC04, PB26–PB29 on SG41) carry no net on this PCB. So the PB26–PB29/PC04 conflict in P6.2 comes from the source side (SAME54 Xpro EXT1 SPI on PB26–PB29), not from the CUlt connectors. Pipeline marks pins on NC positions `available: false`. Builder re-run 14 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
