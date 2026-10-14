@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Devicetree Explorer: a single-file NiceGUI web app ([dt_explorer.py](dt_explorer.py)) that shows the
+Devicetree Explorer: a NiceGUI web app (package [dt_explorer/](dt_explorer/), started by the thin launcher [dt_explorer.py](dt_explorer.py)) that shows the
 final Zephyr devicetree of a **build folder** in the browser. It shows where each node and property
 comes from, which driver handles it, and whether a device ended up in the image. User docs:
 [README.md](README.md) and [docs/GUI.md](docs/GUI.md). The UI text is English and dark-mode only.
@@ -32,6 +32,11 @@ py docs/make_screenshots.py                      :: regenerate docs/img (explore
 
 ## Architecture
 
+The code is the package `dt_explorer/`; `dt_explorer.py` only calls `dt_explorer.app.main()` under the
+`__main__`/`__mp_main__` guard (the package wins over the same-named script on import). Layout:
+`core/build.py` (layers 1 and 2, no NiceGUI, must never import `ui/`), `ui/page.py` (layer 3 plus the
+folder dialog, config file and argv globals `ROOT`/`SHOW_BROWSER`), `app.py` (startup, `ui.run`).
+`tools/snapshot_build.py` imports `BuildModel`, `origin_kind` from `dt_explorer.core.build`.
 The file has three layers, top to bottom:
 
 1. **Parsers (module functions).** Each turns a build artifact into plain data:
@@ -67,5 +72,5 @@ The file has three layers, top to bottom:
 
 - Windows only (paths with backslashes, `py` launcher, `HELPER_HEADER`, `fkey()` normalises paths
   for comparison). Keep `Path` handling compatible with that.
-- Keep the single-file layout. Add new data in `BuildModel` and new rendering in `page()`.
+- Keep NiceGUI out of `core/`. Add new data in `BuildModel` (`core/build.py`) and new rendering in `page()` (`ui/page.py`).
 - When a feature is visible to users, update the table in README.md and `docs/GUI.md` in the same change.
