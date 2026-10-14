@@ -9,6 +9,7 @@ from pathlib import Path
 
 from nicegui import ui
 
+from . import new_build
 from ..core.build import (DRV_COMPAT_RE, HELPER_HEADER, ORIGIN_STYLE, STATE_STYLE, BuildModel,
                           NodeOrigin, find_builds, fkey, fmt_value, header_defines, node_ident,
                           origin_kind)
@@ -162,6 +163,11 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         sel = ui.select({str(p): build_label(p) for p in state.builds}, value=str(state.model.build),
                         label="Build").classes("w-96").props("dark dense options-dense")
         ui.button("Reload", icon="refresh", on_click=lambda: reload(sel.value)).props("flat color=white")
+        ui.button("New build…", icon="add", on_click=lambda: new_build.open_new_build(ROOT, reload)) \
+            .props("flat no-caps color=white")
+        ui.button("Full build", icon="build",
+                  on_click=lambda: new_build.open_full_build(ROOT, state.model.build, reload)) \
+            .props("flat no-caps color=white")
         ui.space()
         for kind, (col, txt) in ORIGIN_STYLE.items():
             if kind != "other":
