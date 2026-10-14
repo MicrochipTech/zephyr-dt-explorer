@@ -107,6 +107,20 @@ Tested on this machine: for lab1, the lookup finds
 `~/.mchp_packs/Microchip/SAME54_DFP/3.11.261/atdf/ATSAME54P20A.atdf`, plus older versions and the
 copy in the MPLAB X installation.
 
+**Checked (2026-10-14): the Zephyr SoC name matches the ATDF file name.** This was compared against
+the `soc.yml` files and the installed DFPs. Apart from case and the `AT` prefix on SAM devices, the
+names are identical:
+
+| `CONFIG_SOC` (Zephyr) | ATDF in the DFP |
+|---|---|
+| `same54p20a` | `ATSAME54P20A.atdf` |
+| `pic32cx1025sg41128` | `PIC32CX1025SG41128.atdf` |
+| `pic32cz2051ca70144` | `PIC32CZ2051CA70144.atdf` |
+
+So no mapping table is needed. The lookup only fails when the pack is not installed. On this
+machine that is the case for PIC32CX SG60/SG61 and PIC32CZ CA80, which Zephyr supports. The tool
+then reports which pack is missing and offers the fallback above.
+
 Zephyr itself ships no ATDF files, so the configurator needs installed packs.
 
 ## User interface
