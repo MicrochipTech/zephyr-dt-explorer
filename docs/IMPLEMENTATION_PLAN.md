@@ -56,7 +56,7 @@ over from any other.
 | `hal_microchip` with 91 ATDF | `…\zephyrproject\modules\hal\microchip\packs\` (fetched 2026-10-14) |
 | Installed DFPs | `%USERPROFILE%\.mchp_packs\Microchip\*_DFP\`, `C:\Program Files\Microchip\MPLABX\v6.35\packs\` |
 | Board design files (not in repo) | `C:\Masters\board_design_files\same54_xpro\`, `…\pic32cx_sg41_cult\` |
-| Current-Zephyr workspace (planned) | `C:\Masters\zephyr-main` (created at checkpoint HC-3) |
+| Current-Zephyr workspace (planned) | `C:\Masters\zephyr-main` (created by the builder at P6.1, pre-approved as HC-3) |
 | Toolchain | Zephyr SDK 0.17.4, `C:\Users\M91221\zephyr-sdk-0.17.4` |
 
 Environment variables for tests: `DTX_RTOS4_WS`, `DTX_MAIN_WS`, `DTX_DESIGN_FILES`. The builder sets
@@ -81,22 +81,49 @@ A sub-agent stops, commits nothing half-done, and reports to the builder **only*
 **Anything else means: keep working.** Context length or cost is not a reason to stop. A result
 outside a tolerance is a finding to report, not a reason to retry blindly.
 
-## 5. Human checkpoints
+## 5. Human checkpoints and builder stop conditions
 
-The builder stops the whole run and asks the human (with options and a recommendation) at:
+### 5.1 Decided in advance (2026-10-14)
+
+The human answered these before the run. The builder does **not** stop for them:
+
+| ID | Topic | Decision |
+|---|---|---|
+| HC-1 | License | **Apache-2.0.** P1.8 may start whenever its other dependencies are done. |
+| HC-3 | Workspace `C:\Masters\zephyr-main` | **Pre-approved.** At P6.1 the builder creates it itself (`west init -m https://github.com/zephyrproject-rtos/zephyr`, `west update`, Python venv with Zephyr's requirements). Download via github.com only. |
+| HC-4 | Port test on the real board | **No stop.** P5.5 is accepted on build evidence ("Verify with west" plus a full link). The evidence file states explicitly that it was not tested on hardware. |
+| HC-5 | SG61 Curiosity Ultra design files | **The human provides them before phase 7** in `C:\Masters\board_design_files\pic32cx_sg61_cult\`. If they are missing when P7.3 runs, the builder defers only the SG61 board YAML (card P7.3b) and continues. |
+| HC-6 | Connector names and types | **The builder confirms them itself** when the silkscreen text *and* the signal pattern agree (pin count, ID/GND/VCC positions, traced signals). Those entries get `reviewed: builder`. Everything else stays `suggested`. |
+| – | Failed cards | **Keep going.** A card that fails is deferred (status `blocked`, reason recorded) and the builder continues with other runnable cards. It may retry a deferred card with a new sub-agent or split it whenever it sees a way forward. |
+| – | After version 1 | **Continue with phase 8** (see §7). |
+| – | Budget | **No limit** per run. |
+
+### 5.2 Remaining human checkpoints
 
 | ID | When | Question |
 |---|---|---|
-| HC-1 | before P1.8 | License for the open-source repo (proposal: Apache-2.0, matches Zephyr) |
-| HC-2 | after P1.7 | Review of the read-only pin map and package view: good enough to build the configurator on? |
-| HC-3 | before P6.1 | Create `C:\Masters\zephyr-main` (several GB download, `west init` + `west update`) |
-| HC-4 | after P5.5 | Review of the first port `same54_xpro` → `sam_e54_xpro` on the real board |
-| HC-5 | before P7.3 for SG61 | SG61 Curiosity Ultra design files available? |
-| HC-6 | after P7.3 | Confirm connector names and types in the generated board YAML |
-| HC-7 | any time | Anything matching stop condition 4 or 5 that the builder cannot settle from CONFIGURATOR.md |
+| HC-2 | after P1.7 | Review of the read-only pin map and package view (screenshots): good enough to build the configurator on? |
+| HC-7 | when it blocks progress | A design gap or contradiction in CONFIGURATOR.md that the builder cannot settle, or an outward-facing action, **and** no other card can proceed without it |
 
 Decisions the human makes are added to the *Decisions* table in CONFIGURATOR.md (by the builder)
 before the dependent card starts.
+
+### 5.3 Builder stop conditions (complete list)
+
+The builder stops the run and reports to the human **only** when:
+
+1. **HC-2** is reached.
+2. **No runnable card is left** and work remains: every open card is `blocked` or depends on a
+   blocked card. The report lists each blocked card with its reason and what would unblock it.
+3. **HC-7:** a design question or outward-facing action blocks progress and no other card can
+   proceed meanwhile (a single blocked card is not a stop: defer it and continue).
+4. **Phase 8 is done** (end of the planned work; phases 9 and 10 stay in the backlog).
+5. **Uncommitted changes from someone else** in the working tree overlap the scope of every runnable
+   card. (If they overlap only some cards, defer those and continue.)
+
+Anything else means: keep working. In particular, context length, cost, a failed card, or a long
+run are no reasons to stop. Outward-facing actions (push, upstream PR, e-mail) are never done by
+the builder; the cards that would need them are deferred.
 
 ## 6. Builder loop
 
@@ -129,9 +156,11 @@ For each card:
 ## 7. Version 1 and critical path
 
 **Version 1 = phases 0–7** (main use case: port SAME54 projects to PIC32CX SG41/SG61, with board
-view). Phases 8–10 of CONFIGURATOR.md (child nodes, custom board wizard, class-based porting) are
-not part of version 1 and get cards only after HC-4 and HC-6 are done. New ideas during the run go to
-the *Backlog* (§10), not into open cards.
+view). **Then phase 8** (child nodes on buses, generic binding form for further peripherals, their
+translations): when version 1 is done, the builder writes the phase 8 cards itself from
+CONFIGURATOR.md in the format of §8 (same rules: scope, acceptance, size ≤ 60 tool calls), commits
+them as `plan: phase 8 cards`, and continues. Phases 9 and 10 stay in the backlog. New ideas during
+the run go to the *Backlog* (§10), not into open cards.
 
 Critical path: P0.1 → P1.1 → P1.2 → P1.4 → P1.5 → P3.1 → P3.2 → P3.3 → P3.4 → P4.1 → P5.0 → P5.2 →
 P5.3 → P5.4 → P5.5 → P6.1 → P6.2.
@@ -242,7 +271,8 @@ Status values: `open`, `running`, `done`, `blocked`.
   of TQFP128 and TFBGA120 in evidence. Then **HC-2**.
 
 **P1.8 Open-source files.** *light*
-- Dep: HC-1. Scope: `LICENSE`, `CONTRIBUTING.md`, `README.md` (license line), `CLAUDE.md`.
+- Dep: – (HC-1 decided: Apache-2.0). Scope: `LICENSE`, `CONTRIBUTING.md`, `README.md` (license
+  line), `CLAUDE.md`.
 - Accept: CONTRIBUTING.md explains how to write a provider, formatter, recipe, translation, board
   reader and connector type, with the Microchip plugins as the reference.
 
@@ -370,7 +400,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 **P5.5 Acceptance: RTOS4 labs to `sam_e54_xpro`.**
 - Dep: P5.4. Scope: `docs/evidence/P5.5.md`, generated overlays under `%TEMP%` (not committed).
 - Accept: lab0–lab3 ported; "Verify with west" passes for each; full build of at least lab1
-  links. Then **HC-4** (flash on the real board, by the human).
+  links. Not tested on hardware (HC-4 decided: no stop); the evidence says so.
 
 ### Phase 6: port to PIC32CX SG41/SG61
 
@@ -387,7 +417,7 @@ Status values: `open`, `running`, `done`, `blocked`.
   result with output.
 
 **P6.1 Cross-workspace porting.**
-- Dep: HC-3, P6.0, P5.4. Scope: as P6.0 concludes (expected: `dt_explorer/core/build.py`,
+- Dep: P6.0, P5.4. First create `C:\Masters\zephyr-main` (HC-3 pre-approved, see §5.1). Scope: as P6.0 concludes (expected: `dt_explorer/core/build.py`,
   `dt_explorer/core/model_host.py`).
 - Accept: a source build from `DTX_RTOS4_WS` and a target build from `DTX_MAIN_WS` open together;
   goldens unchanged.
@@ -425,7 +455,8 @@ Status values: `open`, `running`, `done`, `blocked`.
   and revision, everything marked *suggested*.
 - Accept: EXT1–EXT3 of the SAME54 Xpro and EXT1/EXT2 of the SG41 CUlt match the tables in
   CONFIGURATOR.md (*Checked with real design files*); gaps (`TCC4/WO0`, `NetJ602_18`) are reported.
-  Then **HC-6**. SG61 only after **HC-5**.
+  Connector names: confirmed by the builder per §5.1 (HC-6). SG61 from the files the human
+  provides (HC-5); if missing, split off P7.3b and continue.
 
 **P7.4 Board view UI and connector roles in the port report.**
 - Dep: P7.3, P5.4. Scope: `dt_explorer/ui/board_view.py`, `dt_explorer/core/port_report.py`,
@@ -457,7 +488,6 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
-- Phase 8: child nodes on buses and the generic binding form (ADC, TC, …) with their translations.
 - Phase 9: custom board wizard.
 - Phase 10: class-based porting, other vendors.
 - KiCad, IPC-2581/ODB++, IPC-D-356 and Eagle readers.

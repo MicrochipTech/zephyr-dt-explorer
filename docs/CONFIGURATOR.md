@@ -866,6 +866,7 @@ is changed.
 | Board data | Generated from the boards' design files (netlist first); design files stay outside the repo, only the generated YAML is committed |
 | Adding boards | Generic: design-file readers per EDA format and connector types per standard are plugins; a new board needs no code, only a confirmed YAML |
 | Porting between boards | By connector role (e.g. EXT1 MOSI), not by SoC pin |
+| License | Apache-2.0 (matches Zephyr and `hal_microchip`) |
 
 ## Open questions
 
