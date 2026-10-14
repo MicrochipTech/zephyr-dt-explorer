@@ -362,7 +362,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P5.0 | done | 8b37419 → master |
 | P5.1 | open | |
-| P5.2 | open | |
+| P5.2 | done | adf5271 → master |
 | P5.3 | open | |
 | P5.4 | open | |
 | P5.6 | open | |
@@ -531,4 +531,5 @@ surprising, and anything you were unsure about.
 | P7.2 | [P7.2.md](evidence/P7.2.md) | own type 1.0, others 0.0; random 20-pin max 0.2 (20 seeds); real EXT with bare MCU-pin nets 0.6 → importer threshold ≥ 0.5. `detect(netlist_pins: {pin: net}, pin_count=None)`; Arduino keys are labels (A0, D13, GND…), the importer merges the four headers. Zephyr gpio-map index ≠ physical pin (Xpro: pin = index + 3), `nexus_map()` added. Builder re-run 33 passed |
 | P1.4 | [P1.4.md](evidence/P1.4.md) | locate 5–10 ms (builder: 0.01 s); SERCOM2 PAD0 = PA09 D, PB25 D, PA12 C, PB26 C (builder reproduced); TQFP128 128 positions; SAME54P20A: 2 packages, 71 instances, 772 signals, 1 IOSET constraint. **Finding for P6.2:** in the SG61 ATDF, PB26–PB29/PC04 exist as pins with `type="INTERNAL_n"` (SERCOM2 PAD0–2 still listed on PB26–PB28); the provider leaves them out of `Package.pins`, so they count as "not on the package". hal_microchip is not in lab1's zephyr_modules.txt, `locate` falls back to `<ws>/modules/hal/microchip/packs` |
 | P2.2 | [P2.2.md](evidence/P2.2.md) | via Playwright: dialog, board filter, streamed log (cmake-only 46 s), new build auto-selected with "not linked" states, Full build 71 s → 7 `device` nodes; not tested: Cancel, failure path. Temporary build folder deleted (builder checked lab1 folder). README/GUI.md moved to P3.6 |
+| P5.2 | [P5.2.md](evidence/P5.2.md) | translated SERCOM2 UART loads in edtlib against `microchip,sercom-g1-uart` with the real atsame54p20a dtsi; dropping `rxpo` → EDTError (negative test); 88/92 pin renames as value map (4 SWD pins kept + reported); I2C/SPI/pinmux `no_target`. **Open for P5.3:** `atmel,assigned-clocks` is only a report line (turn into `&clock { gclkperiph … }` nodes?); target SoC dtsi already sets SERCOM `clocks` (emit or omit?); clock blocks are placeholders. Builder re-run 32 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
