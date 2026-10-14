@@ -207,7 +207,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P1.1 | done | d116ebe |
 | P1.2 | done | 92bfd80 |
 | P1.3 | done | c214f54 → master |
-| P1.4 | open | |
+| P1.4 | done | 151e084 → master |
 | P1.5 | open | |
 | P1.6 | open | |
 | P1.7 | open | |
@@ -529,4 +529,5 @@ surprising, and anything you were unsure about.
 | P3.1 | [P3.1.md](evidence/P3.1.md) | sam0-uart/i2c/spi and sercom-g1-uart → uart/i2c/spi via include chain; gclk → None; JSON round trip byte-identical; standalone `BindingIndex` in draft.py; builder re-run 9 passed |
 | P7.1 | [P7.1.md](evidence/P7.1.md) | SAME54 Xpro 255/296/1251, SG41 CUlt 281/322/1181 (= prototype); silkscreen 1600/1973 texts, builder found `EXT1`–`EXT3` / `EXT1`–`EXT2` among them. **For P7.3:** header footprints carry 20 extra pads numbered "0" without a net, ignore them |
 | P7.2 | [P7.2.md](evidence/P7.2.md) | own type 1.0, others 0.0; random 20-pin max 0.2 (20 seeds); real EXT with bare MCU-pin nets 0.6 → importer threshold ≥ 0.5. `detect(netlist_pins: {pin: net}, pin_count=None)`; Arduino keys are labels (A0, D13, GND…), the importer merges the four headers. Zephyr gpio-map index ≠ physical pin (Xpro: pin = index + 3), `nexus_map()` added. Builder re-run 33 passed |
+| P1.4 | [P1.4.md](evidence/P1.4.md) | locate 5–10 ms (builder: 0.01 s); SERCOM2 PAD0 = PA09 D, PB25 D, PA12 C, PB26 C (builder reproduced); TQFP128 128 positions; SAME54P20A: 2 packages, 71 instances, 772 signals, 1 IOSET constraint. **Finding for P6.2:** in the SG61 ATDF, PB26–PB29/PC04 exist as pins with `type="INTERNAL_n"` (SERCOM2 PAD0–2 still listed on PB26–PB28); the provider leaves them out of `Package.pins`, so they count as "not on the package". hal_microchip is not in lab1's zephyr_modules.txt, `locate` falls back to `<ws>/modules/hal/microchip/packs` |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
