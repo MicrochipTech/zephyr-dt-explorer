@@ -1,0 +1,1827 @@
+{
+ "aliases": [
+  "adc_0",
+  "adc_1",
+  "i2c_0",
+  "led0",
+  "port_a",
+  "port_b",
+  "port_c",
+  "port_d",
+  "pwm_led0",
+  "rtc",
+  "sercom_0",
+  "sercom_1",
+  "sercom_2",
+  "sercom_3",
+  "sercom_4",
+  "sercom_5",
+  "sercom_6",
+  "sercom_7",
+  "sw0",
+  "tc_0",
+  "tc_2",
+  "tc_4",
+  "tc_6",
+  "tcc_0",
+  "tcc_1",
+  "tcc_2",
+  "tcc_3",
+  "tcc_4",
+  "watchdog0"
+ ],
+ "chosen": [
+  "zephyr_console",
+  "zephyr_entropy",
+  "zephyr_flash",
+  "zephyr_flash_controller",
+  "zephyr_shell_uart",
+  "zephyr_sram"
+ ],
+ "code_refs": [],
+ "counts": {
+  "code_refs": 0,
+  "compiled_files": 105,
+  "device_ords": 6,
+  "include_files": 25,
+  "include_files_unique": 25,
+  "nodes": 85,
+  "orphan_drivers": 1
+ },
+ "include_files": [
+  "_soltest/apps/lab1_leer/boards/same54_xpro.overlay",
+  "modules/hal/atmel/include/dt-bindings/pinctrl/atmel_sam_pinctrl.h",
+  "modules/hal/atmel/include/dt-bindings/pinctrl/same54p-pinctrl.h",
+  "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi",
+  "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts",
+  "zephyr/dts/arm/armv7-m.dtsi",
+  "zephyr/dts/arm/atmel/samd5x.dtsi",
+  "zephyr/dts/arm/atmel/same5x.dtsi",
+  "zephyr/dts/arm/atmel/same5xx20.dtsi",
+  "zephyr/dts/common/mem.h",
+  "zephyr/dts/common/skeleton.dtsi",
+  "zephyr/include/zephyr/dt-bindings/adc/adc.h",
+  "zephyr/include/zephyr/dt-bindings/dt-util.h",
+  "zephyr/include/zephyr/dt-bindings/gpio/gpio.h",
+  "zephyr/include/zephyr/dt-bindings/i2c/i2c.h",
+  "zephyr/include/zephyr/dt-bindings/input/input-event-codes.h",
+  "zephyr/include/zephyr/dt-bindings/pwm/pwm.h",
+  "zephyr/include/zephyr/sys/util_internal.h",
+  "zephyr/include/zephyr/sys/util_internal_is_eq.h",
+  "zephyr/include/zephyr/sys/util_internal_util_dec.h",
+  "zephyr/include/zephyr/sys/util_internal_util_inc.h",
+  "zephyr/include/zephyr/sys/util_internal_util_x2.h",
+  "zephyr/include/zephyr/sys/util_listify.h",
+  "zephyr/include/zephyr/sys/util_loops.h",
+  "zephyr/include/zephyr/sys/util_macro.h"
+ ],
+ "linked": true,
+ "nodes": {
+  "/": {
+   "binding": "",
+   "compats": [
+    "same54,xpro",
+    "atmel,same54p20a",
+    "atmel,same54"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/common/skeleton.dtsi:9",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/common/skeleton.dtsi:10",
+    "#size-cells": "zephyr/dts/common/skeleton.dtsi:11",
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:15",
+    "model": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:14"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/aliases": {
+   "binding": "",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/common/skeleton.dtsi:15",
+   "origin_kind": "soc",
+   "props": {
+    "adc-0": "zephyr/dts/arm/atmel/samd5x.dtsi:16",
+    "adc-1": "zephyr/dts/arm/atmel/samd5x.dtsi:17",
+    "i2c-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:29",
+    "led0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:26",
+    "port-a": "zephyr/dts/arm/atmel/samd5x.dtsi:19",
+    "port-b": "zephyr/dts/arm/atmel/samd5x.dtsi:20",
+    "port-c": "zephyr/dts/arm/atmel/samd5x.dtsi:21",
+    "port-d": "zephyr/dts/arm/atmel/samd5x.dtsi:22",
+    "pwm-led0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:27",
+    "rtc": "zephyr/dts/arm/atmel/samd5x.dtsi:24",
+    "sercom-0": "zephyr/dts/arm/atmel/samd5x.dtsi:26",
+    "sercom-1": "zephyr/dts/arm/atmel/samd5x.dtsi:27",
+    "sercom-2": "zephyr/dts/arm/atmel/samd5x.dtsi:28",
+    "sercom-3": "zephyr/dts/arm/atmel/samd5x.dtsi:29",
+    "sercom-4": "zephyr/dts/arm/atmel/samd5x.dtsi:30",
+    "sercom-5": "zephyr/dts/arm/atmel/samd5x.dtsi:31",
+    "sercom-6": "zephyr/dts/arm/atmel/samd5x.dtsi:32",
+    "sercom-7": "zephyr/dts/arm/atmel/samd5x.dtsi:33",
+    "sw0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:28",
+    "tc-0": "zephyr/dts/arm/atmel/samd5x.dtsi:35",
+    "tc-2": "zephyr/dts/arm/atmel/samd5x.dtsi:36",
+    "tc-4": "zephyr/dts/arm/atmel/samd5x.dtsi:37",
+    "tc-6": "zephyr/dts/arm/atmel/samd5x.dtsi:38",
+    "tcc-0": "zephyr/dts/arm/atmel/samd5x.dtsi:40",
+    "tcc-1": "zephyr/dts/arm/atmel/samd5x.dtsi:41",
+    "tcc-2": "zephyr/dts/arm/atmel/samd5x.dtsi:42",
+    "tcc-3": "zephyr/dts/arm/atmel/samd5x.dtsi:43",
+    "tcc-4": "zephyr/dts/arm/atmel/samd5x.dtsi:44",
+    "watchdog0": "zephyr/dts/arm/atmel/samd5x.dtsi:46"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/buttons": {
+   "binding": "zephyr/dts/bindings/input/gpio-keys.yaml",
+   "compats": [
+    "gpio-keys"
+   ],
+   "drivers": [
+    "zephyr/drivers/input/input_gpio_keys.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:49",
+   "origin_kind": "board",
+   "props": {
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:50"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/buttons/button_0": {
+   "binding": "zephyr/dts/bindings/input/gpio-keys.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:52",
+   "origin_kind": "board",
+   "props": {
+    "gpios": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:53",
+    "label": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:54",
+    "zephyr,code": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:55"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/chosen": {
+   "binding": "",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/common/skeleton.dtsi:13",
+   "origin_kind": "soc",
+   "props": {
+    "zephyr,console": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:18",
+    "zephyr,entropy": "zephyr/dts/arm/atmel/samd5x.dtsi:51",
+    "zephyr,flash": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:21",
+    "zephyr,flash-controller": "zephyr/dts/arm/atmel/samd5x.dtsi:52",
+    "zephyr,shell-uart": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:19",
+    "zephyr,sram": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:20"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/cpus": {
+   "binding": "",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:55",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:56",
+    "#size-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:57"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/cpus/cpu@0": {
+   "binding": "zephyr/dts/bindings/cpu/arm,cortex-m4f.yaml",
+   "compats": [
+    "arm,cortex-m4f"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:59",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:63",
+    "#size-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:64",
+    "clock-frequency": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:61",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:60",
+    "device_type": "zephyr/dts/arm/atmel/samd5x.dtsi:66",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:61"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/cpus/cpu@0/mpu@e000ed90": {
+   "binding": "zephyr/dts/bindings/mmu_mpu/arm,armv7m-mpu.yaml",
+   "compats": [
+    "arm,armv7m-mpu"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:68",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:69",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:70"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/leds": {
+   "binding": "zephyr/dts/bindings/led/gpio-leds.yaml",
+   "compats": [
+    "gpio-leds"
+   ],
+   "drivers": [
+    "zephyr/drivers/led/led_gpio.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:32",
+   "origin_kind": "board",
+   "props": {
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:33"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/leds/led_0": {
+   "binding": "zephyr/dts/bindings/led/gpio-leds.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:35",
+   "origin_kind": "board",
+   "props": {
+    "gpios": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:36",
+    "label": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:37"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/pwmleds": {
+   "binding": "zephyr/dts/bindings/led/pwm-leds.yaml",
+   "compats": [
+    "pwm-leds"
+   ],
+   "drivers": [
+    "zephyr/drivers/led/led_pwm.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:41",
+   "origin_kind": "board",
+   "props": {
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:42"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/pwmleds/pwm_led_0": {
+   "binding": "zephyr/dts/bindings/led/pwm-leds.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:44",
+   "origin_kind": "board",
+   "props": {
+    "pwms": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:45"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc": {
+   "binding": "",
+   "compats": [
+    "simple-bus"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/armv7-m.dtsi:6",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/armv7-m.dtsi:7",
+    "#size-cells": "zephyr/dts/arm/armv7-m.dtsi:8",
+    "compatible": "zephyr/dts/arm/armv7-m.dtsi:9",
+    "interrupt-parent": "zephyr/dts/arm/armv7-m.dtsi:10",
+    "ranges": "zephyr/dts/arm/armv7-m.dtsi:11"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/adc@43001c00": {
+   "binding": "zephyr/dts/bindings/adc/atmel,sam0-adc.yaml",
+   "compats": [
+    "atmel,sam0-adc"
+   ],
+   "drivers": [
+    "zephyr/drivers/adc/adc_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:342",
+   "origin_kind": "soc",
+   "props": {
+    "#io-channel-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:361",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:357",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:356",
+    "calib-offset": "zephyr/dts/arm/atmel/samd5x.dtsi:364",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:348",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:347",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:343",
+    "interrupt-names": "zephyr/dts/arm/atmel/samd5x.dtsi:346",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:345",
+    "prescaler": "zephyr/dts/arm/atmel/samd5x.dtsi:363",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:344",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:125"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/adc@43002000": {
+   "binding": "zephyr/dts/bindings/adc/atmel,sam0-adc.yaml",
+   "compats": [
+    "atmel,sam0-adc"
+   ],
+   "drivers": [
+    "zephyr/drivers/adc/adc_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:367",
+   "origin_kind": "soc",
+   "props": {
+    "#io-channel-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:385",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:382",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:381",
+    "calib-offset": "zephyr/dts/arm/atmel/samd5x.dtsi:388",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:373",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:372",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:368",
+    "interrupt-names": "zephyr/dts/arm/atmel/samd5x.dtsi:371",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:370",
+    "prescaler": "zephyr/dts/arm/atmel/samd5x.dtsi:387",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:369",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:383"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/can@42000000": {
+   "binding": "zephyr/dts/bindings/can/atmel,sam0-can.yaml",
+   "compats": [
+    "atmel,sam0-can"
+   ],
+   "drivers": [
+    "zephyr/drivers/can/can_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/same5x.dtsi:36",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/same5x.dtsi:44",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/same5x.dtsi:43",
+    "bosch,mram-cfg": "zephyr/dts/arm/atmel/same5x.dtsi:47",
+    "clock-names": "zephyr/dts/arm/atmel/same5x.dtsi:42",
+    "clocks": "zephyr/dts/arm/atmel/same5x.dtsi:41",
+    "compatible": "zephyr/dts/arm/atmel/same5x.dtsi:37",
+    "divider": "zephyr/dts/arm/atmel/same5x.dtsi:48",
+    "interrupt-names": "zephyr/dts/arm/atmel/same5x.dtsi:40",
+    "interrupts": "zephyr/dts/arm/atmel/same5x.dtsi:39",
+    "reg": "zephyr/dts/arm/atmel/same5x.dtsi:38",
+    "status": "zephyr/dts/arm/atmel/same5x.dtsi:45"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/can@42000400": {
+   "binding": "zephyr/dts/bindings/can/atmel,sam0-can.yaml",
+   "compats": [
+    "atmel,sam0-can"
+   ],
+   "drivers": [
+    "zephyr/drivers/can/can_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/same5x.dtsi:51",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/same5x.dtsi:59",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/same5x.dtsi:58",
+    "bosch,mram-cfg": "zephyr/dts/arm/atmel/same5x.dtsi:62",
+    "clock-names": "zephyr/dts/arm/atmel/same5x.dtsi:57",
+    "clocks": "zephyr/dts/arm/atmel/same5x.dtsi:56",
+    "compatible": "zephyr/dts/arm/atmel/same5x.dtsi:52",
+    "divider": "zephyr/dts/arm/atmel/same5x.dtsi:63",
+    "interrupt-names": "zephyr/dts/arm/atmel/same5x.dtsi:55",
+    "interrupts": "zephyr/dts/arm/atmel/same5x.dtsi:54",
+    "reg": "zephyr/dts/arm/atmel/same5x.dtsi:53",
+    "status": "zephyr/dts/arm/atmel/same5x.dtsi:60"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/dac@43002400": {
+   "binding": "zephyr/dts/bindings/dac/atmel,samd5x-dac.yaml",
+   "compats": [
+    "atmel,samd5x-dac"
+   ],
+   "drivers": [
+    "zephyr/drivers/dac/dac_samd5x.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:391",
+   "origin_kind": "soc",
+   "props": {
+    "#io-channel-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:401",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:398",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:397",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:396",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:395",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:392",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:144",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:145",
+    "reference": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:130",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:393",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:129"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/dac@43002400/channel_0": {
+   "binding": "zephyr/dts/bindings/dac/atmel,samd5x-dac.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:132",
+   "origin_kind": "board",
+   "props": {
+    "current-control": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:135",
+    "oversampling": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:133",
+    "refresh-period": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:134"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/dac@43002400/channel_1": {
+   "binding": "zephyr/dts/bindings/dac/atmel,samd5x-dac.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:138",
+   "origin_kind": "board",
+   "props": {
+    "current-control": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:141",
+    "oversampling": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:139",
+    "refresh-period": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:140"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/device_id@8061fc": {
+   "binding": "zephyr/dts/bindings/arm/atmel,sam0-id.yaml",
+   "compats": [
+    "atmel,sam0-id"
+   ],
+   "drivers": [
+    "zephyr/drivers/hwinfo/hwinfo_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:86",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:87",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:88"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/dmac@4100a000": {
+   "binding": "zephyr/dts/bindings/dma/atmel,sam0-dmac.yaml",
+   "compats": [
+    "atmel,sam0-dmac"
+   ],
+   "drivers": [
+    "zephyr/drivers/dma/dma_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:133",
+   "origin_kind": "soc",
+   "props": {
+    "#dma-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:139",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:134",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:136",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:135",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:137"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/eic@40002800": {
+   "binding": "zephyr/dts/bindings/interrupt-controller/atmel,sam0-eic.yaml",
+   "compats": [
+    "atmel,sam0-eic"
+   ],
+   "drivers": [
+    "zephyr/drivers/interrupt_controller/intc_sam0_eic.c"
+   ],
+   "in_image": true,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:142",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:143",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:145",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:144"
+   },
+   "state": "device",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/ethernet@42000800": {
+   "binding": "zephyr/dts/bindings/ethernet/microchip,sam-ethernet-controller.yaml",
+   "compats": [
+    "microchip,sam-ethernet-controller"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/same5x.dtsi:13",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/same5x.dtsi:14",
+    "reg": "zephyr/dts/arm/atmel/same5x.dtsi:15"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/ethernet@42000800/ethernet": {
+   "binding": "zephyr/dts/bindings/ethernet/atmel,sam0-gmac.yaml",
+   "compats": [
+    "atmel,sam0-gmac"
+   ],
+   "drivers": [
+    "zephyr/drivers/ethernet/eth_sam_gmac.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/same5x.dtsi:17",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/same5x.dtsi:18",
+    "interrupt-names": "zephyr/dts/arm/atmel/same5x.dtsi:20",
+    "interrupts": "zephyr/dts/arm/atmel/same5x.dtsi:19",
+    "local-mac-address": "zephyr/dts/arm/atmel/same5x.dtsi:24",
+    "mac-eeprom": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:161",
+    "num-queues": "zephyr/dts/arm/atmel/same5x.dtsi:23",
+    "phy-handle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:162",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:158",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:159",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:156"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/ethernet@42000800/mdio": {
+   "binding": "zephyr/dts/bindings/mdio/atmel,sam-mdio.yaml",
+   "compats": [
+    "atmel,sam-mdio"
+   ],
+   "drivers": [
+    "zephyr/drivers/mdio/mdio_sam.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/same5x.dtsi:27",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/atmel/same5x.dtsi:31",
+    "#size-cells": "zephyr/dts/arm/atmel/same5x.dtsi:32",
+    "compatible": "zephyr/dts/arm/atmel/same5x.dtsi:28",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:168",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:169",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:166"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/ethernet@42000800/mdio/ethernet-phy@0": {
+   "binding": "zephyr/dts/bindings/ethernet/phy/ethernet-phy.yaml",
+   "compats": [
+    "ethernet-phy"
+   ],
+   "drivers": [
+    "zephyr/drivers/ethernet/phy/phy_mii.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:171",
+   "origin_kind": "board",
+   "props": {
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:172",
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:162",
+    "reg": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:174",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:173"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/gclk@40001c00": {
+   "binding": "zephyr/dts/bindings/clock/atmel,sam0-gclk.yaml",
+   "compats": [
+    "atmel,sam0-gclk"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:108",
+   "origin_kind": "soc",
+   "props": {
+    "#atmel,assigned-clock-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:113",
+    "#clock-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:112",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:109",
+    "phandle": "zephyr/dts/arm/atmel/samd5x.dtsi:181",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:110"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/interrupt-controller@e000e100": {
+   "binding": "zephyr/dts/bindings/interrupt-controller/arm,v7m-nvic.yaml",
+   "compats": [
+    "arm,v7m-nvic"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/armv7-m.dtsi:13",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/armv7-m.dtsi:14",
+    "#interrupt-cells": "zephyr/dts/arm/armv7-m.dtsi:18",
+    "arm,num-irq-priority-bits": "zephyr/dts/arm/atmel/samd5x.dtsi:522",
+    "compatible": "zephyr/dts/arm/armv7-m.dtsi:15",
+    "interrupt-controller": "zephyr/dts/arm/armv7-m.dtsi:17",
+    "phandle": "zephyr/dts/arm/armv7-m.dtsi:10",
+    "reg": "zephyr/dts/arm/armv7-m.dtsi:16"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/mclk@40000800": {
+   "binding": "zephyr/dts/bindings/clock/atmel,sam0-mclk.yaml",
+   "compats": [
+    "atmel,sam0-mclk"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:94",
+   "origin_kind": "soc",
+   "props": {
+    "#clock-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:98",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:95",
+    "phandle": "zephyr/dts/arm/atmel/samd5x.dtsi:181",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:96"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/memory@20000000": {
+   "binding": "zephyr/dts/bindings/sram/mmio-sram.yaml",
+   "compats": [
+    "mmio-sram"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:76",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:77",
+    "reg": "zephyr/dts/arm/atmel/same5xx20.dtsi:19"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/memory@47000000": {
+   "binding": "zephyr/dts/bindings/sram/mmio-sram.yaml",
+   "compats": [
+    "mmio-sram"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:81",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:82",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:83"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/nvmctrl@41004000": {
+   "binding": "zephyr/dts/bindings/flash_controller/atmel,sam0-nvmctrl.yaml",
+   "compats": [
+    "atmel,sam0-nvmctrl"
+   ],
+   "drivers": [
+    "zephyr/drivers/flash/flash_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:116",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:121",
+    "#size-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:122",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:117",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:119",
+    "lock-regions": "zephyr/dts/arm/atmel/samd5x.dtsi:124",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:118"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/nvmctrl@41004000/flash@0": {
+   "binding": "zephyr/dts/bindings/mtd/soc-nv-flash.yaml",
+   "compats": [
+    "soc-nv-flash"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:126",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:127",
+    "reg": "zephyr/dts/arm/atmel/same5xx20.dtsi:14",
+    "write-block-size": "zephyr/dts/arm/atmel/samd5x.dtsi:129"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/nvmctrl@41004000/flash@0/partitions": {
+   "binding": "zephyr/dts/bindings/mtd/fixed-partitions.yaml",
+   "compats": [
+    "fixed-partitions"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:179",
+   "origin_kind": "board",
+   "props": {
+    "#address-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:181",
+    "#size-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:182",
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:180"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/nvmctrl@41004000/flash@0/partitions/partition@fc000": {
+   "binding": "zephyr/dts/bindings/mtd/fixed-partitions.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:189",
+   "origin_kind": "board",
+   "props": {
+    "label": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:190",
+    "reg": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:191"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/osc32kctrl@40001400": {
+   "binding": "zephyr/dts/bindings/clock/atmel,sam0-osc32kctrl.yaml",
+   "compats": [
+    "atmel,sam0-osc32kctrl"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:101",
+   "origin_kind": "soc",
+   "props": {
+    "#atmel,assigned-clock-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:105",
+    "#clock-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:104",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:102",
+    "phandle": "zephyr/dts/arm/atmel/samd5x.dtsi:332",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:103"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [
+    "atmel,sam0-pinctrl"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:265",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:269",
+    "#size-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:270",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:266",
+    "ranges": "zephyr/dts/arm/atmel/samd5x.dtsi:267"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/dac0_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:64",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:144"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/dac0_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:65",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:66"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/gmac_rmii": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:15",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:158"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/gmac_rmii/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:16",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:17"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/gpio@41008000": {
+   "binding": "zephyr/dts/bindings/gpio/atmel,sam0-gpio.yaml",
+   "compats": [
+    "atmel,sam0-gpio"
+   ],
+   "drivers": [
+    "zephyr/drivers/gpio/gpio_sam0.c"
+   ],
+   "in_image": true,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:272",
+   "origin_kind": "soc",
+   "props": {
+    "#atmel,pin-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:276",
+    "#gpio-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:277",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:273",
+    "gpio-controller": "zephyr/dts/arm/atmel/samd5x.dtsi:279",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:274"
+   },
+   "state": "device",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/gpio@41008080": {
+   "binding": "zephyr/dts/bindings/gpio/atmel,sam0-gpio.yaml",
+   "compats": [
+    "atmel,sam0-gpio"
+   ],
+   "drivers": [
+    "zephyr/drivers/gpio/gpio_sam0.c"
+   ],
+   "in_image": true,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:282",
+   "origin_kind": "soc",
+   "props": {
+    "#atmel,pin-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:286",
+    "#gpio-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:287",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:283",
+    "gpio-controller": "zephyr/dts/arm/atmel/samd5x.dtsi:289",
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:53",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:284"
+   },
+   "state": "device",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/gpio@41008100": {
+   "binding": "zephyr/dts/bindings/gpio/atmel,sam0-gpio.yaml",
+   "compats": [
+    "atmel,sam0-gpio"
+   ],
+   "drivers": [
+    "zephyr/drivers/gpio/gpio_sam0.c"
+   ],
+   "in_image": true,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:292",
+   "origin_kind": "soc",
+   "props": {
+    "#atmel,pin-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:296",
+    "#gpio-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:297",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:293",
+    "gpio-controller": "zephyr/dts/arm/atmel/samd5x.dtsi:299",
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:36",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:294"
+   },
+   "state": "device",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/gpio@41008180": {
+   "binding": "zephyr/dts/bindings/gpio/atmel,sam0-gpio.yaml",
+   "compats": [
+    "atmel,sam0-gpio"
+   ],
+   "drivers": [
+    "zephyr/drivers/gpio/gpio_sam0.c"
+   ],
+   "in_image": true,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:302",
+   "origin_kind": "soc",
+   "props": {
+    "#atmel,pin-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:306",
+    "#gpio-cells": "zephyr/dts/arm/atmel/samd5x.dtsi:307",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:303",
+    "gpio-controller": "zephyr/dts/arm/atmel/samd5x.dtsi:309",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:304"
+   },
+   "state": "device",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/mdio_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:28",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:168"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/mdio_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:29",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:30"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/pwm_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:9",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:71"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/pwm_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:10",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:11"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/sercom2_uart_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:50",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:92"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/sercom2_uart_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:51",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:52"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/sercom4_spi_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:42",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:104"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/sercom4_spi_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:43",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:44"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/sercom7_i2c_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:35",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:115"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/sercom7_i2c_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:36",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:37"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/usb_dc_default": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:57",
+   "origin_kind": "board",
+   "props": {
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:151"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinctrl@41008000/usb_dc_default/group1": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinctrl.yaml",
+   "compats": [],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:58",
+   "origin_kind": "board",
+   "props": {
+    "pinmux": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro-pinctrl.dtsi:59"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinmux@41008000": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinmux.yaml",
+   "compats": [
+    "atmel,sam0-pinmux"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:151",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:152",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:153"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinmux@41008080": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinmux.yaml",
+   "compats": [
+    "atmel,sam0-pinmux"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:156",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:157",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:158"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinmux@41008100": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinmux.yaml",
+   "compats": [
+    "atmel,sam0-pinmux"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:161",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:162",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:163"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/pinmux@41008180": {
+   "binding": "zephyr/dts/bindings/pinctrl/atmel,sam0-pinmux.yaml",
+   "compats": [
+    "atmel,sam0-pinmux"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:166",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:167",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:168"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/random@42002800": {
+   "binding": "zephyr/dts/bindings/rng/atmel,sam-trng.yaml",
+   "compats": [
+    "atmel,sam-trng"
+   ],
+   "drivers": [
+    "zephyr/drivers/entropy/entropy_sam.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:322",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:323",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:325",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:324"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/rtc@40002400": {
+   "binding": "zephyr/dts/bindings/rtc/atmel,sam0-rtc.yaml",
+   "compats": [
+    "atmel,sam0-rtc"
+   ],
+   "drivers": [
+    "zephyr/drivers/rtc/rtc_sam0.c",
+    "zephyr/drivers/timer/sam0_rtc_timer.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:328",
+   "origin_kind": "soc",
+   "props": {
+    "alarms-count": "zephyr/dts/arm/atmel/samd5x.dtsi:338",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:335",
+    "atmel,assigned-clocks": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:80",
+    "cal-constant": "zephyr/dts/arm/atmel/samd5x.dtsi:339",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:333",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:332",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:329",
+    "counter-mode": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:77",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:331",
+    "prescaler": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:78",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:330",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:76"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@40003000": {
+   "binding": "zephyr/dts/bindings/arm/atmel,sam0-sercom.yaml",
+   "compats": [
+    "atmel,sam0-sercom"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:177",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:184",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:183",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:182",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:181",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:178",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:180",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:179",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:185"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@40003400": {
+   "binding": "zephyr/dts/bindings/arm/atmel,sam0-sercom.yaml",
+   "compats": [
+    "atmel,sam0-sercom"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:188",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:195",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:194",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:193",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:192",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:189",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:191",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:190",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:196"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@41012000": {
+   "binding": "zephyr/dts/bindings/serial/atmel,sam0-uart.yaml",
+   "compats": [
+    "atmel,sam0-uart"
+   ],
+   "drivers": [
+    "zephyr/drivers/serial/uart_sam0.c"
+   ],
+   "in_image": true,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:199",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:89",
+    "#size-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:90",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:206",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:205",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:204",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:203",
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:85",
+    "current-speed": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:86",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:202",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:92",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:93",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:201",
+    "rxpo": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:87",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:84",
+    "txpo": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:88"
+   },
+   "state": "device",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@41014000": {
+   "binding": "zephyr/dts/bindings/arm/atmel,sam0-sercom.yaml",
+   "compats": [
+    "atmel,sam0-sercom"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:210",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:217",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:216",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:215",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:214",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:211",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:213",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:212",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:218"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@43000000": {
+   "binding": "zephyr/dts/bindings/spi/atmel,sam0-spi.yaml",
+   "compats": [
+    "atmel,sam0-spi"
+   ],
+   "drivers": [
+    "zephyr/drivers/spi/spi_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:221",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:101",
+    "#size-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:102",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:228",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:227",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:226",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:225",
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:98",
+    "dipo": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:99",
+    "dopo": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:100",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:224",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:104",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:105",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:223",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:97"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@43000400": {
+   "binding": "zephyr/dts/bindings/arm/atmel,sam0-sercom.yaml",
+   "compats": [
+    "atmel,sam0-sercom"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:232",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:239",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:238",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:237",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:236",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:233",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:235",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:234",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:240"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@43000800": {
+   "binding": "zephyr/dts/bindings/arm/atmel,sam0-sercom.yaml",
+   "compats": [
+    "atmel,sam0-sercom"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:243",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:250",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:249",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:248",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:247",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:244",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:246",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:245",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:251"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@43000c00": {
+   "binding": "zephyr/dts/bindings/i2c/atmel,sam0-i2c.yaml",
+   "compats": [
+    "atmel,sam0-i2c"
+   ],
+   "drivers": [
+    "zephyr/drivers/i2c/i2c_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:254",
+   "origin_kind": "soc",
+   "props": {
+    "#address-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:112",
+    "#size-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:113",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:261",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:260",
+    "clock-frequency": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:111",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:259",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:258",
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:110",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:257",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:115",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:116",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:256",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:109"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/sercom@43000c00/eeprom@5e": {
+   "binding": "",
+   "compats": [
+    "atmel,24mac402"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:118",
+   "origin_kind": "board",
+   "props": {
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:119",
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:161",
+    "reg": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:120"
+   },
+   "state": "nobinding",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/tc@40003800": {
+   "binding": "zephyr/dts/bindings/counter/atmel,sam0-tc32.yaml",
+   "compats": [
+    "atmel,sam0-tc32"
+   ],
+   "drivers": [
+    "zephyr/drivers/counter/counter_sam0_tc32.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:404",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:411",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:410",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:409",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:408",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:405",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:407",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:406",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:412"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tc@4101a000": {
+   "binding": "zephyr/dts/bindings/counter/atmel,sam0-tc32.yaml",
+   "compats": [
+    "atmel,sam0-tc32"
+   ],
+   "drivers": [
+    "zephyr/drivers/counter/counter_sam0_tc32.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:415",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:422",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:421",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:420",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:419",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:416",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:418",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:417",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:423"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tc@42001400": {
+   "binding": "zephyr/dts/bindings/counter/atmel,sam0-tc32.yaml",
+   "compats": [
+    "atmel,sam0-tc32"
+   ],
+   "drivers": [
+    "zephyr/drivers/counter/counter_sam0_tc32.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:426",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:433",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:432",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:431",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:430",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:427",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:429",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:428",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:434"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tc@43001400": {
+   "binding": "zephyr/dts/bindings/counter/atmel,sam0-tc32.yaml",
+   "compats": [
+    "atmel,sam0-tc32"
+   ],
+   "drivers": [
+    "zephyr/drivers/counter/counter_sam0_tc32.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:437",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:444",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:443",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:442",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:441",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:438",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:440",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:439",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:445"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tcc@41016000": {
+   "binding": "zephyr/dts/bindings/pwm/atmel,sam0-tcc-pwm.yaml",
+   "compats": [
+    "atmel,sam0-tcc-pwm"
+   ],
+   "drivers": [
+    "zephyr/drivers/pwm/pwm_sam0_tcc.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:448",
+   "origin_kind": "soc",
+   "props": {
+    "#pwm-cells": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:69",
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:456",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:455",
+    "channels": "zephyr/dts/arm/atmel/samd5x.dtsi:459",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:454",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:453",
+    "compatible": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:66",
+    "counter-size": "zephyr/dts/arm/atmel/samd5x.dtsi:460",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:451",
+    "phandle": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:45",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:71",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:72",
+    "prescaler": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:68",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:450",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:65"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/tcc@41018000": {
+   "binding": "",
+   "compats": [
+    "atmel,sam0-tcc"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:463",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:470",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:469",
+    "channels": "zephyr/dts/arm/atmel/samd5x.dtsi:473",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:468",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:467",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:464",
+    "counter-size": "zephyr/dts/arm/atmel/samd5x.dtsi:474",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:466",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:465",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:471"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tcc@42000c00": {
+   "binding": "",
+   "compats": [
+    "atmel,sam0-tcc"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:477",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:484",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:483",
+    "channels": "zephyr/dts/arm/atmel/samd5x.dtsi:487",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:482",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:481",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:478",
+    "counter-size": "zephyr/dts/arm/atmel/samd5x.dtsi:488",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:480",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:479",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:485"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tcc@42001000": {
+   "binding": "",
+   "compats": [
+    "atmel,sam0-tcc"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:491",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:498",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:497",
+    "channels": "zephyr/dts/arm/atmel/samd5x.dtsi:501",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:496",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:495",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:492",
+    "counter-size": "zephyr/dts/arm/atmel/samd5x.dtsi:502",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:494",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:493",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:499"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/tcc@43001000": {
+   "binding": "",
+   "compats": [
+    "atmel,sam0-tcc"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:505",
+   "origin_kind": "soc",
+   "props": {
+    "atmel,assigned-clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:512",
+    "atmel,assigned-clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:511",
+    "channels": "zephyr/dts/arm/atmel/samd5x.dtsi:515",
+    "clock-names": "zephyr/dts/arm/atmel/samd5x.dtsi:510",
+    "clocks": "zephyr/dts/arm/atmel/samd5x.dtsi:509",
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:506",
+    "counter-size": "zephyr/dts/arm/atmel/samd5x.dtsi:516",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:508",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:507",
+    "status": "zephyr/dts/arm/atmel/samd5x.dtsi:513"
+   },
+   "state": "disabled",
+   "status": "disabled",
+   "touched_by_overlay": false
+  },
+  "/soc/timer@e000e010": {
+   "binding": "zephyr/dts/bindings/timer/arm,armv7m-systick.yaml",
+   "compats": [
+    "arm,armv7m-systick"
+   ],
+   "drivers": [],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/armv7-m.dtsi:21",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/armv7-m.dtsi:22",
+    "reg": "zephyr/dts/arm/armv7-m.dtsi:23"
+   },
+   "state": "neutral",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/usb@41000000": {
+   "binding": "zephyr/dts/bindings/usb/atmel,sam0-usb.yaml",
+   "compats": [
+    "atmel,sam0-usb"
+   ],
+   "drivers": [
+    "zephyr/drivers/usb/device/usb_dc_sam0.c",
+    "zephyr/drivers/usb/udc/udc_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:313",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:314",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:316",
+    "num-bidir-endpoints": "zephyr/dts/arm/atmel/samd5x.dtsi:319",
+    "pinctrl-0": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:151",
+    "pinctrl-names": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:152",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:315",
+    "status": "zephyr/boards/atmel/sam0/same54_xpro/same54_xpro.dts:149"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  },
+  "/soc/watchdog@40002000": {
+   "binding": "zephyr/dts/bindings/watchdog/atmel,sam0-watchdog.yaml",
+   "compats": [
+    "atmel,sam0-watchdog"
+   ],
+   "drivers": [
+    "zephyr/drivers/watchdog/wdt_sam0.c"
+   ],
+   "in_image": false,
+   "origin": "zephyr/dts/arm/atmel/samd5x.dtsi:171",
+   "origin_kind": "soc",
+   "props": {
+    "compatible": "zephyr/dts/arm/atmel/samd5x.dtsi:172",
+    "interrupts": "zephyr/dts/arm/atmel/samd5x.dtsi:174",
+    "reg": "zephyr/dts/arm/atmel/samd5x.dtsi:173"
+   },
+   "state": "nobuild",
+   "status": "okay",
+   "touched_by_overlay": false
+  }
+ },
+ "orphan_drivers": [
+  [
+   "myvendor_mygpio_led",
+   [
+    "_soltest/modules/led/drivers/led/my_led_driver.c"
+   ]
+  ]
+ ],
+ "schema": 1
+}
