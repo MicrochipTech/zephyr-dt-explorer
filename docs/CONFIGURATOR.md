@@ -266,6 +266,8 @@ gets no special treatment.
 | **Recipe** | driver knowledge: named pin roles, derived properties, Kconfig table | driver compatible (`atmel,sam0-uart`, …) | SERCOM UART/I2C/SPI |
 | **Binding translation** | one driver family's binding → another family's binding for the same hardware | pair (source compatible, target compatible) | `atmel,sam0-*` → `microchip,*-g1` |
 | **Board description** | board design files → connectors, on-board parts, drawing (YAML) | board name | SAME54 Xplained Pro, PIC32CX SG41/SG61 Curiosity Ultra |
+| **Design-file reader** | one EDA format → neutral `BoardNetlist` | file type | `altium_pcbdoc` |
+| **Connector type** | one connector standard → pin roles | detected or confirmed per connector | `xplained_pro_ext`, `arduino_uno_r3`, `mikrobus` |
 
 Providers belong to the vendor's *file format*. Formatters belong to the *Zephyr side*. Keeping the
 two apart matters:
@@ -419,7 +421,13 @@ dt_explorer/
     atmel_sam0_to_mchp_g1.yaml
   boards/           generated board YAML (no design files)
   importers/
-    netlist.py      design files -> board YAML
+    pipeline.py     BoardNetlist -> board YAML (trace, MCU match, connector detection)
+  readers/          one per EDA format
+    altium_pcbdoc.py
+  connectors/       one per connector standard
+    xplained_pro_ext.py
+    arduino_uno_r3.py
+    mikrobus.py
 tests/              per plugin, with small fixture files
 dt_explorer.py      thin launcher, so dt_explorer.bat keeps working
 ```
@@ -593,6 +601,81 @@ One YAML file per board:
 
 If the board `.dts` has standard connector nodes, the tool reads them and the YAML only adds what is
 missing.
+
+### Adding boards generically
+
+Boards must be addable the same way as vendors: by the community, for any board, without changing
+the core. Two more plugin kinds make that possible, in addition to the board description itself.
+
+**1. Design-file readers (one per EDA format) → neutral board netlist.**
+
+```python
+@dataclass
+class BoardNetlist:
+    components: dict[str, Component]   # designator -> Component
+    nets: dict[str, list[tuple[str, str]]]   # net name -> [(designator, pad)]
+    texts: list[Text]                  # silkscreen texts with position (for connector names)
+    outline: list[tuple[float, float]] | None
+    units: str                         # "mm"
+
+@dataclass
+class Component:
+    designator: str                    # "J401"
+    footprint: str
+    description: str
+    x: float; y: float; rotation: float; layer: str
+    pads: dict[str, str | None]        # pad name -> net name
+```
+
+| Reader | Format | Status |
+|---|---|---|
+| `altium_pcbdoc` | Altium `.PcbDoc` (OLE) | prototype works (SAM E54 Xpro, PIC32CX SG41 CUlt) |
+| `kicad_pcb` | KiCad `.kicad_pcb` (S-expressions, text) | planned; simple |
+| `ipc2581`, `odbpp` | vendor-neutral fabrication standards (XML / directory) | planned; covers many EDA tools |
+| `ipc356` | IPC-D-356 netlist (text) | planned; netlist only, no outline |
+| `eagle_brd` | Eagle / Fusion `.brd` (XML) | planned |
+
+Everything after the reader is EDA-independent: tracing, MCU identification, connector detection
+and the board YAML.
+
+**2. Connector types (one per connector standard) → pin roles.**
+
+A connector type knows its standard pinout:
+
+| Connector type | Pin roles (examples) | Zephyr binding |
+|---|---|---|
+| `xplained_pro_ext` | 1 ID, 3 ADC+, 4 ADC−, 5/6 GPIO, 7/8 PWM±, 9 IRQ, 10 SPI SS_B, 11 SDA, 12 SCL, 13 RX, 14 TX, 15 SPI SS_A, 16 MOSI, 17 MISO, 18 SCK, 19 GND, 20 VCC | `atmel-xplained-pro-header` |
+| `arduino_uno_r3` | D0–D13, A0–A5, SDA, SCL, … | `arduino-header-r3` |
+| `mikrobus` | AN, RST, CS, SCK, MISO, MOSI, PWM, INT, RX, TX, SCL, SDA | `mikro-bus` |
+| further: Pmod, Feather, X32, Raspberry Pi header, … | | |
+
+This is the key for porting between boards: a function is moved by **connector role**, not by SoC
+pin. *"MOSI on EXT1"* on the SAME54 Xplained Pro becomes *"MOSI on EXT1"* on the PIC32CX SG41
+Curiosity Ultra, whatever SoC pins sit behind it (PB27 there, PB24 here).
+
+**Generic import pipeline:**
+
+1. The reader produces the `BoardNetlist`.
+2. **Find the MCU.** Match components against the build's SoC: pad count and ATDF pinout, not
+   simply "the `U…` with the most pads". Boards with several MCUs (e.g. an on-board debugger) are
+   common; both test boards have one.
+3. **Trace** connector pins to MCU pads through 2-pad parts, stopping at supply rails and busy nets.
+   Gaps (multi-pad parts, nets that never reach the MCU) are reported.
+4. **Detect connector types.** Pin count, pitch and the signals found (e.g. ID on pin 1, GND on 2
+   and 19, VCC on 20 means Xplained Pro) suggest a type. Silkscreen text near the connector suggests
+   the name.
+5. **Write the board YAML** with everything marked as *suggested*. A human confirms the names and
+   types once. Only then is the YAML treated as reviewed.
+
+**Board YAML:**
+- It has a schema version and names the Zephyr board it belongs to (`board.yml` name, e.g.
+  `same54_xpro`, and board revision).
+- It records the source (design package name and revision) but never contains the design files.
+- If the Zephyr board `.dts` already has standard connector nodes, those win; the YAML only adds what
+  is missing. The tool can also generate those nodes for an upstream Zephyr PR.
+
+**Community contribution of a new board:** design files in, run the importer, confirm the
+suggestions, commit the YAML. No code, as long as the EDA format and connector types already exist.
 
 ### Importer: board design files → board YAML
 
@@ -781,6 +864,8 @@ is changed.
 | Same-IP porting | Direct binding translation tables (YAML), not class-based mapping |
 | Zephyr for PIC32CX SG | Second workspace `C:\Masters\zephyr-main` with current Zephyr; the RTOS4 workspace stays unchanged |
 | Board data | Generated from the boards' design files (netlist first); design files stay outside the repo, only the generated YAML is committed |
+| Adding boards | Generic: design-file readers per EDA format and connector types per standard are plugins; a new board needs no code, only a confirmed YAML |
+| Porting between boards | By connector role (e.g. EXT1 MOSI), not by SoC pin |
 
 ## Open questions
 
