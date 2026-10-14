@@ -455,7 +455,8 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P7.1 | done | e5fcf55 → master |
 | P7.2 | done | 1d23b26 → master |
-| P7.3 | open | |
+| P7.3 | done | 7d3f349 → master |
+| P7.3b | blocked | SG61 design files missing (HC-5); unblocks when `C:\Mastersoard_design_files\pic32cx_sg61_cult\` exists |
 | P7.4 | open | |
 
 **P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
@@ -510,6 +511,8 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
+- Importer: Arduino Uno R3 and mikroBUS headers (label-keyed pins, merge the four Arduino headers into one connector); found at P7.3.
+
 - Phase 9: custom board wizard.
 - Phase 10: class-based porting, other vendors.
 - KiCad, IPC-2581/ODB++, IPC-D-356 and Eagle readers.
@@ -533,4 +536,5 @@ surprising, and anything you were unsure about.
 | P2.2 | [P2.2.md](evidence/P2.2.md) | via Playwright: dialog, board filter, streamed log (cmake-only 46 s), new build auto-selected with "not linked" states, Full build 71 s → 7 `device` nodes; not tested: Cancel, failure path. Temporary build folder deleted (builder checked lab1 folder). README/GUI.md moved to P3.6 |
 | P5.2 | [P5.2.md](evidence/P5.2.md) | translated SERCOM2 UART loads in edtlib against `microchip,sercom-g1-uart` with the real atsame54p20a dtsi; dropping `rxpo` → EDTError (negative test); 88/92 pin renames as value map (4 SWD pins kept + reported); I2C/SPI/pinmux `no_target`. **Open for P5.3:** `atmel,assigned-clocks` is only a report line (turn into `&clock { gclkperiph … }` nodes?); target SoC dtsi already sets SERCOM `clocks` (emit or omit?); clock blocks are placeholders. Builder re-run 32 passed |
 | P1.5 | [P1.5.md](evidence/P1.5.md) | 134 SERCOM signals, 130 round trip; 4 without Zephyr macro (SERCOM7 on PB30/PB31/PA30/PA31 function C) reported and pinned by a test; `sercom2_uart_default` → PB25/PB24. Header lives in hal_atmel (`modules/hal/atmel/include/dt-bindings/pinctrl/same54p-pinctrl.h`). Formatter needs a header: `AtmelSam0Formatter.for_workspace(ws, soc)`; full parse via `parse()`. Builder follow-up: provider now sets `Signal.attrs["instance"]` |
+| P7.3 | [P7.3.md](evidence/P7.3.md) | EXT1–EXT3 (Xpro) and EXT1/EXT2 (SG41) match CONFIGURATOR.md on all 16 signal pins; gaps reported: TCC4/WO0, TCC4/WO1, NetJ602_18, NetJ603_8, NetJ603_18; all 5 connectors `reviewed: builder` (silkscreen + score ≥ 0.5 + GND/VCC + ≥ 75 % traced); MCU match U200 / U401 by package fit 100 %. Arduino and mikroBUS headers are not imported yet (label-keyed pins, four-header merge missing) → backlog. Builder follow-up: `test_plugins` now restores the registry after each test |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

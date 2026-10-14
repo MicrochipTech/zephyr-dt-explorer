@@ -8,9 +8,14 @@ from dt_explorer.core import plugins
 
 @pytest.fixture(autouse=True)
 def clean_registry():
+    saved = {k: dict(d) for k, d in plugins._registry.items()}
+    saved_skipped = list(plugins._skipped)
     plugins.unregister_all()
     yield
     plugins.unregister_all()
+    for k, d in saved.items():           # restore what other test modules registered on import
+        plugins._registry[k].update(d)
+    plugins._skipped[:] = saved_skipped
 
 
 def test_register_by_decorator():
