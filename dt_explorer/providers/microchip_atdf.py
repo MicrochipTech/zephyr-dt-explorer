@@ -171,7 +171,7 @@ class MicrochipAtdfProvider:
                             pad=s.get("pad", ""),
                             mux=s.get("function"),
                             group=ioset,
-                            attrs={"signal_group": group, "index": _int(index)},
+                            attrs={"signal_group": group, "index": _int(index), "instance": inst.get("name")},
                         ))
                     rg = inst.find("register-group")
                     base = _int(rg.get("offset")) if rg is not None else None
