@@ -197,7 +197,8 @@ installed packs.
 ## User interface
 
 - **Entry point.** In the node details, the traffic-light card of a node whose status is
-  `disabled` gets a **"Configure…"** button. Later, enabled nodes can get **"Edit pins…"**. The
+  `disabled` gets a **"Configure…"** button. Enabled nodes get **"Edit pins…"**: the node is lifted into a
+  draft (see *Porting*, step 1) and opened in the same configurator; the result overrides the node. The
   configurator opens in the detail panel on the right:
   1. Choose the mode, which is the compatible. For a SERCOM that is UART, I2C or SPI.
   2. Fill in a form generated from the binding. It reuses the property table of the binding view
@@ -529,6 +530,12 @@ output streamed to a log panel. The board list is read from `board.yml` files an
 **Applying the result.** By default the user copies the snippet. Optionally the tool writes it to
 its own files (`dt_explorer.overlay` / `dt_explorer.conf` in the app folder). It never rewrites the
 board overlay, which would risk losing comments and formatting.
+
+**"Apply to app" after a port.** On a button press the tool writes the port result as the files
+Zephyr picks up for the target board, `<app>/boards/<target board>.overlay` and `.conf`, so the app
+builds with `west build -b <target board>` and no extra options. It only creates new files: if one
+already exists, it writes nothing and shows a diff. The source board's files and `src/` are never
+touched.
 
 ## Boards and builds
 
@@ -876,4 +883,3 @@ is changed.
   leading zero, or are there exceptions?
 - The board-level pin map: which header pins of the board connect to which pads? This is not in
   the ATDF; it would need the board user guide or a hand-written table.
-- "Edit pins…" for nodes that are already enabled is not assigned to a phase yet.

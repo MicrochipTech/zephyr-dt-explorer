@@ -163,7 +163,7 @@ them as `plan: phase 8 cards`, and continues. Phases 9 and 10 stay in the backlo
 the run go to the *Backlog* (§10), not into open cards.
 
 Critical path: P0.1 → P1.1 → P1.2 → P1.4 → P1.5 → P3.1 → P3.2 → P3.3 → P3.4 → P4.1 → P5.0 → P5.2 →
-P5.3 → P5.4 → P5.5 → P6.1 → P6.2.
+P5.3 → P5.4 → P5.6 → P5.5 → P6.1 → P6.2.
 The board branch (P7.x) can run in parallel after P1.2.
 
 ## 8. Cards
@@ -363,6 +363,8 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.2 | open | |
 | P5.3 | open | |
 | P5.4 | open | |
+| P5.6 | open | |
+| P5.7 | open | |
 | P5.5 | open | |
 
 **P5.0 Research: binding pairs `atmel,sam0-*` ↔ `microchip,*-g1`.** *light* (read-only research).
@@ -397,10 +399,28 @@ Status values: `open`, `running`, `done`, `blocked`.
   `DT_NODELABEL` references in `src/` with suggested `DT_ALIAS`/`DT_CHOSEN` and the matching aliases
   in the target overlay.
 
+**P5.6 "Apply to app".**
+- Dep: P5.4, P4.1. Scope: `dt_explorer/core/apply.py`, `dt_explorer/ui/port.py`.
+- Do: on a button press, write the port result into the app as the files Zephyr picks up for the
+  target board: `<app>/boards/<target board>.overlay` and `<app>/boards/<target board>.conf`.
+  **Only new files:** if a target file already exists, write nothing, show a diff against it and let
+  the user decide. Never touch the source board's files or `src/`.
+- Accept: on a copy of lab1 in `%TEMP%`, apply for `sam_e54_xpro`, then
+  `west build -b sam_e54_xpro` on that copy succeeds without extra options; a second apply refuses
+  and shows the diff (evidence: both outputs).
+
+**P5.7 "Edit pins…" for enabled nodes.**
+- Dep: P5.3, P3.5. Scope: `dt_explorer/ui/configure.py`, `dt_explorer/ui/page.py` (button only).
+- Do: for a node that is already `okay`, lift it into a draft (P5.3) and open the configurator on
+  it; the result is an overlay that overrides the node (e.g. new pins), rendered as usual.
+- Accept: on lab1, move the console SERCOM2 from PB24/PB25 to another valid pad pair; "Verify with
+  west" passes and the generated `pinctrl-0` points to the new group; goldens unchanged.
+
 **P5.5 Acceptance: RTOS4 labs to `sam_e54_xpro`.**
-- Dep: P5.4. Scope: `docs/evidence/P5.5.md`, generated overlays under `%TEMP%` (not committed).
-- Accept: lab0–lab3 ported; "Verify with west" passes for each; full build of at least lab1
-  links. Not tested on hardware (HC-4 decided: no stop); the evidence says so.
+- Dep: P5.4, P5.6. Scope: `docs/evidence/P5.5.md`, copies of the labs under `%TEMP%` (not
+  committed).
+- Accept: lab0–lab3 ported and applied (P5.6) to copies; `west build -b sam_e54_xpro` passes on each
+  copy; full build of at least lab1 links. Not tested on hardware (HC-4 decided: no stop); the evidence says so.
 
 ### Phase 6: port to PIC32CX SG41/SG61
 
@@ -491,7 +511,6 @@ surprising, and anything you were unsure about.
 - Phase 9: custom board wizard.
 - Phase 10: class-based porting, other vendors.
 - KiCad, IPC-2581/ODB++, IPC-D-356 and Eagle readers.
-- "Edit pins…" for enabled nodes.
 - Upstream Zephyr PR with connector nodes for `same54_xpro`, `pic32cx_sg41_cult`, `pic32cx_sg61_cult`
   (outward-facing: human only).
 
