@@ -172,7 +172,10 @@ places: the pinctrl formatters and the recipes.
 ### `configurator.py` (new, no NiceGUI)
 
 - **Draft.** For each node: the chosen compatible, property values, the pin for each role, and later
-  child nodes. It is plain data, stored per build as JSON so it survives a reload.
+  child nodes. It is plain data, stored as JSON in the app folder:
+  `<app>/.dt_explorer/<build folder name>.draft.json` (e.g. `build_same54_xpro.draft.json`). It
+  survives a reload and a pristine rebuild (`west build -p`), and it can be committed with the app
+  if wanted.
 - **Recipes per driver compatible.**
   - Without a recipe, the configurator shows the generic form generated from the binding. Pin roles
     then come straight from the ATDF signal names.
@@ -181,14 +184,32 @@ places: the pinctrl formatters and the recipes.
     `CONFIG_SPI`, …).
   - Driver knowledge lives in the recipes. It is in neither the binding nor the ATDF.
 - **`render_overlay(draft)`** returns the overlay text. **`suggest_kconfig(draft)`** returns the
-  `prj.conf` lines.
+  `prj.conf` lines, from two sources:
+  1. the recipe's fixed table, where a recipe exists;
+  2. otherwise, derived from Kconfig. Load the Kconfig tree with Zephyr's own `kconfiglib`
+     (`zephyr/scripts/kconfig/kconfiglib.py`, from the analysed workspace, like edtlib). Find the
+     symbol whose `default`/`depends on` references `DT_HAS_<COMPAT>_ENABLED`, and follow its
+     `depends on` to the subsystem symbols (e.g. `CONFIG_I2C`) that are not yet `y` in the build's
+     `zephyr/.config`.
+
+  When both exist, the recipe wins. The derived suggestions are shown separately for comparison,
+  so a wrong recipe table becomes visible.
 - **`validate(draft)`** runs the checks described below.
+
+### `west_tools.py` (new, no NiceGUI)
+
+Runs every west call the tool makes: "New build…" and "Full build" (see *Boards and builds*), and
+"Verify with west" (see *Checks*). Each call runs as a subprocess in the background, with its
+output streamed to a log panel. The board list is read from `board.yml` files and does not call
+`west boards`.
 
 ### `dt_explorer.py`
 
-- UI only: the "Configure…" button, the form, the Draft tab, the pin map and the badge.
+- UI only: the "Configure…" button, the form, the Draft tab, the pin map, the badge and the
+  "New build…" dialog.
 - Refactor: `BuildModel` must also accept a ready EDT object, not only `edt.pickle`. The preview
   can then reuse the existing traffic light and detail view unchanged.
+- New traffic-light state "not linked yet" for builds without `zephyr.elf` (see below).
 
 ## Checks
 
@@ -202,9 +223,11 @@ places: the pinctrl formatters and the recipes.
    - Our own checks:
      - **Pin conflict.** A pin is already used by the `pinmux` of another `pinctrl-0` or by a GPIO
        phandle.
-     - **IOSET.** Pads of one peripheral come from different IOSETs. The SAM D5x/E5x datasheet only
-       guarantees timing within one IOSET; check the exact wording before turning this into an
-       error rather than a warning. Not every device family has IOSETs.
+     - **IOSET.** Pads of one peripheral come from different IOSETs. This is a **warning**, not an
+       error: the pin is highlighted yellow with the reason, and the snippet is still generated.
+       The SAM D5x/E5x datasheet only guarantees timing within one IOSET; the exact wording has not
+       been checked yet. Make it stricter only once it has. Not every device family has IOSETs
+       (no `ioset` attribute in the ATDF means no check).
      - **Missing required properties.**
 2. **Authoritative check, "Verify with west" button.**
    - Runs `west build --cmake-only` into a separate scratch build directory with
@@ -216,17 +239,72 @@ places: the pinctrl formatters and the recipes.
 its own files (`dt_explorer.overlay` / `dt_explorer.conf` in the app folder). It never rewrites the
 board overlay, which would risk losing comments and formatting.
 
+## Boards and builds
+
+Today the explorer only shows builds that already exist: every folder with `zephyr/edt.pickle`
+appears in the build list. Two extensions are planned.
+
+### Choosing an existing Zephyr board ("New build…")
+
+- **Dialog.** Choose an app and a board. The tool then runs
+  `west build -b <board> -d <app>/build_<board> --cmake-only`. Afterwards `find_builds()` picks up
+  the new folder on its own.
+- **Why `--cmake-only` should be enough.** As far as known, all files the explorer reads, except
+  `zephyr.elf`, are created during the CMake configure step: `edt.pickle`, `zephyr.dts`,
+  `zephyr.dts.pre`, `.config`, `compile_commands.json` and `devicetree_generated.h`. This takes
+  about 10–20 s. Confirm it by running it once before relying on it.
+- **Board list.** Every `board.yml` with `vendor: microchip` or `vendor: atmel`; there are 27 in the
+  current Zephyr tree. This matches the scope "generic across Microchip devices".
+- **New state "not linked yet".** Without `zephyr.elf` the tool cannot tell whether a device made it
+  into the image. `BuildModel.state()` must return its own state for that case instead of red or
+  orange. A **"Full build"** button runs the complete `west build` when the user wants the full
+  traffic light.
+- **App overlays are per board.** Zephyr looks up the app overlay by board name. So
+  `apps/lab1/boards/same54_xpro.overlay` does **not** apply to a `sam_e54_xpro` build. The
+  configurator can transfer an overlay to the other board, converting the pinctrl notation on the
+  way. This is the comparison planned in phase 4.
+
+### Creating a custom board (own hardware)
+
+A Zephyr board consists of `board.yml`, `<board>.dts`, `<board>-pinctrl.dtsi`, `Kconfig.<board>`,
+`<board>_defconfig` and usually `board.cmake`. A wizard creates this skeleton in the app folder
+under `boards/<vendor>/<board>/`:
+
+1. Choose the SoC. That selects the SoC `.dtsi` and the ATDF.
+2. Choose the package, the console UART, the clock and the flash partitions.
+3. Configure further peripherals. This is the configurator from phase 3, applied to the board
+   `.dts` instead of an overlay.
+
+Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
+
 ## Phases
 
 1. **Pin map, read-only.** This tests ATDF discovery, the ATDF parser and the `atmel,sam0-pinctrl`
    formatter against the SAM E54 labs. It also brings the first pytest tests into the repo.
-2. **SERCOM configurator for UART/I2C/SPI**, with the Draft tab and the fast check.
-3. **Second family as a test that the design is really generic.** Candidates are PIC32CX SG or the
-   new `microchip,port-g1-pinctrl` SAM E5x port. A board build for it is needed, because the
-   explorer only reads build folders.
-4. **"Verify with west"** and writing to a file.
-5. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
+2. **"New build…" with board selection**, `--cmake-only`, the "not linked yet" state and
+   "Full build". It comes early because phase 4 needs a `sam_e54_xpro` build anyway.
+3. **SERCOM configurator for UART/I2C/SPI**, with the Draft tab and the fast check.
+4. **Second family as a test that the design is really generic.** Use the board **`sam_e54_xpro`**
+   (`boards/microchip/sam/sam_e54_xpro`). It is the new Microchip port of the same hardware as
+   `same54_xpro`, but it uses `microchip,port-g1-pinctrl`. So the same physical board and the
+   installed SAME54 pack are enough; only a second build of a lab with `-b sam_e54_xpro` is
+   needed. Because the hardware is the same, the generated pins can be compared one to one with
+   phase 3. This phase includes transferring the lab's `same54_xpro.overlay` to `sam_e54_xpro`.
+   A different device (`pic32cx_sg61_cult`, `pic32cm_jh01_cnano`) can follow later; the matching
+   packs are not installed yet.
+5. **"Verify with west"** and writing to a file.
+6. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
    `on-bus: i2c`) and the generic binding form for other peripherals (ADC, TC, …).
+7. **Custom board wizard** (see *Creating a custom board*).
+
+## Decisions (2026-10-14)
+
+| Topic | Decision |
+|---|---|
+| Draft location | App folder: `<app>/.dt_explorer/<build folder name>.draft.json` |
+| Kconfig suggestions | Both: recipe table where one exists, otherwise derived with kconfiglib; the recipe wins |
+| IOSET violation | Warning, not an error, until the datasheet wording is checked |
+| Board for phase 4 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
 
 ## Open questions
 
@@ -234,8 +312,6 @@ board overlay, which would risk losing comments and formatting.
   PIC32CX-BZ are still to be checked.
 - Do the Zephyr pinctrl names follow the ATDF names consistently in every family, apart from the
   leading zero, or are there exceptions?
-- Where to store the draft: next to the build, in the app folder, or in `~/.dt_explorer.json`?
 - The board-level pin map: which header pins of the board connect to which pads? This is not in
   the ATDF; it would need the board user guide or a hand-written table.
-- Kconfig suggestions: derive them from the driver's `Kconfig` (`depends on`, `default y if
-  DT_HAS_…`), or keep a fixed table per recipe?
+- "Edit pins…" for nodes that are already enabled is not assigned to a phase yet.
