@@ -437,8 +437,8 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P6.0 | open | |
-| P6.1 | open | |
+| P6.0 | done | f084991 |
+| P6.1 | running | |
 | P6.2 | open | |
 
 **P6.0 Research: two Zephyr versions in one process.** *light*, PS.
@@ -448,7 +448,7 @@ Status values: `open`, `running`, `done`, `blocked`.
   result with output.
 
 **P6.1 Cross-workspace porting.**
-- Dep: P6.0, P5.4. First create `C:\Masters\zephyr-main` (HC-3 pre-approved, see §5.1). Scope: as P6.0 concludes (expected: `dt_explorer/core/build.py`,
+- Dep: P6.0 (P5.4 dropped by the builder 2026-10-15: the model host does not need the port UI; the workspace exists since 2026-10-15). First create `C:\Masters\zephyr-main` (HC-3 pre-approved, see §5.1). Scope: as P6.0 concludes (expected: `dt_explorer/core/build.py`,
   `dt_explorer/core/model_host.py`).
 - Accept: a source build from `DTX_RTOS4_WS` and a target build from `DTX_MAIN_WS` open together;
   goldens unchanged.
@@ -557,4 +557,5 @@ surprising, and anything you were unsure about.
 | P3.3 | [P3.3.md](evidence/P3.3.md) | rendered SERCOM2 overlay applied to zephyr.dts with sercom2 stripped → edtlib compare equal to the original (compatible, status, rxpo, txpo, current-speed, chosen, pinmux 0x3391/0x3381); Kconfig: recipe path for I2C (CONFIG_I2C, CONFIG_I2C_SAM0), kconfiglib path without recipe (`atmel,sam0-adc` → ADC_SAM0 → ADC; `gpio-leds` → LED_GPIO → LED), first load ≈ 5 s then cached. Agent stopped on one red test from registry pollution between test files; builder fix: autouse fixture in tests/conftest.py restores the registry after every test |
 | P3.4 | [P3.4.md](evidence/P3.4.md) | lab1: SERCOM0 on PB24/PB25 → 2 `pin_conflict` errors naming sercom0+sercom2; SERCOM3 on PC23+PA16 → IOSET warning with provider text; SERCOM1 I2C on PC22/PC23 and the board's SERCOM2 → no findings; missing rxpo → `missing_property` error. Preprocessing reproduces `zephyr_dt_preprocess` from build_info.yml. Warm 1.3–1.5 s (binding-file read cache around EDT, not thread-safe). Pre-existing conflicts (PC18) are `info` unless an overlay node is involved. **For P3.5:** the renderer emits no `#address-cells`/`#size-cells` for I2C/SPI unless they are in `vendor_props` — the recipe or the renderer must supply them. Builder re-run 7 passed |
 | P5.3 | [P5.3.md](evidence/P5.3.md) | lab1: 3 covered (sercom2 uart, sercom4 spi, sercom7 i2c), 41 uncovered enabled (34 SoC, 6 board, 1 overlay); lab3: 4 covered (+ sercom3 i2c PA22/PA23), 42 uncovered. Per-node and whole-draft edtlib compare: all MATCH (28 MATCH lines, 0 mismatch). Lifts only what board/app wrote (origin comments). Not representable yet: child nodes on buses (`eeprom@5e`, `mytemp@4f`) → phase 8. Builder re-run 3 passed |
+| P6.0 | [P6.0.md](evidence/P6.0.md) | `zephyr-main` = Zephyr 4.5.0-rc1, uses SDK 1.0.1 (installed); cmake-only pic32cx_sg41_cult hello_world 161 s. edtlib.py +753/−52 (new `_LocalProps`, `MapEntry`, `HexInt`). Plain sys.path add fails (`_LocalProps`); swap+purge works but is order dependent; **both module sets alive + `Unpickler.find_class` mapping works** (0.17 s), also across Python 3.12/3.14; subprocess JSON 0.45 s as fallback. Recommendation: `core/model_host.py` `EdtlibHost` per src dir, BuildModel changes only the unpickle lines |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
