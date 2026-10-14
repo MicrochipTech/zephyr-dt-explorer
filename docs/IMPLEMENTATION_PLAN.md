@@ -453,7 +453,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P7.1 | open | |
+| P7.1 | done | e5fcf55 → master |
 | P7.2 | open | |
 | P7.3 | open | |
 | P7.4 | open | |
@@ -527,4 +527,5 @@ surprising, and anything you were unsure about.
 | P1.3 | [P1.3.md](evidence/P1.3.md) | lab1: soc same54p20a, series same54, family atmel_sam0, board same54_xpro, vendor `atmel` (from board.yml; RTOS4 soc.yml has no vendor key); builder re-run 8 passed |
 | P2.1 | [P2.1.md](evidence/P2.1.md) | 27 Microchip/Atmel boards (builder reproduced); cmake-only lab1 35.4 s, 35 log lines streamed; bad board → rc 1 with Zephyr's message. **Note:** v4.3.0 has `pic32cx_sg61_cult` but no `pic32cx_sg41_cult` (needed from `zephyr-main`, P6) |
 | P3.1 | [P3.1.md](evidence/P3.1.md) | sam0-uart/i2c/spi and sercom-g1-uart → uart/i2c/spi via include chain; gclk → None; JSON round trip byte-identical; standalone `BindingIndex` in draft.py; builder re-run 9 passed |
+| P7.1 | [P7.1.md](evidence/P7.1.md) | SAME54 Xpro 255/296/1251, SG41 CUlt 281/322/1181 (= prototype); silkscreen 1600/1973 texts, builder found `EXT1`–`EXT3` / `EXT1`–`EXT2` among them. **For P7.3:** header footprints carry 20 extra pads numbered "0" without a net, ignore them |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

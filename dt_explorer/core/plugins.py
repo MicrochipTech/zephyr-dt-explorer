@@ -81,7 +81,7 @@ class BindingTranslation(Protocol):
 class BoardReader(Protocol):
     api_version: int
     name: str
-    extensions: list[str]           # lower case with dot, e.g. [".pcbdoc"]
+    extensions: list[str]           # lower case with dot, e.g. [".brd"]
     def read(self, path: Path) -> BoardNetlist: ...
 
 
