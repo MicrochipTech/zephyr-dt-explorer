@@ -284,7 +284,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P2.1 | done | 35480d1 → master |
 | P2.2 | done | 2c90c48 → master |
-| P2.3 | open | |
+| P2.3 | done | c5d66c2 → master |
 
 **P2.1 `west_tools`.** PS with P1.4–P1.7.
 - Dep: P1.1. Scope: `dt_explorer/core/west_tools.py`.
@@ -549,4 +549,5 @@ surprising, and anything you were unsure about.
 | P5.1 | [P5.1.md](evidence/P5.1.md) | 134/134 SERCOM signals round trip against the hal_microchip header (`include/dt-bindings/sam/sam_d5x_e5x/atsame54/atsame54p20a-pinctrl.h`); macro names identical to the old port (130 same, 0 different, 4 only new: SERCOM7 on PB30/PB31/PA30/PA31); `sercom2_uart_default` → PB25/PB24. Builder follow-up: `formatters/` and `providers/` register their modules on package import |
 | P3.2 | [P3.2.md](evidence/P3.2.md) | SERCOM2 lift TX=PB25 RX=PB24; exhaustive check accepts exactly UART 6 / SPI 6 / I2C 1 assignments (618/618/23 rejected); board nodes: SPI sercom4 MOSI PB27 SCK PB26 MISO PB29, I2C sercom7 SDA PD08 SCL PD09. Tables from ATDF value groups (binding has no SPI table; E5x offers only dopo 0/2). API extension: `pin_roles(instance, compatible=None)`, `kconfig(compatible=None)` — the Recipe protocol cannot name the class otherwise. Builder re-run 50 passed |
 | P1.8 | [P1.8.md](evidence/P1.8.md) | LICENSE = canonical Apache-2.0 (builder diffed against Zephyr's copy: only the `[]`/`{}` placeholder variant differs); CONTRIBUTING covers all 13 protocol methods and six plugin kinds; copyright "The Devicetree Explorer contributors". Builder follow-up: `app.load_plugins()` imports the built-in plugin packages and calls `discover_entry_points()` at startup; `readers/` registers on import. Open: vendor defaults in core/ui (`west_tools.DEFAULT_VENDORS`, `ui/new_build.py`) → card P2.3 |
+| P2.3 | [P2.3.md](evidence/P2.3.md) | 27 boards with provider vendors (builder reproduced), 823 with all vendors; no vendor strings in west_tools/new_build |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
