@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import copy
 import glob
-import pickle
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -252,17 +250,15 @@ def _sdk_gcc() -> Path:
 
 @pytest.fixture(scope="module")
 def edtlib(rtos4_ws):
-    src = rtos4_ws / "zephyr" / "scripts" / "dts" / "python-devicetree" / "src"
-    sys.path.insert(0, str(src))
-    from devicetree import edtlib as mod  # noqa: PLC0415
-    return mod
+    from dt_explorer.core.model_host import EdtlibHost  # noqa: PLC0415
+    return EdtlibHost.for_zephyr_base(rtos4_ws / "zephyr").edtlib
 
 
 @pytest.fixture(scope="module")
 def old_edt(rtos4_ws, rtos4_build, edtlib):
     build = rtos4_build("apps/lab1/build_same54_xpro")
-    with open(build / "zephyr" / "edt.pickle", "rb") as f:
-        return pickle.load(f)
+    from dt_explorer.core.model_host import EdtlibHost  # noqa: PLC0415
+    return EdtlibHost.for_zephyr_base(rtos4_ws / "zephyr").load_edt(build / "zephyr" / "edt.pickle")
 
 
 def _convert(node) -> dict:

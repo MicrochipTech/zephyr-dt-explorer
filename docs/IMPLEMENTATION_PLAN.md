@@ -314,7 +314,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P3.2 | done | 3876c45 |
 | P3.3 | done | 7037d88 |
 | P3.4 | done | cc9b28a |
-| P3.5 | running | |
+| P3.5 | done | b0d4f98 |
 
 **P3.1 Intent-based draft.**
 - Dep: P1.2. Scope: `dt_explorer/core/draft.py`.
@@ -560,4 +560,5 @@ surprising, and anything you were unsure about.
 | P6.0 | [P6.0.md](evidence/P6.0.md) | `zephyr-main` = Zephyr 4.5.0-rc1, uses SDK 1.0.1 (installed); cmake-only pic32cx_sg41_cult hello_world 161 s. edtlib.py +753/−52 (new `_LocalProps`, `MapEntry`, `HexInt`). Plain sys.path add fails (`_LocalProps`); swap+purge works but is order dependent; **both module sets alive + `Unpickler.find_class` mapping works** (0.17 s), also across Python 3.12/3.14; subprocess JSON 0.45 s as fallback. Recommendation: `core/model_host.py` `EdtlibHost` per src dir, BuildModel changes only the unpickle lines |
 | P1.7 | [P1.7.md](evidence/P1.7.md) | 9 geometry tests (pin 1 left/top, 32 per side, pin 33 first on bottom, BGA A1 top-left, TFBGA120 15×15 rows A–R without I/O/Q); screenshots TQFP128/TFBGA120 checked by the builder (pin 100 = PB24, PC18 conflict orange). Builder follow-up: conftest keeps built-in plugins that were first imported during a test; full suite 281 passed, 4 skipped |
 | P6.1 | [P6.1.md](evidence/P6.1.md) | lab1 (86 nodes, v4.3.0) and main pic32cx_sg41_cult hello_world (111 nodes, 4.5.0-rc1) open together in both orders; lab1 still equals its golden; no `devicetree*` left in sys.modules/sys.path; validate() works on both. `kconfig_suggest.py` still patches sys.path itself (main builds not covered there). Full suite 286 passed, 0 skipped (all three env vars). Builder re-run of test_model_host passed |
+| P3.5 | [P3.5.md](evidence/P3.5.md) | Playwright on lab1: SERCOM1 → I2C, SDA PC22, SCL PC23, 100 kHz → snippet with `#address-cells`/`#size-cells` (render now emits binding `const` props), CONFIG_I2C + CONFIG_I2C_SAM0, check 0 errors (PC18 info only), PC22/PC23 purple in the package view; negative: SERCOM0 on PB24/PA05 → 2 pin_conflict errors + IOSET warning. 301 passed. Also fixed: tab clicks delivered strings (Pins/Package were empty on click). Builder: screenshot checked; test_render/test_translate now load edtlib via EdtlibHost (passed only in suite order before). Cosmetic: base-binding props `sq-size`/`cq-size` appear as I2C fields → P3.6 |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

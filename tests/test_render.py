@@ -201,7 +201,8 @@ def edt_summary(edt, label: str) -> dict:
 def compile_edt(model, dts_text: str, tmp: Path):
     """cpp + edtlib on a DTS text (pinctrl macros need the Zephyr headers)."""
     from dt_explorer.core.buildinfo import parse_cmake_cache, parse_zephyr_modules
-    from devicetree import edtlib
+    from dt_explorer.core.model_host import EdtlibHost
+    edtlib = EdtlibHost.for_zephyr_base(model.zephyr_base).edtlib
     cache = parse_cmake_cache(model.build / "CMakeCache.txt")
     gcc = Path(cache.get("CMAKE_C_COMPILER", ""))
     if not gcc.is_file():
