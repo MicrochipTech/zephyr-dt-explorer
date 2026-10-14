@@ -360,7 +360,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P5.0 | open | |
+| P5.0 | done | 8b37419 → master |
 | P5.1 | open | |
 | P5.2 | open | |
 | P5.3 | open | |
@@ -521,4 +521,5 @@ surprising, and anything you were unsure about.
 | Card | Evidence | Notes |
 |---|---|---|
 | P0.1 | [P0.1.md](evidence/P0.1.md) | 5 goldens (lab0 85 nodes, lab1 86, lab3 89, lab1_leer 85, lab1 cmake-only 86); negative test fails on one changed state; `DTX_GOLDEN_DIR` points the test at a copy; builder re-run: 13 passed, 2 skipped |
+| P5.0 | [P5.0.md](evidence/P5.0.md) | rows = properties for all 10 source bindings (uart 45, i2c 39, spi 41, sercom 30, gpio 34, pinctrl 34, pinmux 28, gclk 32, mclk 29, osc32kctrl 32). **Finding:** v4.3.0 has no `microchip,sercom-g1-i2c`/`-spi` binding or driver (dtsi references `sercom-g1-i2c` without YAML; builder confirmed). P5.2 therefore covers UART, GPIO, pinctrl and clocks; I2C/SPI translation is checked against `zephyr-main` at P6.1. 92 old-only pin macro names need a rename map. |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
