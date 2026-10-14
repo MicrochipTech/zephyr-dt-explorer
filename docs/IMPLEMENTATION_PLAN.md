@@ -206,7 +206,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P1.1 | done | d116ebe |
 | P1.2 | done | 92bfd80 |
-| P1.3 | open | |
+| P1.3 | done | c214f54 → master |
 | P1.4 | open | |
 | P1.5 | open | |
 | P1.6 | open | |
@@ -282,7 +282,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P2.1 | open | |
+| P2.1 | done | 35480d1 → master |
 | P2.2 | open | |
 
 **P2.1 `west_tools`.** PS with P1.4–P1.7.
@@ -524,4 +524,6 @@ surprising, and anything you were unsure about.
 | P5.0 | [P5.0.md](evidence/P5.0.md) | rows = properties for all 10 source bindings (uart 45, i2c 39, spi 41, sercom 30, gpio 34, pinctrl 34, pinmux 28, gclk 32, mclk 29, osc32kctrl 32). **Finding:** v4.3.0 has no `microchip,sercom-g1-i2c`/`-spi` binding or driver (dtsi references `sercom-g1-i2c` without YAML; builder confirmed). P5.2 therefore covers UART, GPIO, pinctrl and clocks; I2C/SPI translation is checked against `zephyr-main` at P6.1. 92 old-only pin macro names need a rename map. |
 | P1.1 | [P1.1.md](evidence/P1.1.md) | core/build.py 472 lines (stdlib only, no nicegui), ui/page.py 568, app.py 21, launcher 17; goldens unchanged; builder re-run: 13 passed, HTTP 200 on a deep link, no traceback |
 | P1.2 | [P1.2.md](evidence/P1.2.md) | 8 tests; negative test fails with the check removed; filled gaps: api_version equality, board reader `extensions`/`read`, connector `pin_roles`/`detect`/`zephyr_binding`, translation `source`/`target`/`translate` |
+| P1.3 | [P1.3.md](evidence/P1.3.md) | lab1: soc same54p20a, series same54, family atmel_sam0, board same54_xpro, vendor `atmel` (from board.yml; RTOS4 soc.yml has no vendor key); builder re-run 8 passed |
+| P2.1 | [P2.1.md](evidence/P2.1.md) | 27 Microchip/Atmel boards (builder reproduced); cmake-only lab1 35.4 s, 35 log lines streamed; bad board → rc 1 with Zephyr's message. **Note:** v4.3.0 has `pic32cx_sg61_cult` but no `pic32cx_sg41_cult` (needed from `zephyr-main`, P6) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
