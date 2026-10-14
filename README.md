@@ -48,3 +48,9 @@ More URL parameters: `&tab=include`, `&src=<file relative to the west workspace>
 
 Python with `nicegui` and `pyyaml` (`py -m pip install nicegui pyyaml`). Zephyr's `edtlib` is
 loaded from the workspace (`zephyr/scripts/dts/python-devicetree`).
+
+## License
+
+Copyright 2026 The Devicetree Explorer contributors. Licensed under the Apache License, Version 2.0;
+see [LICENSE](LICENSE). Contributions are accepted under the same license. To write a plugin, see
+[CONTRIBUTING.md](CONTRIBUTING.md).

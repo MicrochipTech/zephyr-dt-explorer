@@ -74,3 +74,8 @@ The file has three layers, top to bottom:
   for comparison). Keep `Path` handling compatible with that.
 - Keep NiceGUI out of `core/`. Add new data in `BuildModel` (`core/build.py`) and new rendering in `page()` (`ui/page.py`).
 - When a feature is visible to users, update the table in README.md and `docs/GUI.md` in the same change.
+
+## License and contributions
+
+Apache-2.0 (`LICENSE`). Writing a provider, formatter, recipe, translation, board reader or connector
+type: see `CONTRIBUTING.md`. Keep vendor names out of `core/` and `ui/`.
