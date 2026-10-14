@@ -9,7 +9,7 @@ from pathlib import Path
 
 from nicegui import ui
 
-from . import new_build, package_view, pinmap
+from . import configure, draft_tab, new_build, package_view, pinmap
 from ..core.build import (DRV_COMPAT_RE, HELPER_HEADER, ORIGIN_STYLE, STATE_STYLE, BuildModel,
                           NodeOrigin, find_builds, fkey, fmt_value, header_defines, node_ident,
                           origin_kind)
@@ -123,7 +123,7 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
          macros: int = 0, bprops: int = 0):
     """Optional via URL: /?build=apps/lab1/build_same54_xpro&node=/my_led@41008000
     plus &src=<file relative to the west workspace>&line=<n> to open a source file,
-    &tab=include to start on the include tree, &tab=pins for the pin map, &tab=package for the package view, &file=<relative path> to select a file
+    &tab=include to start on the include tree, &tab=pins for the pin map, &tab=package for the package view, &tab=draft for the configurator draft, &file=<relative path> to select a file
     in the include tree, &macros=1 to expand the generated-macro section, &bprops=1 to expand
     the list of all properties the binding allows."""
     ui.page_title("Devicetree Explorer")
@@ -239,6 +239,8 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                 tab_inc = ui.tab("Include tree")
                 tab_pins = ui.tab("Pins")
                 tab_pkg = ui.tab("Package")
+                with ui.tab("Draft") as tab_draft:
+                    draft_badge = ui.badge(str(configure.draft_count(m)), color="purple-6")                         .props("id=draft-badge").classes("q-ml-xs")
             with ui.tab_panels(tabs, value=tab_nodes).classes("w-full").style("background: transparent"):
                 with ui.tab_panel(tab_nodes).classes("p-1"):
                     flt = ui.input("Filter (name/label)").props("dense clearable").classes("w-full")
@@ -268,6 +270,8 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                     pins_box = ui.column().classes("w-full gap-1")
                 with ui.tab_panel(tab_pkg).classes("p-1"):
                     pkg_box = ui.column().classes("w-full gap-1")
+                with ui.tab_panel(tab_draft).classes("p-1"):
+                    draft_box = ui.column().classes("w-full gap-1")
         with sp.after:
             detail = ui.column().classes("w-full p-3 gap-3")
 
@@ -292,19 +296,47 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
             t.expand()
     helpers.on_value_change(lambda _: render_includes())
 
+    def is_(t):
+        # a click on a tab delivers its name (str); set_value(tab) delivers the element: accept both
+        return tabs.value in (t, t.props["name"])
+
     def on_tab(_=None):
         # the pin table needs width: widen the left pane while the Pins tab is active
-        if tabs.value == tab_pins:
+        if is_(tab_pins):
             sp.set_value(78)
             if not pins_box.default_slot.children:
                 pinmap.render_pin_map(pins_box, m, goto)
-        elif tabs.value == tab_pkg:
+        elif is_(tab_pkg):
             sp.set_value(60)
             if not pkg_box.default_slot.children:
-                package_view.render_package_view(pkg_box, m, goto)
+                package_view.render_package_view(pkg_box, m, goto,
+                                                 draft_pads=configure.session_for(m).draft_pads)
+        elif is_(tab_draft):
+            sp.set_value(60)
+            draft_tab.render_draft_tab(draft_box, configure.session_for(m), start_configure_label,
+                                       draft_changed)
         else:
             sp.set_value(34)
     tabs.on_value_change(on_tab)
+
+    def draft_changed(saved=None):
+        """The draft changed: update the badge, drop the stale package picture, show the Draft tab."""
+        sess = configure.session_for(m)
+        draft_badge.text = str(len(sess.draft.nodes))
+        pkg_box.clear()
+        draft_box.clear()
+        if is_(tab_draft):
+            on_tab()
+        else:
+            tabs.set_value(tab_draft)
+
+    def start_configure(n):
+        configure.open_configure(configure.session_for(m), n, draft_changed)
+
+    def start_configure_label(label):
+        n = configure.session_for(m).node_for_label(label)
+        if n is not None:
+            start_configure(n)
 
     def goto(path):
         tabs.set_value(tab_nodes)
@@ -502,6 +534,8 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                 ui.icon("circle", color=STATE_STYLE[st][0])
                 ui.label(STATE_STYLE[st][1]).classes("font-bold")
             ui.label(why).classes("text-sm")
+            if n.status == "disabled" and configure.can_configure(configure.session_for(m), n):
+                ui.button("Configure…", icon="tune", on_click=lambda _e, node=n: start_configure(node))                     .props("no-caps outline dense id=cfg-open")
             for d in m.drivers_for(n):
                 built = "compiled" if d in m.compiled else "not compiled"
                 txt = d.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -588,6 +622,8 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         tabs.set_value(tab_pins)
     elif tab == "package":
         tabs.set_value(tab_pkg)
+    elif tab == "draft":
+        tabs.set_value(tab_draft)
     elif tab == "include" or file:
         tabs.set_value(tab_inc)
     if file:

@@ -15,9 +15,10 @@ COLORS = {          # fill, stroke
     "used": ("#2e9d4a", "#5fd37c"),
     "conflict": ("#e8a317", "#ffd166"),
     "other": ("#2b3a55", "#44587e"),
+    "draft": ("#a64dff", "#d9a8ff"),
 }
 LABELS = {"free": "free", "used": "used", "conflict": "conflict (more than one user)",
-          "other": "power / other"}
+          "other": "power / other", "draft": "draft (not built yet)"}
 BG, BODY, TEXT, DIM = "#1b1f27", "#262c38", "#d8dee9", "#8791a5"
 SELECT = "#ffffff"
 
@@ -130,7 +131,9 @@ def build_svg(lay: pl.PackageLayout, rows: list[dict], title: str, selected: str
 
 def _legend(counts: dict[str, int]) -> None:
     with ui.row().classes("items-center gap-4"):
-        for st in ("free", "used", "conflict", "other"):
+        for st in ("free", "used", "conflict", "other", "draft"):
+            if st == "draft" and not counts.get("draft"):
+                continue
             with ui.row().classes("items-center gap-1"):
                 ui.html(f'<span style="display:inline-block;width:14px;height:14px;border-radius:3px;'
                         f'background:{COLORS[st][0]};border:1px solid {COLORS[st][1]}"></span>',
@@ -138,8 +141,26 @@ def _legend(counts: dict[str, int]) -> None:
                 ui.label(f"{LABELS[st]}: {counts.get(st, 0)}").classes("text-xs text-grey-4")
 
 
-def render_package_view(container, model, goto) -> None:
-    """Fill `container` with the package picture of `model` (a BuildModel); `goto(path)` opens a node."""
+def mark_draft(rows: dict[str, dict], draft_pads: dict[str, list[str]]) -> dict[str, dict]:
+    """Copy of `rows` (position -> row) where pins taken by the draft get state "draft".
+
+    `draft_pads` maps a pad to texts like ``"sercom1 SDA (draft)"``; they are added to the row's users.
+    """
+    out = {}
+    for pos, r in rows.items():
+        if r["pad"] in draft_pads and r["state"] != "other":
+            r = {**r, "state": "draft",
+                 "users": r["users"] + [{"path": "draft", "use": t} for t in draft_pads[r["pad"]]]}
+        out[pos] = r
+    return out
+
+
+def render_package_view(container, model, goto, draft_pads=None) -> None:
+    """Fill `container` with the package picture of `model` (a BuildModel); `goto(path)` opens a node.
+
+    `draft_pads()` (optional) returns {pad: [text]} of the pads the configurator's draft takes; they
+    are drawn in the "draft" colour.
+    """
     load_builtin_plugins()
     container.clear()
     info = read_build_info(model.build)
@@ -166,7 +187,8 @@ def render_package_view(container, model, goto) -> None:
         svg_box = ui.column().classes("w-full items-center")
 
         def rows_for() -> dict[str, dict]:
-            return {r["position"]: r for r in (_row(x) for x in pins.pin_rows(usage, pkg_sel.value))}
+            rows = {r["position"]: r for r in (_row(x) for x in pins.pin_rows(usage, pkg_sel.value))}
+            return mark_draft(rows, draft_pads()) if draft_pads else rows
 
         def show_detail() -> None:
             detail.clear()

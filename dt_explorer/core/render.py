@@ -53,6 +53,7 @@ class RenderContext:
     workspace: Path | None = None               # with `soc`: formatter.for_workspace() if it has one
     soc: str | None = None
     existing_compatibles: dict[str, str] = field(default_factory=dict)  # label -> compatible now
+    bindings: object | None = None              # draft.BindingIndex; adds `const` properties of the binding chain
 
 
 def _formatter(ctx: RenderContext):
@@ -100,6 +101,28 @@ def _signals(node: DraftNode, ctx: RenderContext) -> list[tuple[str, Signal]]:
     return out
 
 
+def const_props(compatible: str | None, index) -> dict:
+    """Properties that the binding chain of `compatible` declares with a ``const`` value.
+
+    A node needs them (e.g. the cell counts of a bus controller) but the user never chooses them.
+    `index` is a ``draft.BindingIndex``; without one, or for an unknown compatible, the result is empty.
+    """
+    if index is None or not compatible:
+        return {}
+    start = index.find(compatible)
+    if start is None:
+        return {}
+    out: dict = {}
+    for item in index.chain(start):
+        if not isinstance(item, Path):
+            continue
+        for name, spec in (index.load(item).get("properties") or {}).items():
+            if (isinstance(spec, dict) and "const" in spec and name not in out
+                    and name not in ("compatible", "status")):
+                out[name] = spec["const"]
+    return out
+
+
 def _indent(text: str, tabs: int) -> str:
     pad = "\t" * tabs
     return "\n".join(pad + ln if ln else ln for ln in text.splitlines())
@@ -112,6 +135,7 @@ def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, l
     props: dict = {"status": "okay"}
     if node.compatible and ctx.existing_compatibles.get(label) != node.compatible:
         props["compatible"] = node.compatible
+    props.update(const_props(node.compatible, ctx.bindings))
     props.update(node.props)
 
     group = None
