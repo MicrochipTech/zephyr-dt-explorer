@@ -1,0 +1,472 @@
+# Implementation plan: peripheral configurator
+
+This plan turns [CONFIGURATOR.md](CONFIGURATOR.md) into work cards. A **builder agent** (the
+orchestrating Claude Code session) reads this file, picks the next card, briefs a **sub-agent** to do
+it, checks the result, and records it here. The design itself lives in CONFIGURATOR.md. This file
+says only *in which order*, *by whom*, *with which write scope* and *how it is checked*.
+
+Read first: CONFIGURATOR.md (design and decisions), CLAUDE.md (repo conventions).
+
+---
+
+## 1. Roles
+
+| Role | Model | Does | Never does |
+|---|---|---|---|
+| **Builder** (main session) | session model | picks cards, writes briefs, reviews the result, updates the status table (§6) and the evidence index, asks the human at checkpoints | writes product code beyond trivial fixes; trusts a report without checking it |
+| **Sub-agent** (one fresh agent per card) | `sonnet`; `haiku` for cards marked *light* | implements exactly one card inside its write scope, runs the acceptance commands, writes the evidence file, makes one commit | edits this plan, edits files outside its write scope, pushes, starts the next card |
+| **Human** | – | decides at the checkpoints (§5), approves anything outward-facing | – |
+
+The builder keeps its own context small. Sub-agents start fresh and are discarded after their
+card. **The state lives in the repo, not in any agent:** this plan (status), CONFIGURATOR.md
+(decisions), `docs/evidence/<card>.md` (proof), one commit per card. Any builder session can take
+over from any other.
+
+## 2. Rules for every card
+
+1. **One card = one commit** on `master` (or on the worktree branch, see 6). Commit message starts
+   with the card ID: `P3.2: SERCOM recipe with lift`.
+2. **Stage only explicit paths** from the card's write scope. Never `git add -A` or `git add .`.
+3. **No `Co-Authored-By` trailer**, no AI attribution in commits. **No push.**
+4. **Write scope is binding.** If the card cannot be done without touching another file, stop
+   (see 4) instead of widening the scope.
+5. **Evidence file** `docs/evidence/<card>.md`: the acceptance commands and their **complete,
+   unfiltered** output (tail only for logs over 200 lines, saying so), plus any number the card
+   claims. No summaries in place of output.
+6. **Parallel work only in a separate git worktree** (`isolation: "worktree"`) and only for cards
+   marked *parallel-safe* whose write scopes are disjoint *for their whole run*. A card that moves
+   code is never parallel to a card that touches that code. Remove the worktree before the next agent
+   uses the same branch.
+7. **Card size:** target ≤ 60 tool calls. A sub-agent that sees the card growing beyond that stops
+   after a clean, committed intermediate state and reports what remains. The builder then splits
+   the card.
+8. **Data that the repo must not contain:** board design files, MPLAB packs, build folders. Tests
+   that need them read paths from environment variables (§3) and are skipped with a clear reason
+   when the variables are unset.
+9. Python on this machine: `py`. Do not use `py -I` for scripts that need user-installed packages
+   (`olefile`, `nicegui`); it hides them.
+
+## 3. Environment facts
+
+| What | Where |
+|---|---|
+| Repo | `C:\Masters\dt_explorer` (branch `master`) |
+| RTOS4 workspace (Zephyr v4.3.0, old `atmel` port) | `C:\Masters\26020_RTOS4\zephyrproject`; west: `.venv\Scripts\python.exe -m west` from the workspace root |
+| Lab builds (full) | `apps\lab0..lab3\build_same54_xpro`, `_soltest\apps\lab1_leer\build_same54_xpro` |
+| `hal_microchip` with 91 ATDF | `…\zephyrproject\modules\hal\microchip\packs\` (fetched 2026-10-14) |
+| Installed DFPs | `%USERPROFILE%\.mchp_packs\Microchip\*_DFP\`, `C:\Program Files\Microchip\MPLABX\v6.35\packs\` |
+| Board design files (not in repo) | `C:\Masters\board_design_files\same54_xpro\`, `…\pic32cx_sg41_cult\` |
+| Current-Zephyr workspace (planned) | `C:\Masters\zephyr-main` (created at checkpoint HC-3) |
+| Toolchain | Zephyr SDK 0.17.4, `C:\Users\M91221\zephyr-sdk-0.17.4` |
+
+Environment variables for tests: `DTX_RTOS4_WS`, `DTX_MAIN_WS`, `DTX_DESIGN_FILES`. The builder sets
+them in each brief.
+
+Scratch builds go to the session scratchpad or `%TEMP%`, never into the workspace's app folders,
+unless a card says otherwise.
+
+## 4. Stop conditions (complete list)
+
+A sub-agent stops, commits nothing half-done, and reports to the builder **only** when:
+
+1. the card needs a file outside its write scope;
+2. an acceptance command fails and the cause is outside the card (environment, another module,
+   Zephyr itself);
+3. a golden or existing test changes its result and the card did not intend that change;
+4. the design in CONFIGURATOR.md is contradictory or silent on something the card must decide;
+5. an outward-facing action would be needed (push, upstream PR, download outside the listed
+   sources, installing system software);
+6. the card exceeds its size limit (rule 2.7).
+
+**Anything else means: keep working.** Context length or cost is not a reason to stop. A result
+outside a tolerance is a finding to report, not a reason to retry blindly.
+
+## 5. Human checkpoints
+
+The builder stops the whole run and asks the human (with options and a recommendation) at:
+
+| ID | When | Question |
+|---|---|---|
+| HC-1 | before P1.8 | License for the open-source repo (proposal: Apache-2.0, matches Zephyr) |
+| HC-2 | after P1.7 | Review of the read-only pin map and package view: good enough to build the configurator on? |
+| HC-3 | before P6.1 | Create `C:\Masters\zephyr-main` (several GB download, `west init` + `west update`) |
+| HC-4 | after P5.5 | Review of the first port `same54_xpro` → `sam_e54_xpro` on the real board |
+| HC-5 | before P7.3 for SG61 | SG61 Curiosity Ultra design files available? |
+| HC-6 | after P7.3 | Confirm connector names and types in the generated board YAML |
+| HC-7 | any time | Anything matching stop condition 4 or 5 that the builder cannot settle from CONFIGURATOR.md |
+
+Decisions the human makes are added to the *Decisions* table in CONFIGURATOR.md (by the builder)
+before the dependent card starts.
+
+## 6. Builder loop
+
+For each card:
+
+1. Pick the next `open` card whose dependencies are `done` (§8). Prefer the critical path (§7).
+2. Write the brief from the template (§9). Fill in write scope, acceptance, environment variables.
+3. Start one sub-agent (`subagent_type: general-purpose`, `model: sonnet` or `haiku`,
+   `run_in_background: true`; `isolation: "worktree"` only for parallel-safe cards running next to
+   another card).
+4. While it runs, the builder may start another *parallel-safe* card with a disjoint scope. The
+   builder session must not be cleared while a sub-agent runs; its completion only reaches this
+   session.
+5. **Review** when it reports. The builder checks, it does not trust:
+   - `git show --stat <commit>`: only files in the write scope, only explicit paths;
+   - re-run the acceptance commands itself (or at least the fastest one) and compare with the
+     evidence file;
+   - read the numbers and claims in the evidence file, not only PASS lines; numbers that do not fit
+     together are a finding;
+   - dependency direction: core never imports `providers/`, `formatters/`, `recipes/`,
+     `translations/`, `readers/`, `connectors/`, `ui/`; plugins import only `core`; nothing imports
+     `prototypes/`;
+   - no vendor terms (ATDF, IOSET, `.mchp_packs`, `PA09`…) in `core/` or `ui/` (CONFIGURATOR.md,
+     *What must not happen now*);
+   - a negative test that passes is an alarm: check that it really can fail.
+6. Update §8: status `done`, commit hash, evidence link. Or `blocked` with the reason, or split the
+   card (new IDs `P3.2a`, `P3.2b`).
+7. Commit the plan update separately: `plan: P3.2 done`.
+
+## 7. Version 1 and critical path
+
+**Version 1 = phases 0–7** (main use case: port SAME54 projects to PIC32CX SG41/SG61, with board
+view). Phases 8–10 of CONFIGURATOR.md (child nodes, custom board wizard, class-based porting) are
+not part of version 1 and get cards only after HC-4 and HC-6 are done. New ideas during the run go to
+the *Backlog* (§10), not into open cards.
+
+Critical path: P0.1 → P1.1 → P1.2 → P1.4 → P1.5 → P3.1 → P3.2 → P3.3 → P3.4 → P4.1 → P5.0 → P5.2 →
+P5.3 → P5.4 → P5.5 → P6.1 → P6.2.
+The board branch (P7.x) can run in parallel after P1.2.
+
+## 8. Cards
+
+Legend: **Dep** = dependencies; **Scope** = files the card may create or change (plus its own
+`docs/evidence/<ID>.md` and test files under `tests/` named after the module); **PS** =
+parallel-safe; *light* = may use `haiku`.
+
+Status values: `open`, `running`, `done`, `blocked`.
+
+### Phase 0: measuring instruments
+
+| ID | Status | Commit |
+|---|---|---|
+| P0.1 | open | |
+| P0.2 | open | |
+
+**P0.1 Golden snapshots of today's explorer.**
+- Dep: –. Scope: `tools/snapshot_build.py`, `tests/golden/*.json`, `tests/test_golden.py`,
+  `requirements-dev.txt`.
+- Do: a script that loads a build with today's `BuildModel` and writes a stable JSON:
+  node paths, state per node, origin file:line per property, drivers per node, include-tree file
+  count, code refs, orphan drivers. Paths relative to the west workspace. Record goldens for lab0,
+  lab1, lab3 and `lab1_leer` (full builds) plus one `--cmake-only` build of lab1 into `%TEMP%`.
+  `test_golden.py` compares a fresh snapshot with the golden; it skips when `DTX_RTOS4_WS` is unset.
+- Accept: `py -m pytest tests/test_golden.py -v` passes; then deliberately change one state in a
+  copy of a golden and show the test fails (evidence: both outputs).
+- Why first: every later refactoring card proves "no behaviour change" with it.
+
+**P0.2 Test scaffolding.** *light*
+- Dep: –. PS with P0.1 (disjoint scope). Scope: `pyproject.toml` (pytest config only),
+  `tests/conftest.py` (env-var fixtures, skip helpers).
+- Accept: `py -m pytest -q` runs and reports skips with reasons when the env vars are unset.
+
+### Phase 1: package, plugins, pin map
+
+| ID | Status | Commit |
+|---|---|---|
+| P1.1 | open | |
+| P1.2 | open | |
+| P1.3 | open | |
+| P1.4 | open | |
+| P1.5 | open | |
+| P1.6 | open | |
+| P1.7 | open | |
+| P1.8 | open | |
+
+**P1.1 Move today's code into the package.** Not parallel to anything.
+- Dep: P0.1, P0.2. Scope: `dt_explorer/` (new package), `dt_explorer.py` (thin launcher),
+  `dt_explorer.bat`, `CLAUDE.md` (architecture section only), `docs/make_screenshots.py` (paths only).
+- Do: `dt_explorer/core/build.py` (parsers, `DriverIndex`, `BuildModel`, `find_builds`),
+  `dt_explorer/ui/page.py` (everything NiceGUI). Pure move plus imports; no behaviour change.
+- Accept: goldens unchanged (`py -m pytest tests/test_golden.py`); `py dt_explorer.py <ws>
+  --no-browser` starts and `http://localhost:8765/?build=apps/lab1/build_same54_xpro&node=/my_led@41008000`
+  returns HTTP 200 (curl in evidence); `dt_explorer.bat` still works.
+
+**P1.2 Neutral device model and plugin registry.**
+- Dep: P1.1. Scope: `dt_explorer/core/device.py`, `dt_explorer/core/plugins.py`.
+- Do: dataclasses `DeviceModel`, `Package`, `Instance`, `Signal`, `Constraint` exactly as in
+  CONFIGURATOR.md; protocols for provider, formatter, recipe, translation, board reader, connector
+  type; registry with decorators, entry-point discovery (`dt_explorer.providers` etc.) and
+  `api_version` check that skips incompatible plugins with a logged reason.
+- Accept: tests for registration, entry-point discovery (with a fake distribution) and a rejected
+  plugin with the wrong `api_version`.
+
+**P1.3 `BuildInfo`.** *light*, PS with P1.2.
+- Dep: P1.1. Scope: `dt_explorer/core/buildinfo.py`.
+- Do: read `CONFIG_SOC`, `CONFIG_SOC_SERIES`, `CONFIG_SOC_FAMILY` from `zephyr/.config`, vendor from
+  the SoC's `soc.yml`/board's `board.yml`, west workspace and module dirs from `CMakeCache.txt` /
+  `zephyr_modules.txt`.
+- Accept: for lab1 `CONFIG_SOC == "same54p20a"`; test with a synthetic build folder.
+
+**P1.4 ATDF provider.**
+- Dep: P1.2, P1.3. Scope: `dt_explorer/providers/microchip_atdf.py`,
+  `tests/fixtures/atdf/` (trimmed excerpts from `hal_microchip`, Apache-2.0, with a README naming the
+  source file and revision).
+- Do: `matches`, `locate` (order: `hal_microchip/packs`, `.mchp_packs`, MPLAB X packs; pattern
+  search, natural version sort, never recursive over pack roots), `load` into the neutral model.
+  IOSET becomes `Signal.group` plus a `Constraint` with the warning text.
+- Accept: `locate` finds `ATSAME54P20A.atdf` for lab1 in under 1 s (time in evidence); SERCOM2
+  PAD0 has exactly the pads PA09, PB25, PA12, PB26; the TQFP128 package has 128 positions; SG61
+  lacks PB26–PB29/PC04 (fixture test).
+
+**P1.5 `atmel,sam0-pinctrl` formatter.**
+- Dep: P1.2, P1.4. Scope: `dt_explorer/formatters/atmel_sam0.py`.
+- Do: `to_overlay`, `from_overlay`, `render_group`; leading-zero conversion (`PA09D` ↔ `PA9D`);
+  every generated name checked against the Zephyr header `same54p-pinctrl.h`.
+- Accept: round trip for all SERCOM signals of SAME54P20A; `from_overlay` reads the pins of
+  `same54_xpro-pinctrl.dtsi` (`sercom2_uart_default` → PB25/PB24); a name missing in the header is an
+  error.
+
+**P1.6 Pin map table (UI, read-only).**
+- Dep: P1.4, P1.5. Scope: `dt_explorer/ui/pinmap.py`, `dt_explorer/ui/page.py` (tab only),
+  `dt_explorer/core/pins.py` (used pins from the devicetree: `pinctrl-0` values via the formatter, GPIO
+  phandles).
+- Accept: unit test for used pins of lab1 (console PB24/PB25 and the LED pin); screenshot of the tab
+  in evidence; goldens unchanged.
+
+**P1.7 Package view (UI, read-only).**
+- Dep: P1.6. Scope: `dt_explorer/core/package_layout.py`, `dt_explorer/ui/package_view.py`,
+  `dt_explorer/ui/page.py` (tab only).
+- Do: layout functions QFP/QFN (four sides, counter-clockwise from pin 1) and BGA (grid from ball
+  names); SVG with pins coloured by state.
+- Accept: geometry tests (pin 1 position, 32 pins per side for QFP128, BGA A1 top-left); screenshots
+  of TQFP128 and TFBGA120 in evidence. Then **HC-2**.
+
+**P1.8 Open-source files.** *light*
+- Dep: HC-1. Scope: `LICENSE`, `CONTRIBUTING.md`, `README.md` (license line), `CLAUDE.md`.
+- Accept: CONTRIBUTING.md explains how to write a provider, formatter, recipe, translation, board
+  reader and connector type, with the Microchip plugins as the reference.
+
+### Phase 2: builds from the tool
+
+| ID | Status | Commit |
+|---|---|---|
+| P2.1 | open | |
+| P2.2 | open | |
+
+**P2.1 `west_tools`.** PS with P1.4–P1.7.
+- Dep: P1.1. Scope: `dt_explorer/core/west_tools.py`.
+- Do: background subprocess runner with streamed log; board list from `board.yml` files filtered by
+  vendor (`microchip`, `atmel`); `cmake_only_build(app, board, build_dir)`, `full_build(build_dir)`.
+- Accept: board list contains `same54_xpro`, `sam_e54_xpro`, `pic32cx_sg61_cult` (27 Microchip/Atmel
+  boards in the RTOS4 workspace); a cmake-only build of lab1 into `%TEMP%` succeeds (≈ 25 s).
+
+**P2.2 "New build…" and "Full build" UI.**
+- Dep: P2.1. Scope: `dt_explorer/ui/new_build.py`, `dt_explorer/ui/page.py` (header button only).
+- Accept: screenshot; after the dialog the new build appears in the build list and shows
+  `notlinked` states; goldens unchanged.
+
+### Phase 3: SERCOM configurator
+
+| ID | Status | Commit |
+|---|---|---|
+| P3.1 | open | |
+| P3.2 | open | |
+| P3.3 | open | |
+| P3.4 | open | |
+| P3.5 | open | |
+
+**P3.1 Intent-based draft.**
+- Dep: P1.2. Scope: `dt_explorer/core/draft.py`.
+- Do: draft model as in CONFIGURATOR.md (class from base binding include chain, roles, neutral
+  properties, use; instance, pins, vendor properties separate); JSON persistence at
+  `<app>/.dt_explorer/<build>.draft.json`.
+- Accept: class detection gives `uart` for `atmel,sam0-uart` (via `uart-controller.yaml`) and `i2c`,
+  `spi` likewise; JSON round trip.
+
+**P3.2 SERCOM recipe including `lift`.**
+- Dep: P3.1, P1.5. Scope: `dt_explorer/recipes/atmel_sam0_sercom.py`.
+- Do: roles, `derived_props` (`rxpo`/`txpo`, `dipo`/`dopo`), `lift`, Kconfig table.
+- Accept: `lift` on `same54_xpro` SERCOM2 (`rxpo=1`, `txpo=0`, PB25 PAD0, PB24 PAD1) gives TX = PB25,
+  RX = PB24; derive → lift round trip for every valid pad combination.
+
+**P3.3 Overlay rendering and Kconfig suggestions.**
+- Dep: P3.2. Scope: `dt_explorer/core/render.py`, `dt_explorer/core/kconfig_suggest.py`.
+- Do: `render_overlay` through the formatter; Kconfig from the recipe table, otherwise derived with
+  the workspace's `kconfiglib` (`DT_HAS_<COMPAT>_ENABLED`, follow `depends on`).
+- Accept: the rendered SERCOM2 UART block matches the `same54_xpro.dts` block semantically (edtlib
+  compare, not text compare); suggestions for an I2C SERCOM include `CONFIG_I2C`.
+
+**P3.4 Fast check.**
+- Dep: P3.3. Scope: `dt_explorer/core/validate.py`; `dt_explorer/core/build.py` (only: construct
+  `BuildModel` from an EDT object).
+- Do: edtlib on `zephyr.dts.pre` + overlay with resolved macros; pin conflicts; provider
+  constraints as warnings; missing required properties.
+- Accept: a deliberate conflict (second UART on PB24) is reported; an IOSET mix is a warning; a
+  correct overlay yields no findings; goldens unchanged.
+
+**P3.5 Configurator UI.**
+- Dep: P3.4, P1.7. Scope: `dt_explorer/ui/configure.py`, `dt_explorer/ui/draft_tab.py`,
+  `dt_explorer/ui/package_view.py`, `dt_explorer/ui/page.py` (button, tab, badge only).
+- Accept: end-to-end in the browser (Playwright or screenshots): configure an unused SERCOM as I2C,
+  the snippet appears in the Draft tab, the package view highlights the pins; README and
+  `docs/GUI.md` updated in a follow-up *light* card P3.6 (scope: those two files).
+
+### Phase 4: authoritative check
+
+| ID | Status | Commit |
+|---|---|---|
+| P4.1 | open | |
+
+**P4.1 "Verify with west" and file output.**
+- Dep: P3.5, P2.1. Scope: `dt_explorer/core/verify.py`, `dt_explorer/ui/draft_tab.py`.
+- Do: `west build --cmake-only` into a scratch dir with `-DEXTRA_DTC_OVERLAY_FILE`/
+  `-DEXTRA_CONF_FILE`; optional write to `dt_explorer.overlay`/`.conf` in the app folder.
+- Accept: a valid draft verifies; a draft with a misspelled property fails with Zephyr's message in
+  the UI; the user's build folder is untouched (mtime check in evidence).
+
+### Phase 5: translate the driver family (core of the main use case)
+
+| ID | Status | Commit |
+|---|---|---|
+| P5.0 | open | |
+| P5.1 | open | |
+| P5.2 | open | |
+| P5.3 | open | |
+| P5.4 | open | |
+| P5.5 | open | |
+
+**P5.0 Research: binding pairs `atmel,sam0-*` ↔ `microchip,*-g1`.** *light* (read-only research).
+- Dep: –. PS with everything. Scope: `docs/research/binding_pairs.md` only.
+- Do: property-by-property table for SERCOM UART/I2C/SPI, GPIO, pinctrl, clocks (gclk/mclk →
+  `microchip,sam-d5x-e5x-clock`), Kconfig symbols, from both binding YAMLs and both board files
+  (`same54_xpro`, `sam_e54_xpro`). Note every property without a counterpart.
+- Accept: every property of each source binding appears in the table (the evidence lists counts per
+  binding: source properties = table rows).
+
+**P5.1 `microchip,port-g1-pinctrl` formatter.** PS with P5.0.
+- Dep: P1.5. Scope: `dt_explorer/formatters/microchip_port_g1.py`.
+- Accept: as P1.5, against `hal_microchip`'s `atsame54p20a-pinctrl.h` and `sam_e54_xpro-pinctrl.dtsi`.
+
+**P5.2 Translation format and first translations.**
+- Dep: P5.0, P1.2. Scope: `dt_explorer/core/translate.py`,
+  `dt_explorer/translations/atmel_sam0_to_mchp_g1.yaml`.
+- Do: YAML schema (keep/rename/transform/drop/derive per property), loader, Python hook mechanism;
+  an unlisted property is reported, never dropped.
+- Accept: translating the `same54_xpro` SERCOM2 node gives a node that edtlib accepts against the
+  `microchip,sercom-g1-uart` binding.
+
+**P5.3 Lift a whole build into a draft.**
+- Dep: P5.2, P3.2. Scope: `dt_explorer/core/lift.py`.
+- Accept: lifting lab1, lab3 (old port) gives drafts whose rendered overlays reproduce the
+  original nodes (edtlib compare).
+
+**P5.4 "Port to board…" UI and report.**
+- Dep: P5.3, P5.1, P4.1. Scope: `dt_explorer/ui/port.py`, `dt_explorer/core/port_report.py`,
+  `dt_explorer/ui/page.py` (button only).
+- Do: source build → target build; report: untranslatable properties, Kconfig differences,
+  `DT_NODELABEL` references in `src/` with suggested `DT_ALIAS`/`DT_CHOSEN` and the matching aliases
+  in the target overlay.
+
+**P5.5 Acceptance: RTOS4 labs to `sam_e54_xpro`.**
+- Dep: P5.4. Scope: `docs/evidence/P5.5.md`, generated overlays under `%TEMP%` (not committed).
+- Accept: lab0–lab3 ported; "Verify with west" passes for each; full build of at least lab1
+  links. Then **HC-4** (flash on the real board, by the human).
+
+### Phase 6: port to PIC32CX SG41/SG61
+
+| ID | Status | Commit |
+|---|---|---|
+| P6.0 | open | |
+| P6.1 | open | |
+| P6.2 | open | |
+
+**P6.0 Research: two Zephyr versions in one process.** *light*, PS.
+- Dep: –. Scope: `docs/research/edtlib_versions.md`.
+- Question: `edt.pickle` needs the edtlib of its own workspace. Can source (v4.3.0) and target
+  (`main`) models live in one process, or must one side load in a subprocess? Test it, record the
+  result with output.
+
+**P6.1 Cross-workspace porting.**
+- Dep: HC-3, P6.0, P5.4. Scope: as P6.0 concludes (expected: `dt_explorer/core/build.py`,
+  `dt_explorer/core/model_host.py`).
+- Accept: a source build from `DTX_RTOS4_WS` and a target build from `DTX_MAIN_WS` open together;
+  goldens unchanged.
+
+**P6.2 Acceptance: RTOS4 labs to `pic32cx_sg41_cult` and `pic32cx_sg61_cult`.**
+- Dep: P6.1. Scope: `docs/evidence/P6.2.md`.
+- Accept: lab0–lab3 verify for both boards; the SG61 report lists exactly the uses of PB26–PB29 /
+  PC04 in the source (none expected for the labs; check with a synthetic draft that uses EXT1 SPI).
+
+### Phase 7: board view (branch, parallel after P1.2)
+
+| ID | Status | Commit |
+|---|---|---|
+| P7.1 | open | |
+| P7.2 | open | |
+| P7.3 | open | |
+| P7.4 | open | |
+
+**P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
+- Dep: P1.2. Scope: `dt_explorer/core/board.py` (neutral `BoardNetlist`),
+  `dt_explorer/readers/altium_pcbdoc.py`. Start from `prototypes/altium_pcbdoc_trace.py` (do not
+  import it).
+- Accept: tests skip without `DTX_DESIGN_FILES`; with it, SAME54 Xpro gives 255 nets, 296
+  components, 1251 pads; SG41 CUlt 281 nets, 322 components, 1181 pads (numbers from the prototype).
+
+**P7.2 Connector types and detection.** PS with P7.1 (disjoint scope).
+- Dep: P1.2. Scope: `dt_explorer/connectors/xplained_pro_ext.py`, `arduino_uno_r3.py`, `mikrobus.py`.
+- Accept: detection on synthetic netlists; pin roles match the Zephyr bindings
+  `atmel-xplained-pro-header`, `arduino-header-r3`, `mikro-bus`.
+
+**P7.3 Import pipeline and board YAML.**
+- Dep: P7.1, P7.2, P1.4. Scope: `dt_explorer/importers/pipeline.py`, `dt_explorer/boards/*.yaml`.
+- Do: MCU match against the build's SoC (not "most pads"), tracing, connector type and name
+  suggestions (silkscreen proximity), YAML with schema version, Zephyr board name, source package
+  and revision, everything marked *suggested*.
+- Accept: EXT1–EXT3 of the SAME54 Xpro and EXT1/EXT2 of the SG41 CUlt match the tables in
+  CONFIGURATOR.md (*Checked with real design files*); gaps (`TCC4/WO0`, `NetJ602_18`) are reported.
+  Then **HC-6**. SG61 only after **HC-5**.
+
+**P7.4 Board view UI and connector roles in the port report.**
+- Dep: P7.3, P5.4. Scope: `dt_explorer/ui/board_view.py`, `dt_explorer/core/port_report.py`,
+  `dt_explorer/ui/page.py` (tab only).
+- Accept: report line of the form "EXT1 pin 16 (MOSI): PB27 on SAME54 Xpro → PB24 on SG41 CUlt"
+  for a synthetic draft using EXT1 SPI; screenshot of both board views.
+
+## 9. Brief template
+
+The builder copies this, fills in the brackets, and passes it as the sub-agent prompt.
+
+```text
+You implement card [ID] of docs/IMPLEMENTATION_PLAN.md in C:\Masters\dt_explorer.
+
+Read first: docs/IMPLEMENTATION_PLAN.md sections 2 (rules) and 4 (stop conditions), the card [ID],
+and these parts of docs/CONFIGURATOR.md: [sections]. Do not read other cards.
+
+Goal: [one sentence].
+Write scope (binding): [paths]. Plus docs/evidence/[ID].md and tests/test_[module].py.
+Environment: DTX_RTOS4_WS=[…] DTX_MAIN_WS=[…] DTX_DESIGN_FILES=[…]
+Acceptance (run all, paste complete output into the evidence file): [commands and criteria].
+
+Finish with exactly one commit "[ID]: <summary>" staging only explicit paths from the write scope.
+No Co-Authored-By trailer, no push, do not edit docs/IMPLEMENTATION_PLAN.md.
+Stop only for the conditions in section 4; otherwise keep working.
+Report back: commit hash, files changed, acceptance results (numbers, not just PASS), anything
+surprising, and anything you were unsure about.
+```
+
+## 10. Backlog (not version 1)
+
+- Phase 8: child nodes on buses and the generic binding form (ADC, TC, …) with their translations.
+- Phase 9: custom board wizard.
+- Phase 10: class-based porting, other vendors.
+- KiCad, IPC-2581/ODB++, IPC-D-356 and Eagle readers.
+- "Edit pins…" for enabled nodes.
+- Upstream Zephyr PR with connector nodes for `same54_xpro`, `pic32cx_sg41_cult`, `pic32cx_sg61_cult`
+  (outward-facing: human only).
+
+## 11. Evidence index
+
+| Card | Evidence | Notes |
+|---|---|---|
+| – | – | – |

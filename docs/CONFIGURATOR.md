@@ -1,6 +1,6 @@
 # Design: Peripheral configurator (devicetree generation)
 
-Status: proposal, nothing implemented yet.
+Status: proposal, nothing implemented yet. Work cards for the build: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 The explorer currently answers *"where does this devicetree entry come from?"*. The configurator
 works in the other direction. You pick a peripheral, choose a mode and pins, and the tool generates
