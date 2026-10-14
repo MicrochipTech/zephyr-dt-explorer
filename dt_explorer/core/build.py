@@ -8,6 +8,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .model_host import EdtlibHost
+
 ORIGIN_STYLE = {          # category -> (colour on dark background, caption)
     "overlay": ("#81c784", "Overlay (app)"),
     "board":   ("#64b5f6", "Board"),
@@ -183,11 +185,7 @@ class BuildModel:
         self.app_dir = Path(self._cache_val(cache, "APPLICATION_SOURCE_DIR"))
         self.west_top = self.zephyr_base.parent
 
-        src = self.zephyr_base / "scripts" / "dts" / "python-devicetree" / "src"
-        if str(src) not in sys.path:
-            sys.path.insert(0, str(src))
-        with open(zdir / "edt.pickle", "rb") as f:
-            self.edt = pickle.load(f)
+        self.edt = EdtlibHost.for_zephyr_base(self.zephyr_base).load_edt(zdir / "edt.pickle")
 
         self.origins = parse_zephyr_dts(zdir / "zephyr.dts")
         pre = zdir / "zephyr.dts.pre"

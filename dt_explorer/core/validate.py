@@ -34,6 +34,7 @@ import yaml
 
 from .build import BuildModel, NodeOrigin, PropInfo
 from .buildinfo import parse_cmake_cache, read_build_info
+from .model_host import EdtlibHost
 from .pins import used_pins
 
 GROUP_CONSTRAINT_KIND = "shared_group"
@@ -91,11 +92,8 @@ def _spec(build: Path) -> _Spec:
 
 
 def _edtlib(zephyr_base: Path):
-    src = zephyr_base / "scripts" / "dts" / "python-devicetree" / "src"
-    if str(src) not in sys.path:
-        sys.path.insert(0, str(src))
-    from devicetree import dtlib, edtlib
-    return dtlib, edtlib
+    host = EdtlibHost.for_zephyr_base(zephyr_base)
+    return host.dtlib, host.edtlib
 
 
 def preprocess(build: Path, overlay_text: str, out_dir: Path) -> tuple[Path, Path]:
