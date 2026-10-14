@@ -301,7 +301,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P3.1 | open | |
+| P3.1 | done | 0546fb7 |
 | P3.2 | open | |
 | P3.3 | open | |
 | P3.4 | open | |
@@ -526,4 +526,5 @@ surprising, and anything you were unsure about.
 | P1.2 | [P1.2.md](evidence/P1.2.md) | 8 tests; negative test fails with the check removed; filled gaps: api_version equality, board reader `extensions`/`read`, connector `pin_roles`/`detect`/`zephyr_binding`, translation `source`/`target`/`translate` |
 | P1.3 | [P1.3.md](evidence/P1.3.md) | lab1: soc same54p20a, series same54, family atmel_sam0, board same54_xpro, vendor `atmel` (from board.yml; RTOS4 soc.yml has no vendor key); builder re-run 8 passed |
 | P2.1 | [P2.1.md](evidence/P2.1.md) | 27 Microchip/Atmel boards (builder reproduced); cmake-only lab1 35.4 s, 35 log lines streamed; bad board → rc 1 with Zephyr's message. **Note:** v4.3.0 has `pic32cx_sg61_cult` but no `pic32cx_sg41_cult` (needed from `zephyr-main`, P6) |
+| P3.1 | [P3.1.md](evidence/P3.1.md) | sam0-uart/i2c/spi and sercom-g1-uart → uart/i2c/spi via include chain; gclk → None; JSON round trip byte-identical; standalone `BindingIndex` in draft.py; builder re-run 9 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
