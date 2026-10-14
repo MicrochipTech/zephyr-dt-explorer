@@ -93,6 +93,38 @@ def test_mcu_match_uses_package_not_pad_count():
     assert pipeline.find_mcu(nl, [pkgs[1]]) is None         # nothing fits QFN16
 
 
+def test_unavailable_pad_is_marked(tmp_path):
+    """Footprint positions that are NC on the chosen SoC (ATDF pad "NC") make connector pins unavailable."""
+    nl, pkgs = synthetic()
+    pins = dict(pkgs[0].pins)
+    pins["5"] = "NC"                      # header pin 5 (net PA05) reaches footprint position 5
+    pins["6"] = "NC"
+    nl.pads = [p for p in nl.pads if not (p.component == "R1")]
+    nl.pads += [Pad("R1", "1", "SDA_NET"), Pad("R1", "2", "PA11")]
+    res = pipeline.import_board(nl, [Package("QFN20", "QFN", 20, pins)], board="b", soc="SOC_X")
+    d = res.data["connectors"][0]["pins"]
+    for pin in ("5", "6"):
+        assert d[pin]["available"] is False and d[pin]["pad"] is None
+        assert f"position {pin}" in d[pin]["unavailable_reason"] and "SOC_X" in d[pin]["unavailable_reason"]
+        assert "gap" not in d[pin]                      # not a tracing gap
+    assert "available" not in d["3"] and d["3"]["pad"] == "PA03"      # unaffected pins unchanged
+    assert any("pin 5 (GPIO1)" in r and "not available on this MCU" in r for r in res.report)
+    assert any(r.startswith("NC positions of QFN20 on SOC_X") and "5, 6" in r for r in res.report)
+    assert not any("pin 5 " in g for g in res.gaps)
+    # 12 of 16 signal pins still traced = 75 %: the connector stays reviewed
+    assert res.connectors[0].status == "reviewed"
+    out = tmp_path / "u.yaml"
+    pipeline.write_yaml(res, out)
+    assert yaml.safe_load(out.read_text(encoding="utf-8")) == res.data
+
+
+def test_no_nc_positions_changes_nothing():
+    nl, pkgs = synthetic()
+    res = pipeline.import_board(nl, pkgs, board="b")
+    assert all("available" not in e for c in res.data["connectors"] for e in c["pins"].values())
+    assert any(r.startswith("NC positions") and r.endswith("none") for r in res.report)
+
+
 def test_yaml_roundtrip(tmp_path):
     nl, pkgs = synthetic()
     res = pipeline.import_board(nl, pkgs, board="b")
@@ -119,7 +151,9 @@ SG41_GAP_NETS = {("EXT1", "7"): "TCC4/WO0", ("EXT1", "8"): "TCC4/WO1", ("EXT1", 
 ATDF = {
     "same54": "sam/sam_d5x_e5x/atsame54/atdf/ATSAME54P20A.atdf",
     "sg41": "pic32c/pic32cx_sg/pic32cx_sg41/atdf/PIC32CX1025SG41128.atdf",
+    "sg61": "pic32c/pic32cx_sg/pic32cx_sg61/atdf/PIC32CX1025SG61128.atdf",
 }
+SG61_PCB = "pic32cx_sg61_cult/PIC32CX_SGxx_CULT_R5_CAD/PIC32CX SG_CUltra_R5.PcbDoc"
 
 
 def table(s):
@@ -183,9 +217,49 @@ def test_connector_names_and_status(results):
         assert all(c["status"] == "reviewed" and c["reviewed"] == "builder" for c in conns)
 
 
-def test_committed_yaml_is_current(results):
+def test_committed_yaml_is_current(results):  # SAME54 and SG41; SG61 below
     boards = Path(pipeline.__file__).resolve().parent.parent / "boards"
     for board, res in results.items():
         f = boards / f"{board}.yaml"
         assert f.is_file(), f
         assert yaml.safe_load(f.read_text(encoding="utf-8")) == res.data
+
+
+# --- P7.3b: SG61 Curiosity Ultra ---------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def sg61(design_files, rtos4_ws):
+    pytest.importorskip("olefile")
+    pcb = Path(design_files) / SG61_PCB
+    atdf = Path(rtos4_ws) / "modules/hal/microchip/packs" / ATDF["sg61"]
+    if not pcb.is_file() or not atdf.is_file():
+        pytest.skip(f"missing {pcb} or {atdf}")
+    # The BOM text is evidence recorded at import time; reuse the committed wording.
+    committed = yaml.safe_load((Path(pipeline.__file__).resolve().parent.parent / "boards"
+                                / "pic32cx_sg61_cult.yaml").read_text(encoding="utf-8"))
+    return pipeline.import_files(pcb, atdf, board="pic32cx_sg61_cult", mcu_part=committed["mcu"]["part"],
+                                 bom_evidence=committed["source"]["bom"])
+
+
+def test_sg61_matches_sg41_except_unavailable(results, sg61):
+    a, b = results["pic32cx_sg41_cult"].data, sg61.data
+    assert sg61.mcu == "U401" and sg61.mcu_package == "TQFP128" and b["mcu"]["soc"] == "PIC32CX1025SG61128"
+    unavailable = []
+    for ca in a["connectors"]:
+        cb = next(c for c in b["connectors"] if c["name"] == ca["name"])
+        for pin, pa in ca["pins"].items():
+            pb = cb["pins"][pin]
+            if pb.get("available") is False:
+                unavailable.append((ca["name"], pin))
+                assert pb["pad"] is None and pb["unavailable_reason"]
+            else:
+                assert pb == pa, (ca["name"], pin)
+    # The shared PCB leaves the MCU pads for PB26-PB29/PC04 (SG41 positions 27, 102-105) unconnected,
+    # so no connector pin is affected.
+    assert unavailable == []
+    assert any(r.startswith("NC positions of TQFP128") and "27, 102, 103, 104, 105" in r for r in sg61.report)
+
+
+def test_sg61_committed_yaml_is_current(sg61):
+    f = Path(pipeline.__file__).resolve().parent.parent / "boards" / "pic32cx_sg61_cult.yaml"
+    assert yaml.safe_load(f.read_text(encoding="utf-8")) == sg61.data

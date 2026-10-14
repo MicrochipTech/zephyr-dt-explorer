@@ -41,6 +41,8 @@ MAX_NAME_DISTANCE = 25.0         # mm, connector centre to silkscreen text
 MIN_TRACED_FRACTION = 0.75       # HC-6: share of signal pins that must reach the MCU
 MCU_MIN_FIT = 0.9                # share of package positions present as pad numbers
 MCU_MAX_EXTRA_PADS = 2           # pads beyond the package positions (exposed pad)
+NC_PAD = "NC"                    # ATDF pad name of a position that has no usable pin on this SoC
+NC_MARK = "NC@"                  # internal marker: MCU footprint position that is NC on this SoC
 
 POWER_RE = re.compile(
     r"^(GND\w*|AGND|DGND|VCC\w*|VDD\w*|VBUS\w*|\+?\d+V\d*\w*|P\d+V\d+\w*|\d+V\d+\w*|NC)$", re.I)
@@ -63,6 +65,7 @@ class Trace:
     pads: list[str] = field(default_factory=list)       # MCU pad ids reached
     via: list[str] = field(default_factory=list)        # series parts passed
     gap: str | None = None                              # reason if no MCU pad was reached
+    unavailable: list[str] = field(default_factory=list)  # footprint positions that are NC on this SoC
 
 
 @dataclass
@@ -136,7 +139,10 @@ class Tracer:
         self.net2mcu: dict[str, list[str]] = {}
         for p in _significant(netlist, mcu):
             if p.net:
-                self.net2mcu.setdefault(p.net, []).append(position_to_pad.get(p.number, p.number))
+                pad = position_to_pad.get(p.number, p.number)
+                if pad == NC_PAD:             # pad exists on the PCB footprint, not on this SoC
+                    pad = NC_MARK + p.number
+                self.net2mcu.setdefault(p.net, []).append(pad)
 
     def _walk(self, net: str, depth: int, seen: set[str]) -> list[tuple[str, list[str]]]:
         if net in seen or depth > MAX_TRACE_DEPTH:
@@ -169,11 +175,17 @@ class Tracer:
             t.gap = "supply/NC net"
             return t
         for pad, via in self._walk(net, 0, set()):
+            if pad.startswith(NC_MARK):
+                if pad[len(NC_MARK):] not in t.unavailable:
+                    t.unavailable.append(pad[len(NC_MARK):])
+                continue
             if pad not in t.pads:
                 t.pads.append(pad)
             for v in via:
                 if v not in t.via:
                     t.via.append(v)
+        if not t.pads and t.unavailable:
+            return t                          # reaches only pads that this SoC does not have
         if not t.pads:
             others = [d for d in self.nl.components_on_net(net) if d not in (connector, self.mcu)]
             multi = [d for d in others if len(self.nl.pads_of(d)) > 2]
@@ -239,7 +251,8 @@ def _revision(text: str) -> str | None:
 
 def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
                  source_package: str | None = None, revision: str | None = None,
-                 soc: str | None = None) -> ImportResult:
+                 soc: str | None = None, mcu_part: str | None = None,
+                 bom_evidence: str | None = None) -> ImportResult:
     """Run the pipeline. `packages` come from the build's DeviceModel."""
     ensure_builtin_plugins()
     report: list[str] = []
@@ -253,6 +266,9 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
     mcu, pkg, fit = found
     report.append(f"MCU: {mcu} ({netlist.components[mcu].footprint}) fits package {pkg.name} "
                   f"{fit:.0%} ({len(_significant(netlist, mcu))} pads, package {pkg.pin_count})")
+    nc_positions = sorted((k for k, v in pkg.pins.items() if v == NC_PAD), key=lambda k: (len(k), k))
+    report.append(f"NC positions of {pkg.name} on {soc or 'this SoC'} (footprint pads without a pin): "
+                  f"{', '.join(nc_positions) or 'none'}")
     tracer = Tracer(netlist, mcu, pkg.pins)
 
     candidates = [d for d, c in netlist.components.items()
@@ -288,6 +304,10 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
             role = roles.get(pin, "?")
             if t.via:
                 report.append(f"{des} pin {pin} ({role}): {t.net} -> {', '.join(t.pads)} via {', '.join(t.via)}")
+            if t.unavailable and not t.pads:
+                report.append(f"{des} pin {pin} ({role}): net {t.net} reaches MCU footprint position "
+                              f"{', '.join(t.unavailable)}, which is NC on {soc or pkg.name}: "
+                              f"not available on this MCU")
             if len(t.pads) > 1:
                 gaps.append(f"{des} pin {pin} ({role}): net {t.net} reaches several MCU pads: {', '.join(t.pads)}")
             if role == "ID":
@@ -306,7 +326,8 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
     connectors.sort(key=lambda c: (c.name or "~", c.designator))
     res = ImportResult(mcu, pkg.name, fit, connectors, report, gaps)
     res.data = build_yaml(res, board=board, soc=soc, source_package=source_package,
-                          revision=revision, source_file=netlist.source)
+                          revision=revision, source_file=netlist.source, mcu_part=mcu_part,
+                          bom_evidence=bom_evidence)
     return res
 
 
@@ -339,7 +360,8 @@ def review(ct, name: str | None, score: float, pins: dict, traces: dict[str, Tra
 
 
 def build_yaml(res: ImportResult, *, board: str, soc: str | None, source_package: str | None,
-               revision: str | None, source_file: str) -> dict:
+               revision: str | None, source_file: str, mcu_part: str | None = None,
+               bom_evidence: str | None = None) -> dict:
     conns = []
     for c in res.connectors:
         ct = plugins.get_connector_type(c.type)
@@ -351,6 +373,11 @@ def build_yaml(res: ImportResult, *, board: str, soc: str | None, source_package
             if len(t.pads) > 1:
                 entry["pad_alternatives"] = t.pads[1:]
             entry["net"] = t.net
+            if t.unavailable and not t.pads:
+                entry["available"] = False
+                entry["unavailable_reason"] = (
+                    f"net reaches MCU footprint position {', '.join(t.unavailable)}, which is NC on "
+                    f"{soc or res.mcu_package}; the pad exists on the PCB only")
             if t.via:
                 entry["via"] = t.via
             if t.gap and t.net and not POWER_RE.match(t.net):
@@ -368,13 +395,18 @@ def build_yaml(res: ImportResult, *, board: str, soc: str | None, source_package
                                 "rotation": round(c.component.rotation, 1), "layer": c.component.layer}
         item["pins"] = pins
         conns.append(item)
+    source = {"package": source_package, "file": source_file, "revision": revision,
+              "units": "mm", "generator": "dt_explorer.importers.pipeline"}
+    if bom_evidence:
+        source["bom"] = bom_evidence
+    mcu = {"soc": soc, "designator": res.mcu, "package": res.mcu_package, "fit": round(res.mcu_fit, 3)}
+    if mcu_part:
+        mcu["part"] = mcu_part
     return {
         "schema_version": SCHEMA_VERSION,
         "board": board,
-        "source": {"package": source_package, "file": source_file, "revision": revision,
-                   "units": "mm", "generator": "dt_explorer.importers.pipeline"},
-        "mcu": {"soc": soc, "designator": res.mcu, "package": res.mcu_package,
-                "fit": round(res.mcu_fit, 3)},
+        "source": source,
+        "mcu": mcu,
         "connectors": conns,
         "gaps": list(res.gaps),
     }
@@ -388,7 +420,8 @@ def write_yaml(res: ImportResult, path: str | Path) -> None:
 # --- files ---------------------------------------------------------------------
 
 def import_files(pcb: str | Path, atdf: str | Path, *, board: str, source_package: str | None = None,
-                 revision: str | None = None, soc: str | None = None) -> ImportResult:
+                 revision: str | None = None, soc: str | None = None, mcu_part: str | None = None,
+                 bom_evidence: str | None = None) -> ImportResult:
     from dt_explorer.readers import altium_pcbdoc
     from dt_explorer.providers import microchip_atdf  # noqa: F401  (registers the provider)
     reader = plugins.get_board_reader(pcb)
@@ -400,7 +433,8 @@ def import_files(pcb: str | Path, atdf: str | Path, *, board: str, source_packag
     netlist = reader.read(Path(pcb))
     device = microchip_atdf.MicrochipAtdfProvider().load(Path(atdf))
     return import_board(netlist, device.packages, board=board, soc=soc or device.name,
-                        source_package=source_package or Path(pcb).stem, revision=revision)
+                        source_package=source_package or Path(pcb).stem, revision=revision,
+                        mcu_part=mcu_part, bom_evidence=bom_evidence)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -410,8 +444,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--board", required=True, help="Zephyr board name, e.g. same54_xpro")
     ap.add_argument("--out", help="board YAML to write")
     ap.add_argument("--revision")
+    ap.add_argument("--mcu-part", help="populated MCU part number (from the BOM)")
+    ap.add_argument("--bom-evidence", help="where the MCU part comes from, e.g. BOM file and row")
     a = ap.parse_args(argv)
-    res = import_files(a.pcb, a.atdf, board=a.board, revision=a.revision)
+    res = import_files(a.pcb, a.atdf, board=a.board, revision=a.revision,
+                       mcu_part=a.mcu_part, bom_evidence=a.bom_evidence)
     print("\n".join(res.report))
     print("\nGAPS")
     print("\n".join(res.gaps) or "(none)")

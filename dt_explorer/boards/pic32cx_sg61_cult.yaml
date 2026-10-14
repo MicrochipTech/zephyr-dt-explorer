@@ -1,0 +1,225 @@
+schema_version: 1
+board: pic32cx_sg61_cult
+source:
+  package: PIC32CX SG_CUltra_R5
+  file: PIC32CX SG_CUltra_R5.PcbDoc
+  revision: '5'
+  units: mm
+  generator: dt_explorer.importers.pipeline
+  bom: 'Assembly/02-00576-R5_BOM.xls (PIC32CX SG61 CURIOSITY ULTRA, part EV09H35A, rev 5.0): U401 = MCHP
+    MCU 32-BIT 100MHz 1MB 256KB PIC32CX1025SG61128-E/XCB TQFP-128wEPAD. The CAD folder is byte-identical
+    to the SG41 CUlt R5 one (59 of 59 shared files)'
+mcu:
+  soc: PIC32CX1025SG61128
+  designator: U401
+  package: TQFP128
+  fit: 1.0
+  part: PIC32CX1025SG61128-E/XCB
+connectors:
+- name: EXT1
+  designator: J602
+  type: xplained_pro_ext
+  zephyr_binding: atmel-xplained-pro-header
+  detection_score: 0.6
+  status: reviewed
+  reason: silkscreen 'EXT1' fits type xplained_pro_ext, score 0.6, GND/VCC pins as in the standard, 13/16
+    signal pins traced to the MCU
+  reviewed: builder
+  position:
+    x: 218.38
+    y: 162.32
+    rotation: 270.0
+    layer: top
+  pins:
+    '1':
+      role: ID
+      pad: null
+      net: SYS_ID1
+      gap: 'routed through part with more than 2 pads: U303 (100 pads)'
+    '2':
+      role: GND
+      pad: null
+      net: GND
+    '3':
+      role: ADC+
+      pad: PB08
+      net: PB08
+    '4':
+      role: ADC-
+      pad: PB09
+      net: PB09
+    '5':
+      role: GPIO1
+      pad: PD10
+      net: PD10
+    '6':
+      role: GPIO2
+      pad: PD11
+      net: PD11
+    '7':
+      role: PWM+
+      pad: null
+      net: TCC4/WO0
+      gap: 'routed through part with more than 2 pads: J402 (3 pads), J603 (20 pads)'
+    '8':
+      role: PWM-
+      pad: null
+      net: TCC4/WO1
+      gap: 'routed through part with more than 2 pads: J403 (3 pads)'
+    '9':
+      role: IRQ
+      pad: PD12
+      net: PD12
+    '10':
+      role: SPI_SS_B
+      pad: PB05
+      net: PB05
+    '11':
+      role: I2C_SDA
+      pad: PD09
+      net: PD09
+    '12':
+      role: I2C_SCL
+      pad: PD08
+      net: PD08
+    '13':
+      role: UART_RX
+      pad: PC13
+      net: PC13
+    '14':
+      role: UART_TX
+      pad: PC12
+      net: PC12
+    '15':
+      role: SPI_SS_A
+      pad: PC24
+      net: PC24
+    '16':
+      role: SPI_MOSI
+      pad: PB24
+      net: PB24
+    '17':
+      role: SPI_MISO
+      pad: PC25
+      net: PC25
+    '18':
+      role: SPI_SCK
+      pad: null
+      net: NetJ602_18
+      gap: net ends without reaching the MCU (also on R424)
+    '19':
+      role: GND
+      pad: null
+      net: GND
+    '20':
+      role: VCC
+      pad: null
+      net: VCC_3P3V
+- name: EXT2
+  designator: J603
+  type: xplained_pro_ext
+  zephyr_binding: atmel-xplained-pro-header
+  detection_score: 0.6
+  status: reviewed
+  reason: silkscreen 'EXT2' fits type xplained_pro_ext, score 0.6, GND/VCC pins as in the standard, 13/16
+    signal pins traced to the MCU
+  reviewed: builder
+  position:
+    x: 218.38
+    y: 126.76
+    rotation: 270.0
+    layer: top
+  pins:
+    '1':
+      role: ID
+      pad: null
+      net: SYS_ID2
+      gap: 'routed through part with more than 2 pads: U303 (100 pads)'
+    '2':
+      role: GND
+      pad: null
+      net: GND
+    '3':
+      role: ADC+
+      pad: PB08
+      net: PB08
+    '4':
+      role: ADC-
+      pad: PB09
+      net: PB09
+    '5':
+      role: GPIO1
+      pad: PC05
+      net: PC05
+    '6':
+      role: GPIO2
+      pad: PC07
+      net: PC07
+    '7':
+      role: PWM+
+      pad: null
+      net: TCC4/WO0
+      gap: 'routed through part with more than 2 pads: J402 (3 pads), J602 (20 pads)'
+    '8':
+      role: PWM-
+      pad: null
+      net: NetJ603_8
+      gap: net ends without reaching the MCU (also on R425)
+    '9':
+      role: IRQ
+      pad: PB01
+      net: PB01
+    '10':
+      role: SPI_SS_B
+      pad: PC06
+      net: PC06
+    '11':
+      role: I2C_SDA
+      pad: PD09
+      net: PD09
+    '12':
+      role: I2C_SCL
+      pad: PD08
+      net: PD08
+    '13':
+      role: UART_RX
+      pad: PB30
+      net: PB30
+    '14':
+      role: UART_TX
+      pad: PB31
+      net: PB31
+    '15':
+      role: SPI_SS_A
+      pad: PA06
+      net: PA06
+    '16':
+      role: SPI_MOSI
+      pad: PB24
+      net: PB24
+    '17':
+      role: SPI_MISO
+      pad: PC25
+      net: PC25
+    '18':
+      role: SPI_SCK
+      pad: null
+      net: NetJ603_18
+      gap: net ends without reaching the MCU (also on R426)
+    '19':
+      role: GND
+      pad: null
+      net: GND
+    '20':
+      role: VCC
+      pad: null
+      net: VCC_3P3V
+gaps:
+- 'J602 pin 7 (PWM+): net TCC4/WO0: routed through part with more than 2 pads: J402 (3 pads), J603 (20
+  pads)'
+- 'J602 pin 8 (PWM-): net TCC4/WO1: routed through part with more than 2 pads: J403 (3 pads)'
+- 'J602 pin 18 (SPI_SCK): net NetJ602_18: net ends without reaching the MCU (also on R424)'
+- 'J603 pin 7 (PWM+): net TCC4/WO0: routed through part with more than 2 pads: J402 (3 pads), J602 (20
+  pads)'
+- 'J603 pin 8 (PWM-): net NetJ603_8: net ends without reaching the MCU (also on R425)'
+- 'J603 pin 18 (SPI_SCK): net NetJ603_18: net ends without reaching the MCU (also on R426)'
