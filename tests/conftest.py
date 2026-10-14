@@ -83,6 +83,10 @@ def _restore_plugin_registry():
     saved_skipped = list(plugins._skipped)
     yield
     for k, d in saved.items():
+        # built-in plugins registered during the test (first import) stay; test fakes go
+        builtin = {key: p for key, p in plugins._registry[k].items()
+                   if type(p).__module__.startswith("dt_explorer.")}
         plugins._registry[k].clear()
+        plugins._registry[k].update(builtin)
         plugins._registry[k].update(d)
     plugins._skipped[:] = saved_skipped

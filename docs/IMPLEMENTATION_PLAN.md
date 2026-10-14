@@ -210,7 +210,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P1.4 | done | 151e084 → master |
 | P1.5 | done | ea75341 |
 | P1.6 | done | 25c2704 → master |
-| P1.7 | open | |
+| P1.7 | done | e56bd44 → master |
 | P1.8 | done | c0ba67d → master |
 
 **P1.1 Move today's code into the package.** Not parallel to anything.
@@ -558,4 +558,5 @@ surprising, and anything you were unsure about.
 | P3.4 | [P3.4.md](evidence/P3.4.md) | lab1: SERCOM0 on PB24/PB25 → 2 `pin_conflict` errors naming sercom0+sercom2; SERCOM3 on PC23+PA16 → IOSET warning with provider text; SERCOM1 I2C on PC22/PC23 and the board's SERCOM2 → no findings; missing rxpo → `missing_property` error. Preprocessing reproduces `zephyr_dt_preprocess` from build_info.yml. Warm 1.3–1.5 s (binding-file read cache around EDT, not thread-safe). Pre-existing conflicts (PC18) are `info` unless an overlay node is involved. **For P3.5:** the renderer emits no `#address-cells`/`#size-cells` for I2C/SPI unless they are in `vendor_props` — the recipe or the renderer must supply them. Builder re-run 7 passed |
 | P5.3 | [P5.3.md](evidence/P5.3.md) | lab1: 3 covered (sercom2 uart, sercom4 spi, sercom7 i2c), 41 uncovered enabled (34 SoC, 6 board, 1 overlay); lab3: 4 covered (+ sercom3 i2c PA22/PA23), 42 uncovered. Per-node and whole-draft edtlib compare: all MATCH (28 MATCH lines, 0 mismatch). Lifts only what board/app wrote (origin comments). Not representable yet: child nodes on buses (`eeprom@5e`, `mytemp@4f`) → phase 8. Builder re-run 3 passed |
 | P6.0 | [P6.0.md](evidence/P6.0.md) | `zephyr-main` = Zephyr 4.5.0-rc1, uses SDK 1.0.1 (installed); cmake-only pic32cx_sg41_cult hello_world 161 s. edtlib.py +753/−52 (new `_LocalProps`, `MapEntry`, `HexInt`). Plain sys.path add fails (`_LocalProps`); swap+purge works but is order dependent; **both module sets alive + `Unpickler.find_class` mapping works** (0.17 s), also across Python 3.12/3.14; subprocess JSON 0.45 s as fallback. Recommendation: `core/model_host.py` `EdtlibHost` per src dir, BuildModel changes only the unpickle lines |
+| P1.7 | [P1.7.md](evidence/P1.7.md) | 9 geometry tests (pin 1 left/top, 32 per side, pin 33 first on bottom, BGA A1 top-left, TFBGA120 15×15 rows A–R without I/O/Q); screenshots TQFP128/TFBGA120 checked by the builder (pin 100 = PB24, PC18 conflict orange). Builder follow-up: conftest keeps built-in plugins that were first imported during a test; full suite 281 passed, 4 skipped |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
