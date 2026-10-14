@@ -372,7 +372,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.0 | done | 8b37419 → master |
 | P5.1 | done | 11a02eb → master |
 | P5.2 | done | adf5271 → master |
-| P5.3 | open | |
+| P5.3 | done | cb820bd → master |
 | P5.4 | open | |
 | P5.6 | open | |
 | P5.7 | open | |
@@ -556,4 +556,5 @@ surprising, and anything you were unsure about.
 | P1.6 | [P1.6.md](evidence/P1.6.md) | lab1: 128 pins, 23 used, 77 free, 1 conflict (PC18: led_0 gpio + TCC0 WO2 pinctrl); console PB24/PB25 on sercom2, LED PC18. Limits: `my_led@41008000` (custom binding with plain `port`/`pin` ints) is not detected; pinmux ints are decoded by re-reading the macro names from the source line in zephyr.dts (formatters have no int decoder); GPIO controller → pad group by address order (heuristic, documented). Builder: screenshot checked, re-run 7 passed |
 | P3.3 | [P3.3.md](evidence/P3.3.md) | rendered SERCOM2 overlay applied to zephyr.dts with sercom2 stripped → edtlib compare equal to the original (compatible, status, rxpo, txpo, current-speed, chosen, pinmux 0x3391/0x3381); Kconfig: recipe path for I2C (CONFIG_I2C, CONFIG_I2C_SAM0), kconfiglib path without recipe (`atmel,sam0-adc` → ADC_SAM0 → ADC; `gpio-leds` → LED_GPIO → LED), first load ≈ 5 s then cached. Agent stopped on one red test from registry pollution between test files; builder fix: autouse fixture in tests/conftest.py restores the registry after every test |
 | P3.4 | [P3.4.md](evidence/P3.4.md) | lab1: SERCOM0 on PB24/PB25 → 2 `pin_conflict` errors naming sercom0+sercom2; SERCOM3 on PC23+PA16 → IOSET warning with provider text; SERCOM1 I2C on PC22/PC23 and the board's SERCOM2 → no findings; missing rxpo → `missing_property` error. Preprocessing reproduces `zephyr_dt_preprocess` from build_info.yml. Warm 1.3–1.5 s (binding-file read cache around EDT, not thread-safe). Pre-existing conflicts (PC18) are `info` unless an overlay node is involved. **For P3.5:** the renderer emits no `#address-cells`/`#size-cells` for I2C/SPI unless they are in `vendor_props` — the recipe or the renderer must supply them. Builder re-run 7 passed |
+| P5.3 | [P5.3.md](evidence/P5.3.md) | lab1: 3 covered (sercom2 uart, sercom4 spi, sercom7 i2c), 41 uncovered enabled (34 SoC, 6 board, 1 overlay); lab3: 4 covered (+ sercom3 i2c PA22/PA23), 42 uncovered. Per-node and whole-draft edtlib compare: all MATCH (28 MATCH lines, 0 mismatch). Lifts only what board/app wrote (origin comments). Not representable yet: child nodes on buses (`eeprom@5e`, `mytemp@4f`) → phase 8. Builder re-run 3 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
