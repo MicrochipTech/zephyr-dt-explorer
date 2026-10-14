@@ -456,7 +456,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P7.1 | done | e5fcf55 → master |
 | P7.2 | done | 1d23b26 → master |
 | P7.3 | done | 7d3f349 → master |
-| P7.3b | blocked | SG61 design files missing (HC-5); unblocks when `C:\Mastersoard_design_files\pic32cx_sg61_cult\` exists |
+| P7.3b | blocked | SG61 design files missing (HC-5); unblocks when `C:\Masters\board_design_files\pic32cx_sg61_cult\` exists |
 | P7.4 | open | |
 
 **P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
