@@ -283,7 +283,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | ID | Status | Commit |
 |---|---|---|
 | P2.1 | done | 35480d1 → master |
-| P2.2 | open | |
+| P2.2 | done | 2c90c48 → master |
 
 **P2.1 `west_tools`.** PS with P1.4–P1.7.
 - Dep: P1.1. Scope: `dt_explorer/core/west_tools.py`.
@@ -341,7 +341,7 @@ Status values: `open`, `running`, `done`, `blocked`.
   `dt_explorer/ui/package_view.py`, `dt_explorer/ui/page.py` (button, tab, badge only).
 - Accept: end-to-end in the browser (Playwright or screenshots): configure an unused SERCOM as I2C,
   the snippet appears in the Draft tab, the package view highlights the pins; README and
-  `docs/GUI.md` updated in a follow-up *light* card P3.6 (scope: those two files).
+  `docs/GUI.md` updated in a follow-up *light* card P3.6 (scope: those two files, plus `docs/make_screenshots.py`). P3.6 also documents the "New build…" and "Full build" buttons from P2.2 and fixes the header wrap (the origin chips break into a second row since P2.2).
 
 ### Phase 4: authoritative check
 
@@ -530,4 +530,5 @@ surprising, and anything you were unsure about.
 | P7.1 | [P7.1.md](evidence/P7.1.md) | SAME54 Xpro 255/296/1251, SG41 CUlt 281/322/1181 (= prototype); silkscreen 1600/1973 texts, builder found `EXT1`–`EXT3` / `EXT1`–`EXT2` among them. **For P7.3:** header footprints carry 20 extra pads numbered "0" without a net, ignore them |
 | P7.2 | [P7.2.md](evidence/P7.2.md) | own type 1.0, others 0.0; random 20-pin max 0.2 (20 seeds); real EXT with bare MCU-pin nets 0.6 → importer threshold ≥ 0.5. `detect(netlist_pins: {pin: net}, pin_count=None)`; Arduino keys are labels (A0, D13, GND…), the importer merges the four headers. Zephyr gpio-map index ≠ physical pin (Xpro: pin = index + 3), `nexus_map()` added. Builder re-run 33 passed |
 | P1.4 | [P1.4.md](evidence/P1.4.md) | locate 5–10 ms (builder: 0.01 s); SERCOM2 PAD0 = PA09 D, PB25 D, PA12 C, PB26 C (builder reproduced); TQFP128 128 positions; SAME54P20A: 2 packages, 71 instances, 772 signals, 1 IOSET constraint. **Finding for P6.2:** in the SG61 ATDF, PB26–PB29/PC04 exist as pins with `type="INTERNAL_n"` (SERCOM2 PAD0–2 still listed on PB26–PB28); the provider leaves them out of `Package.pins`, so they count as "not on the package". hal_microchip is not in lab1's zephyr_modules.txt, `locate` falls back to `<ws>/modules/hal/microchip/packs` |
+| P2.2 | [P2.2.md](evidence/P2.2.md) | via Playwright: dialog, board filter, streamed log (cmake-only 46 s), new build auto-selected with "not linked" states, Full build 71 s → 7 `device` nodes; not tested: Cancel, failure path. Temporary build folder deleted (builder checked lab1 folder). README/GUI.md moved to P3.6 |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
