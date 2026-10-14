@@ -228,6 +228,40 @@ class BuildModel:
         self.chosen = {compat_ident(k): self.by_path.get(n.path, n) for k, n in self.edt.chosen_nodes.items()}
         self.code_refs = self._code_refs()
 
+    @classmethod
+    def from_edt(cls, edt, build_dir: Path, origins: dict | None = None) -> "BuildModel":
+        """Light model around an EDT object that was not read from the build's edt.pickle.
+
+        Used for what-if trees (build devicetree plus a draft overlay). Only what the pin and
+        device analysis needs is filled: paths from CMakeCache.txt, ``edt``, ``origins`` (default
+        empty), ``by_path``, ``aliases``, ``chosen``. The build-artifact views (driver index,
+        binding index, linked/compiled state, generated header, include tree) stay empty.
+        """
+        self = cls.__new__(cls)
+        build = Path(build_dir)
+        cache = (build / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
+        self.build = build
+        self.zephyr_base = Path(self._cache_val(cache, "ZEPHYR_BASE"))
+        self.app_dir = Path(self._cache_val(cache, "APPLICATION_SOURCE_DIR"))
+        self.west_top = self.zephyr_base.parent
+        self.edt = edt
+        self.origins = origins or {}
+        self.includes = None
+        self.file_contrib = {}
+        self.generated = ""
+        self.linked = False
+        self.device_ords = set()
+        self.compiled = set()
+        self.drivers = {}
+        self.yaml_index = {}
+        self._yaml_cache = {}
+        self.by_path = {n.path: n for n in edt.nodes}
+        self.aliases = {a.replace("-", "_"): self.by_path[n.path]
+                        for a, n in edt._dt.alias2node.items() if n.path in self.by_path}
+        self.chosen = {compat_ident(k): self.by_path.get(n.path, n) for k, n in edt.chosen_nodes.items()}
+        self.code_refs = []
+        return self
+
     @staticmethod
     def _cache_val(cache: str, key: str) -> str:
         m = re.search(rf"^{key}:\w+=(.*)$", cache, re.M)
