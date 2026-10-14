@@ -40,6 +40,61 @@ Out of scope for the implementation:
 - Microchip families without an ATDF. MEC and Mi-V are likely in this group; this still needs to be
   confirmed.
 
+## Main use case: SAME54 projects → PIC32CX SG41/SG61
+
+The PIC32CX SG41 and SG61 are the successors of the SAME54. The tool's main purpose is to port
+existing SAME54 Zephyr projects, such as the RTOS4 labs, to them. All facts below were checked on
+2026-10-14.
+
+### Hardware: almost identical according to the ATDF
+
+The ATDF files from `hal_microchip` were compared by script:
+
+| | SAME54P20A ↔ PIC32CX1025SG41128 | SAME54P20A ↔ PIC32CX1025SG61128 |
+|---|---|---|
+| Peripheral instances | identical (71) | identical (71) |
+| Module versions, base addresses | identical | identical |
+| Pin functions | **identical** | 5 pins missing: PB26–PB29, PC04 |
+| Packages | – | TQFP128 only (the E54 also has TFBGA120) |
+
+On the SG61 the missing pins remove some alternatives: one complete SERCOM4 pin set (PB26–PB29), one
+alternative pad each for SERCOM2 and SERCOM6, some TCC0/TCC1 outputs, EIC EXTINT4/12–15 and I2S
+SCK1/MCK1. The porting report must flag any of these. The SAME54 Xplained Pro console (PB24/PB25)
+is not affected.
+
+### Software: the port changes the Zephyr driver family
+
+| | SAME54 in the RTOS4 labs | PIC32CX SG |
+|---|---|---|
+| Zephyr port | old: `soc/atmel/sam0` | new: `soc/microchip/pic32c` |
+| Drivers and bindings | `atmel,sam0-uart`, `atmel,sam0-sercom`, … | `microchip,sercom-g1-uart`, `microchip,sercom-g1`, … |
+| pinctrl | `atmel,sam0-pinctrl` | `microchip,port-g1-pinctrl` |
+| Clocks | `atmel,sam0-gclk` / `-mclk` | `microchip,sam-d5x-e5x-clock` (the same clock hardware as the E54) |
+
+**Zephyr version matters.** In Zephyr v4.3.0 (the RTOS4 workspace) the PIC32CX SG `.dtsi` only
+describes CPU, flash, SRAM, GPIO and pinctrl. `pic32cx_sg61_cult` has no console there.
+Upstream `main` (2026-10-13) adds SERCOM (6×), TC, TCC, ADC, DAC, DMAC, EIC, GMAC, RTC, WDT, TRNG
+and the clock tree, plus the board `pic32cx_sg41_cult`.
+
+### Consequence: two steps
+
+1. **Translate the driver family** `atmel,sam0-*` → `microchip,*-g1`: compatibles, properties,
+   pinctrl values, clock references and Kconfig symbols. This is the real work. The hardware is the
+   same, so mapping by device class is not needed here. A **direct translation table per binding
+   pair** is more precise (see *Binding translation* below). It can be tested on the existing
+   board: `same54_xpro` → `sam_e54_xpro` is exactly this step on the same hardware.
+2. **Change the device** E54 → SG41/SG61 within the new family. This is almost only a swap of the
+   SoC `.dtsi`. For the SG41 the checks report nothing; for the SG61 the pin check reports the 5
+   missing pins.
+
+### Prerequisite: a current Zephyr workspace
+
+The PIC32CX SG support needed here only exists in a current Zephyr. Use a **second workspace**,
+planned at `C:\Masters\zephyr-main` (`west init -m https://github.com/zephyrproject-rtos/zephyr`
+plus `west update`), so the RTOS4 course workspace stays unchanged. The explorer opens either
+workspace through its folder dialog. Porting from a build in one workspace to a build in the other
+must work, because source and target live in different Zephyr versions.
+
 ### Microchip families in Zephyr
 
 Each family uses its own pinctrl binding, so the overlay notation differs per family:
@@ -176,6 +231,7 @@ gets no special treatment.
 | **Device data provider** | vendor device file → neutral `DeviceModel` | `matches(build_info)` | `microchip_atdf` |
 | **Pinctrl formatter** | neutral signal ↔ overlay notation of one Zephyr pinctrl binding | compatible of the build's pinctrl node | `atmel,sam0-pinctrl`, `microchip,port-g1-pinctrl` |
 | **Recipe** | driver knowledge: named pin roles, derived properties, Kconfig table | driver compatible (`atmel,sam0-uart`, …) | SERCOM UART/I2C/SPI |
+| **Binding translation** | one driver family's binding → another family's binding for the same hardware | pair (source compatible, target compatible) | `atmel,sam0-*` → `microchip,*-g1` |
 
 Providers belong to the vendor's *file format*. Formatters belong to the *Zephyr side*. Keeping the
 two apart matters:
@@ -258,6 +314,27 @@ class Constraint:                   # e.g. "signals of one instance should share
 - **The plugin API has a version.** Each plugin declares `api_version`. The core skips a plugin
   with an incompatible version and reports why, so community plugins never break silently.
 
+### Binding translation
+
+When source and target hardware are the same IP (SAME54 → PIC32CX SG, or the old → new SAM E5x
+port), translating binding to binding is more precise than lifting to a device class and mapping
+back. A translation covers one pair, e.g. `atmel,sam0-uart` → `microchip,sercom-g1-uart`:
+
+- **compatible:** the target compatible.
+- **Per property:** keep, rename, transform the value, drop, or "derive with the target recipe".
+  Each property of the source binding must be listed. An unlisted property is reported, never
+  silently dropped.
+- **pinctrl:** not in the table. The source formatter's `from_overlay` gives the pads, the target
+  formatter writes them again.
+- **Clocks:** the source clock references (`atmel,sam0-gclk`/`-mclk`) become the target notation
+  (`microchip,sam-d5x-e5x-clock`).
+- **Kconfig:** old symbol → new symbol, where a symbol does not follow automatically from
+  `DT_HAS_<compat>_ENABLED`.
+
+Translations are mostly data, so they are written as **YAML files** with optional Python hooks for
+value transforms. That keeps community contributions simple. If no translation exists for a pair,
+porting falls back to the class-based mapping in *Porting*.
+
 ### Plugin discovery
 
 1. **Built-in registry:** a decorator (`@register_provider`, `@register_formatter`,
@@ -297,6 +374,8 @@ dt_explorer/
     microchip_port_g1.py
   recipes/
     atmel_sam0_sercom.py
+  translations/
+    atmel_sam0_to_mchp_g1.yaml
 tests/              per plugin, with small fixture files
 dt_explorer.py      thin launcher, so dt_explorer.bat keeps working
 ```
@@ -428,7 +507,7 @@ appears in the build list. Two extensions are planned.
 - **App overlays are per board.** Zephyr looks up the app overlay by board name. So
   `apps/lab1/boards/same54_xpro.overlay` does **not** apply to a `sam_e54_xpro` build. The
   configurator can transfer an overlay to the other board, converting the pinctrl notation on the
-  way. This is the comparison planned in phase 4.
+  way. This is the comparison planned in phase 5.
 
 ### Creating a custom board (own hardware)
 
@@ -447,6 +526,10 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 
 Moving an app from one device or vendor to another is the configurator run in both directions. It
 works only because the draft stores intent (see `core/draft.py`).
+
+If a *binding translation* exists for a source/target pair (same hardware IP, e.g. SAME54 → PIC32CX
+SG), it replaces the class-based mapping in step 2. Lift, the formatters and the report stay the
+same. The class-based mapping below is the fallback for pairs without a translation.
 
 1. **Lift.** Read the source build's overlay and board `.dts` back into intent:
    - the formatter's `from_overlay` gives the physical pins,
@@ -476,27 +559,36 @@ is changed.
    first plugins. The pin map tests all of this against the SAM E54 labs. This phase brings the
    first pytest tests into the repo, plus `LICENSE` and `CONTRIBUTING.md`.
 2. **"New build…" with board selection**, `--cmake-only`, the "not linked yet" state and
-   "Full build". It comes early because phase 4 needs a `sam_e54_xpro` build anyway.
+   "Full build". It comes early because phase 5 needs a `sam_e54_xpro` build anyway.
 3. **SERCOM configurator for UART/I2C/SPI**, with the Draft tab and the fast check.
-4. **Second family as a test that the design is really generic.** Use the board **`sam_e54_xpro`**
-   (`boards/microchip/sam/sam_e54_xpro`). It is the new Microchip port of the same hardware as
-   `same54_xpro`, but it uses `microchip,port-g1-pinctrl`. So the same physical board and the
-   installed SAME54 pack are enough; only a second build of a lab with `-b sam_e54_xpro` is
-   needed. **Prerequisite:** the module `hal_microchip` (`modules/hal/microchip`). Without it the
-   build fails while preprocessing the board's own `sam_e54_xpro-pinctrl.dtsi`
+4. **"Verify with west"** and writing to a file. It comes before porting, because a port must be
+   checked by Zephyr itself.
+5. **Translate the driver family (core of the main use case).** `same54_xpro` → `sam_e54_xpro`
+   (`boards/microchip/sam/sam_e54_xpro`): the new Microchip port of the same hardware, using
+   `microchip,port-g1-pinctrl` and the `microchip,*-g1` drivers. The same physical board is enough;
+   the generated result can be compared one to one with phase 3. This phase delivers:
+   - the "Port to board…" UI,
+   - the first binding translations `atmel,sam0-*` → `microchip,*-g1` for SERCOM (UART/I2C/SPI),
+     GPIO, pinctrl and clocks,
+   - the `microchip,port-g1-pinctrl` formatter,
+   - the transfer of the lab's `same54_xpro.overlay` to `sam_e54_xpro`,
+   - the label report (`DT_NODELABEL` → `DT_ALIAS`/`DT_CHOSEN`).
+
+   **Prerequisite:** the module `hal_microchip` (`modules/hal/microchip`). Without it the build
+   fails while preprocessing the board's own `sam_e54_xpro-pinctrl.dtsi`
    (`dt-bindings/sam/sam_d5x_e5x/atsame54/atsame54p20a-pinctrl.h: No such file or directory`).
    In the RTOS4 workspace it was fetched on 2026-10-14 with `west update hal_microchip`; the
    cmake-only build of lab1 for `sam_e54_xpro` then succeeds. Its pinctrl names look like the old
-   port's (`PB25D_SERCOM2_PAD0`), but expand to `MCHP_PINMUX(b, 25, d, periph)`. Because the hardware is the same, the generated pins can be compared one to one with
-   phase 3. This phase includes transferring the lab's `same54_xpro.overlay` to `sam_e54_xpro`.
-   A different device (`pic32cx_sg61_cult`, `pic32cm_jh01_cnano`) can follow later; the matching
-   packs are not installed yet.
-5. **"Verify with west"** and writing to a file.
-6. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
-   `on-bus: i2c`) and the generic binding form for other peripherals (ADC, TC, …).
-7. **Custom board wizard** (see *Creating a custom board*).
-8. **"Port to board…"** (see *Porting*). Phase 4 is its first, simplest case: same hardware, same
-   vendor, different Zephyr port.
+   port's (`PB25D_SERCOM2_PAD0`), but expand to `MCHP_PINMUX(b, 25, d, periph)`.
+6. **Port to PIC32CX SG41/SG61** in the current workspace `C:\Masters\zephyr-main`: the device
+   change within the new family, with source builds from the RTOS4 workspace. Target boards are
+   `pic32cx_sg41_cult` and `pic32cx_sg61_cult`. Acceptance test: the RTOS4 labs build for both, and
+   the SG61 report lists exactly the conflicts with PB26–PB29/PC04.
+7. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
+   `on-bus: i2c`) and the generic binding form for other peripherals (ADC, TC, …). The matching
+   translations follow with them.
+8. **Custom board wizard** (see *Creating a custom board*).
+9. **Class-based porting** for pairs without a translation, up to other vendors (see *Porting*).
 
 ## Decisions (2026-10-14)
 
@@ -505,9 +597,12 @@ is changed.
 | Draft location | App folder: `<app>/.dt_explorer/<build folder name>.draft.json` |
 | Kconfig suggestions | Both: recipe table where one exists, otherwise derived with kconfiglib; the recipe wins |
 | IOSET violation | Warning, not an error, until the datasheet wording is checked |
-| Board for phase 4 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
+| Board for phase 5 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
 | Other vendors | Not implemented, but possible through plugins (provider, formatter, recipe); the core never reads a vendor file |
 | Draft format | Intent-based: class, roles, neutral properties and use, kept apart from instance, pins and vendor properties |
+| Main use case | Port SAME54 projects (old `atmel` port) to PIC32CX SG41/SG61: first translate the driver family, then change the device |
+| Same-IP porting | Direct binding translation tables (YAML), not class-based mapping |
+| Zephyr for PIC32CX SG | Second workspace `C:\Masters\zephyr-main` with current Zephyr; the RTOS4 workspace stays unchanged |
 
 ## Open questions
 
