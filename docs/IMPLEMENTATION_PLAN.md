@@ -36,7 +36,9 @@ over from any other.
 6. **Parallel work only in a separate git worktree** (`isolation: "worktree"`) and only for cards
    marked *parallel-safe* whose write scopes are disjoint *for their whole run*. A card that moves
    code is never parallel to a card that touches that code. Remove the worktree before the next agent
-   uses the same branch.
+   uses the same branch. **The worktree starts from `origin/master`, not from local `master`**
+   (found 2026-10-14). Every worktree brief therefore begins with `git reset --hard master` inside
+   the worktree; the builder brings the result to `master` with `git cherry-pick`.
 7. **Card size:** target ≤ 60 tool calls. A sub-agent that sees the card growing beyond that stops
    after a clean, committed intermediate state and reports what remains. The builder then splits
    the card.
@@ -178,8 +180,8 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P0.1 | open | |
-| P0.2 | open | |
+| P0.1 | done | 9b6e8c6 |
+| P0.2 | done | afb4cb7 → master |
 
 **P0.1 Golden snapshots of today's explorer.**
 - Dep: –. Scope: `tools/snapshot_build.py`, `tests/golden/*.json`, `tests/test_golden.py`,
@@ -518,4 +520,5 @@ surprising, and anything you were unsure about.
 
 | Card | Evidence | Notes |
 |---|---|---|
-| – | – | – |
+| P0.1 | [P0.1.md](evidence/P0.1.md) | 5 goldens (lab0 85 nodes, lab1 86, lab3 89, lab1_leer 85, lab1 cmake-only 86); negative test fails on one changed state; `DTX_GOLDEN_DIR` points the test at a copy; builder re-run: 13 passed, 2 skipped |
+| P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
