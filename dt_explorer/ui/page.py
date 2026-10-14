@@ -9,7 +9,7 @@ from pathlib import Path
 
 from nicegui import ui
 
-from . import new_build
+from . import new_build, pinmap
 from ..core.build import (DRV_COMPAT_RE, HELPER_HEADER, ORIGIN_STYLE, STATE_STYLE, BuildModel,
                           NodeOrigin, find_builds, fkey, fmt_value, header_defines, node_ident,
                           origin_kind)
@@ -123,7 +123,7 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
          macros: int = 0, bprops: int = 0):
     """Optional via URL: /?build=apps/lab1/build_same54_xpro&node=/my_led@41008000
     plus &src=<file relative to the west workspace>&line=<n> to open a source file,
-    &tab=include to start on the include tree, &file=<relative path> to select a file
+    &tab=include to start on the include tree, &tab=pins for the pin map, &file=<relative path> to select a file
     in the include tree, &macros=1 to expand the generated-macro section, &bprops=1 to expand
     the list of all properties the binding allows."""
     ui.page_title("Devicetree Explorer")
@@ -237,6 +237,7 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
             with ui.tabs().classes("w-full").props("dense align=left") as tabs:
                 tab_nodes = ui.tab("Nodes")
                 tab_inc = ui.tab("Include tree")
+                tab_pins = ui.tab("Pins")
             with ui.tab_panels(tabs, value=tab_nodes).classes("w-full").style("background: transparent"):
                 with ui.tab_panel(tab_nodes).classes("p-1"):
                     flt = ui.input("Filter (name/label)").props("dense clearable").classes("w-full")
@@ -262,6 +263,8 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                              "from this file.").classes("text-xs text-grey-5")
                     helpers = ui.switch("Show internal helper headers (sys/util_*.h)").props("dense")
                     inc_box = ui.column().classes("w-full gap-0")
+                with ui.tab_panel(tab_pins).classes("p-1"):
+                    pins_box = ui.column().classes("w-full gap-1")
         with sp.after:
             detail = ui.column().classes("w-full p-3 gap-3")
 
@@ -285,6 +288,16 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                 </span>""")
             t.expand()
     helpers.on_value_change(lambda _: render_includes())
+
+    def on_tab(_=None):
+        # the pin table needs width: widen the left pane while the Pins tab is active
+        if tabs.value == tab_pins:
+            sp.set_value(78)
+            if not pins_box.default_slot.children:
+                pinmap.render_pin_map(pins_box, m, goto)
+        else:
+            sp.set_value(34)
+    tabs.on_value_change(on_tab)
 
     def goto(path):
         tabs.set_value(tab_nodes)
@@ -564,7 +577,9 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         select(node)
     else:
         select(None)
-    if tab == "include" or file:
+    if tab == "pins":
+        tabs.set_value(tab_pins)
+    elif tab == "include" or file:
         tabs.set_value(tab_inc)
     if file:
         fid = next((k for k, v in inc_files.items() if fkey(v["rel"]) == fkey(file)), None)
