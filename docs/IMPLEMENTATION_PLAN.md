@@ -104,7 +104,7 @@ The human answered these before the run. The builder does **not** stop for them:
 
 | ID | When | Question |
 |---|---|---|
-| HC-2 | after P1.7 | Review of the read-only pin map and package view (screenshots): good enough to build the configurator on? |
+| HC-2 | after P1.7 | **Decided 2026-10-15:** accepted, no changes ("carry on") |
 | HC-7 | when it blocks progress | A design gap or contradiction in CONFIGURATOR.md that the builder cannot settle, or an outward-facing action, **and** no other card can proceed without it |
 
 Decisions the human makes are added to the *Decisions* table in CONFIGURATOR.md (by the builder)
@@ -314,7 +314,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P3.2 | done | 3876c45 |
 | P3.3 | done | 7037d88 |
 | P3.4 | done | cc9b28a |
-| P3.5 | open | |
+| P3.5 | running | |
 
 **P3.1 Intent-based draft.**
 - Dep: P1.2. Scope: `dt_explorer/core/draft.py`.

@@ -864,6 +864,7 @@ is changed.
 | Draft location | App folder: `<app>/.dt_explorer/<build folder name>.draft.json` |
 | Kconfig suggestions | Both: recipe table where one exists, otherwise derived with kconfiglib; the recipe wins |
 | IOSET violation | Warning, not an error, until the datasheet wording is checked |
+| HC-2 (2026-10-15) | Read-only pin map and package view accepted as the base for the configurator, no changes requested |
 | Board for phase 5 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
 | Other vendors | Not implemented, but possible through plugins (provider, formatter, recipe); the core never reads a vendor file |
 | Draft format | Intent-based: class, roles, neutral properties and use, kept apart from instance, pins and vendor properties |
