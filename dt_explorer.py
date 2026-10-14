@@ -71,6 +71,7 @@ STATE_STYLE = {           # traffic light -> (Quasar colour, short text)
     "device":   ("green",  "Device created"),
     "nobuild":  ("orange", "Driver not enabled"),
     "nodevice": ("red",    "Driver built, no device"),
+    "notlinked": ("cyan-6", "Driver built, not linked yet"),
     "disabled": ("grey-7", "Disabled"),
     "neutral":  ("blue-grey-4", "No driver"),
     "nobinding": ("deep-orange", "No binding found"),
@@ -253,6 +254,7 @@ class BuildModel:
         self.file_contrib = self._file_contrib()
         self.generated = (zdir / "include" / "generated" / "zephyr" / "devicetree_generated.h") \
             .read_text(encoding="utf-8", errors="replace")
+        self.linked = (zdir / "zephyr.elf").exists() or (zdir / "zephyr.map").exists()
         self.device_ords = self._device_ords(cache, zdir)
         self.compiled = self._compiled_files(build)
 
@@ -299,6 +301,8 @@ class BuildModel:
                 return {int(x) for x in re.findall(r"__device_dts_ord_(\d+)\s*$", out, re.M)}
             except (OSError, subprocess.SubprocessError):
                 pass
+        if not (zdir / "zephyr.map").exists():
+            return set()        # not linked yet (e.g. west build --cmake-only)
         mp = (zdir / "zephyr.map").read_text(errors="replace")
         mp = mp.split("Linker script and memory map", 1)[-1]
         return {int(x) for x in re.findall(r"__device_dts_ord_(\d+)", mp)}
@@ -446,6 +450,10 @@ class BuildModel:
             return "nobuild", ("A driver exists but is disabled in Kconfig and was not compiled. Normal if "
                                "the app does not need this hardware. Otherwise enable the driver's Kconfig "
                                "symbol in prj.conf (find it with menuconfig).")
+        if not self.linked:
+            return "notlinked", ("The driver is compiled, but the build is not linked yet (no zephyr.elf / "
+                                 "zephyr.map), so it is unknown whether the device made it into the image. "
+                                 "Run a full west build and press Reload.")
         return "nodevice", ("The driver was compiled, but there is no device for this node in the image. "
                             "Check the driver macro (DT_INST_FOREACH_STATUS_OKAY) and the binding.")
 

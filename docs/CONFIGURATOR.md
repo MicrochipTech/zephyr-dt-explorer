@@ -89,13 +89,21 @@ need regex. The ATDF is the better source.
 ### Finding the ATDF automatically
 
 1. **Device name** from the build's `zephyr/.config`: `CONFIG_SOC="same54p20a"`.
-2. **Pack roots**, searched in this order:
+2. **First source: the `hal_microchip` module of the workspace** (`modules/hal/microchip/packs`).
+   It ships 91 ATDF files for the families of the new Microchip port: SAM D51/E51/E53/E54
+   (`packs/sam/sam_d5x_e5x/<series>/atdf/`), PIC32CM JH, PIC32CX SG41/SG60/SG61 and PIC32CZ
+   CA70/CA80/CA90/CA91 (`packs/pic32c/...`). These files match the Zephyr version exactly and need no
+   MPLAB installation. Search them with `packs/**/atdf/*<SOC>.atdf`; the tree is small, so a glob is
+   fine here. Found on 2026-10-14 after `west update hal_microchip`.
+3. **Then the installed DFPs**, in this order. They also cover the old `atmel` port families
+   (SAM D2x, SAM E70, …), for which `hal_microchip` has no ATDF:
    - `%USERPROFILE%\.mchp_packs`, where the pack manager of MPLAB X and the MPLAB VS Code
      extensions downloads packs,
    - `C:\Program Files\Microchip\MPLABX\*\packs`.
-3. **Pattern** `<root>\Microchip\*_DFP\<version>\atdf\*<SOC>.atdf`, matched case-insensitively.
+
+   Pattern: `<root>\Microchip\*_DFP\<version>\atdf\*<SOC>.atdf`, matched case-insensitively.
    SAM devices carry an `AT` prefix (`ATSAME54P20A.atdf`), PIC32C devices do not.
-4. **Version:** take the newest with a *natural* sort (`3.11.261` > `3.9.244`), not an
+4. **Version (DFPs):** take the newest with a *natural* sort (`3.11.261` > `3.9.244`), not an
    alphabetical one.
 5. **Search with the pattern, never recursively.** A recursive `find` over the pack roots took
    about 10 s on this machine.
@@ -117,11 +125,13 @@ names are identical:
 | `pic32cx1025sg41128` | `PIC32CX1025SG41128.atdf` |
 | `pic32cz2051ca70144` | `PIC32CZ2051CA70144.atdf` |
 
-So no mapping table is needed. The lookup only fails when the pack is not installed. On this
-machine that is the case for PIC32CX SG60/SG61 and PIC32CZ CA80, which Zephyr supports. The tool
-then reports which pack is missing and offers the fallback above.
+So no mapping table is needed. The lookup only fails when neither `hal_microchip` nor an installed
+DFP has the file. PIC32CX SG60/SG61 and PIC32CZ CA80 have no installed DFP on this machine, but
+`hal_microchip` covers them. If nothing is found, the tool reports which pack is missing and offers
+the fallback above.
 
-Zephyr itself ships no ATDF files, so the configurator needs installed packs.
+Zephyr itself (the `zephyr` repository) ships no ATDF files; they come from `hal_microchip` or from
+installed packs.
 
 ## User interface
 
@@ -254,12 +264,11 @@ appears in the build list. Two extensions are planned.
   `zephyr.dts`, `zephyr.dts.pre`, `.config`, `compile_commands.json`, `devicetree_generated.h`,
   `zephyr_modules.txt` and `CMakeCache.txt`. Compared with the full build of the same app, the
   explorer finds the same 86 nodes and the same 112 compiled files. The only difference is the 7
-  nodes that are `device` in the full build, which become `nodevice` without the ELF. That is
-  exactly the gap the new state has to close.
-- **Current code crashes on such a build.** `BuildModel._device_ords()` falls back to
-  `zephyr/zephyr.map` without checking that the file exists, so it raises `FileNotFoundError` when
-  neither the ELF nor the map is present. Fix this as part of phase 2: return "unknown" instead of
-  an empty set.
+  nodes that are `device` in the full build, which would be `nodevice` without the ELF.
+- **Done (2026-10-14): state "not linked yet".** `BuildModel.linked` is false when neither
+  `zephyr.elf` nor `zephyr.map` exists. `state()` then returns `notlinked` (cyan) instead of
+  `nodevice`, and `_device_ords()` no longer crashes on the missing map. Checked with the
+  cmake-only builds of lab1 for `same54_xpro` and `sam_e54_xpro`.
 - **Board list.** Every `board.yml` with `vendor: microchip` or `vendor: atmel`; there are 27 in the
   current Zephyr tree. This matches the scope "generic across Microchip devices".
 - **New state "not linked yet".** Without `zephyr.elf` the tool cannot tell whether a device made it
@@ -295,11 +304,12 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
    (`boards/microchip/sam/sam_e54_xpro`). It is the new Microchip port of the same hardware as
    `same54_xpro`, but it uses `microchip,port-g1-pinctrl`. So the same physical board and the
    installed SAME54 pack are enough; only a second build of a lab with `-b sam_e54_xpro` is
-   needed. **Prerequisite:** the module `hal_microchip` (`modules/hal/microchip`) is listed in
-   `zephyr/west.yml` but not checked out in the RTOS4 workspace. Without it the build fails while
-   preprocessing the board's own `sam_e54_xpro-pinctrl.dtsi`
+   needed. **Prerequisite:** the module `hal_microchip` (`modules/hal/microchip`). Without it the
+   build fails while preprocessing the board's own `sam_e54_xpro-pinctrl.dtsi`
    (`dt-bindings/sam/sam_d5x_e5x/atsame54/atsame54p20a-pinctrl.h: No such file or directory`).
-   Fetch it first with `west update hal_microchip`. Because the hardware is the same, the generated pins can be compared one to one with
+   In the RTOS4 workspace it was fetched on 2026-10-14 with `west update hal_microchip`; the
+   cmake-only build of lab1 for `sam_e54_xpro` then succeeds. Its pinctrl names look like the old
+   port's (`PB25D_SERCOM2_PAD0`), but expand to `MCHP_PINMUX(b, 25, d, periph)`. Because the hardware is the same, the generated pins can be compared one to one with
    phase 3. This phase includes transferring the lab's `same54_xpro.overlay` to `sam_e54_xpro`.
    A different device (`pic32cx_sg61_cult`, `pic32cm_jh01_cnano`) can follow later; the matching
    packs are not installed yet.

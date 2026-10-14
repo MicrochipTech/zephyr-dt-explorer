@@ -29,7 +29,7 @@ Direct link to a node: `http://localhost:8765/?build=apps/lab1/build_same54_xpro
 |---|---|
 | Text colour in the tree | File that defines the node: green = app overlay, blue = board, grey = SoC/Zephyr, purple = module |
 | `overlay` badge | Node exists elsewhere but the app overlay changed a property (e.g. `status`) |
-| Dot | green = device in image · orange = driver exists but disabled by Kconfig · red = driver built but no device · grey = `status = "disabled"` · blue-grey = no driver (CPU, memory, child nodes) |
+| Dot | green = device in image · orange = driver exists but disabled by Kconfig · red = driver built but no device · cyan = driver built, build not linked yet (`--cmake-only`) · grey = `status = "disabled"` · blue-grey = no driver (CPU, memory, child nodes) |
 | Red banner | A driver from a module/app was compiled but no node with its `compatible` is `okay` — typical cause: overlay not saved or `compatible` misspelled |
 | Overview | Every `DT_NODELABEL` / `DT_ALIAS` / `DT_CHOSEN` in the app's `src/`, resolved to its node |
 | Node details | Origin file:line per property, raw vs. interpreted value (GPIO flags decoded), binding description, driver file, dependencies, generated C macros |

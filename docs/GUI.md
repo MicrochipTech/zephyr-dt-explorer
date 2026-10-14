@@ -83,6 +83,7 @@ The file path in the banner opens the driver source.
 | green: *Device created* | The image contains `__device_dts_ord_<n>`. | — |
 | orange: *Driver not enabled* | A driver exists, but Kconfig did not enable it. | Usually fine. Only a problem if the app needs this hardware. |
 | red: *Driver built, no device* | The driver was compiled, but no device exists for this node. | Yes. Check the driver macro and the binding. |
+| cyan: *Driver built, not linked yet* | The driver was compiled, but the build has no `zephyr.elf`/`zephyr.map` yet (e.g. `west build --cmake-only`), so it is unknown whether the device is in the image. | No. Run a full build and press Reload. |
 | dark grey: *Disabled* | `status = "disabled"`. | Only if you expected it to be on. |
 | blue-grey: *No driver* | CPU, memory, a container, or a child node that the parent or the app reads directly. | Usually fine. |
 | deep orange: *No binding found* | The node has a `compatible`, but no binding YAML matches it. Zephyr does not evaluate its properties and generates no `DT_PROP()` macros. | Yes, if your code uses the node. Typical causes: a typo in `compatible`, or a missing `dts_root` / `dts/bindings` folder for out-of-tree bindings. |
