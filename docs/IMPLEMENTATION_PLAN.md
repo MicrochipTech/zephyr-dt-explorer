@@ -211,7 +211,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P1.5 | done | ea75341 |
 | P1.6 | open | |
 | P1.7 | open | |
-| P1.8 | open | |
+| P1.8 | done | c0ba67d → master |
 
 **P1.1 Move today's code into the package.** Not parallel to anything.
 - Dep: P0.1, P0.2. Scope: `dt_explorer/` (new package), `dt_explorer.py` (thin launcher),
@@ -284,6 +284,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P2.1 | done | 35480d1 → master |
 | P2.2 | done | 2c90c48 → master |
+| P2.3 | open | |
 
 **P2.1 `west_tools`.** PS with P1.4–P1.7.
 - Dep: P1.1. Scope: `dt_explorer/core/west_tools.py`.
@@ -296,6 +297,14 @@ Status values: `open`, `running`, `done`, `blocked`.
 - Dep: P2.1. Scope: `dt_explorer/ui/new_build.py`, `dt_explorer/ui/page.py` (header button only).
 - Accept: screenshot; after the dialog the new build appears in the build list and shows
   `notlinked` states; goldens unchanged.
+
+**P2.3 Vendor defaults out of core and ui.** *light*
+- Dep: P2.2. Scope: `dt_explorer/core/west_tools.py`, `dt_explorer/ui/new_build.py`, `dt_explorer/core/plugins.py`
+  (only: an optional `board_vendors` attribute that providers may declare), `dt_explorer/providers/microchip_atdf.py`
+  (declare it).
+- Do: the board list's default vendor filter comes from the registered providers (`board_vendors`), not from a
+  hardcoded `("microchip", "atmel")` in core/ui. (Found at P1.8 review.)
+- Accept: the board list still has 27 entries for the RTOS4 workspace; `grep -rnEi "microchip|atmel" dt_explorer/core/west_tools.py dt_explorer/ui/new_build.py` → no hits.
 
 ### Phase 3: SERCOM configurator
 
@@ -539,4 +548,5 @@ surprising, and anything you were unsure about.
 | P7.3 | [P7.3.md](evidence/P7.3.md) | EXT1–EXT3 (Xpro) and EXT1/EXT2 (SG41) match CONFIGURATOR.md on all 16 signal pins; gaps reported: TCC4/WO0, TCC4/WO1, NetJ602_18, NetJ603_8, NetJ603_18; all 5 connectors `reviewed: builder` (silkscreen + score ≥ 0.5 + GND/VCC + ≥ 75 % traced); MCU match U200 / U401 by package fit 100 %. Arduino and mikroBUS headers are not imported yet (label-keyed pins, four-header merge missing) → backlog. Builder follow-up: `test_plugins` now restores the registry after each test |
 | P5.1 | [P5.1.md](evidence/P5.1.md) | 134/134 SERCOM signals round trip against the hal_microchip header (`include/dt-bindings/sam/sam_d5x_e5x/atsame54/atsame54p20a-pinctrl.h`); macro names identical to the old port (130 same, 0 different, 4 only new: SERCOM7 on PB30/PB31/PA30/PA31); `sercom2_uart_default` → PB25/PB24. Builder follow-up: `formatters/` and `providers/` register their modules on package import |
 | P3.2 | [P3.2.md](evidence/P3.2.md) | SERCOM2 lift TX=PB25 RX=PB24; exhaustive check accepts exactly UART 6 / SPI 6 / I2C 1 assignments (618/618/23 rejected); board nodes: SPI sercom4 MOSI PB27 SCK PB26 MISO PB29, I2C sercom7 SDA PD08 SCL PD09. Tables from ATDF value groups (binding has no SPI table; E5x offers only dopo 0/2). API extension: `pin_roles(instance, compatible=None)`, `kconfig(compatible=None)` — the Recipe protocol cannot name the class otherwise. Builder re-run 50 passed |
+| P1.8 | [P1.8.md](evidence/P1.8.md) | LICENSE = canonical Apache-2.0 (builder diffed against Zephyr's copy: only the `[]`/`{}` placeholder variant differs); CONTRIBUTING covers all 13 protocol methods and six plugin kinds; copyright "The Devicetree Explorer contributors". Builder follow-up: `app.load_plugins()` imports the built-in plugin packages and calls `discover_entry_points()` at startup; `readers/` registers on import. Open: vendor defaults in core/ui (`west_tools.DEFAULT_VENDORS`, `ui/new_build.py`) → card P2.3 |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

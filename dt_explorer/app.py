@@ -6,10 +6,18 @@ import sys
 
 from nicegui import ui
 
+from .core import plugins
 from .ui import page as P
 
 
+def load_plugins():
+    """Register the built-in plugins, then external ones via entry points."""
+    from . import connectors, formatters, providers, readers, recipes, translations  # noqa: F401
+    plugins.discover_entry_points()
+
+
 def main():
+    load_plugins()
     if P.ROOT is None:
         P.ROOT = P.ask_folder(P.last_folder())
         if P.ROOT is None:
