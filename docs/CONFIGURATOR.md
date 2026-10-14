@@ -25,11 +25,14 @@ board file writes by hand. Here is SERCOM2 in `boards/atmel/sam0/same54_xpro/sam
 ```
 
 **Generic means generic across Microchip devices.** The tool must work for every Microchip device
-that Zephyr supports and for which a DFP with an ATDF exists. The SAM E54 is only the first test
-case.
+that Zephyr supports and for which an ATDF exists. The SAM E54 is only the first test case.
 
-Out of scope:
-- other vendors (ST, NXP, Nordic, …),
+**Other vendors are not implemented, but the architecture must allow them.** Device data comes
+through plugins, so the community can add other vendors' device files later without changing the
+core. See *Architecture: vendor plugins*.
+
+Out of scope for the implementation:
+- plugins for other vendors (ST, NXP, Nordic, …),
 - clock trees, electrical checks and DMA channel allocation,
 - Microchip families without an ATDF. MEC and Mi-V are likely in this group; this still needs to be
   confirmed.
@@ -141,7 +144,7 @@ installed packs.
   1. Choose the mode, which is the compatible. For a SERCOM that is UART, I2C or SPI.
   2. Fill in a form generated from the binding. It reuses the property table of the binding view
      (type, required, enum as a dropdown, default as the preset value).
-  3. Choose a pin for each role (TX/RX, SDA/SCL, MOSI/MISO/SCK/CS). The choices come from the ATDF.
+  3. Choose a pin for each role (TX/RX, SDA/SCL, MOSI/MISO/SCK/CS). The choices come from the device data provider (for Microchip: the ATDF).
      A pin that is already taken is greyed out and shows what uses it.
   4. Derived properties (`rxpo`/`txpo`, `dipo`/`dopo`) are shown read-only.
 - **New tab "Draft"** next to "Nodes" and "Include tree". It collects all pending changes of the
@@ -155,46 +158,177 @@ installed packs.
 - **Pin map (by-product).** A table of the package pins: who uses each pin and which functions are
   possible on it. It is useful even without the generator.
 
+## Architecture: vendor plugins
+
+**Focus now:** Microchip devices described by ATDF files. **Must stay possible:** the community can
+add other vendors' device files (STM32 Open Pin Data, NXP MCUXpresso Config Tools data, …) without
+changing the core. The rule that keeps this open is that **the core never reads a vendor file
+directly.** It only knows a small neutral device model. Microchip ATDF support is plugin no. 1 and
+gets no special treatment.
+
+### Three independent plugin kinds
+
+| Kind | Translates | Selected by | First implementations |
+|---|---|---|---|
+| **Device data provider** | vendor device file → neutral `DeviceModel` | `matches(build_info)` | `microchip_atdf` |
+| **Pinctrl formatter** | neutral signal ↔ overlay notation of one Zephyr pinctrl binding | compatible of the build's pinctrl node | `atmel,sam0-pinctrl`, `microchip,port-g1-pinctrl` |
+| **Recipe** | driver knowledge: named pin roles, derived properties, Kconfig table | driver compatible (`atmel,sam0-uart`, …) | SERCOM UART/I2C/SPI |
+
+Providers belong to the vendor's *file format*. Formatters belong to the *Zephyr side*. Keeping the
+two apart matters:
+- One ATDF provider already serves two formatters: the old `atmel,sam0` and the new
+  `microchip,port-g1` port of the SAM E5x.
+- A community contribution for ST would be exactly one provider (Open Pin Data) plus one formatter
+  (`st,stm32-pinctrl`), without touching the core.
+
+**Provider interface:**
+
+```python
+class DeviceDataProvider(Protocol):
+    api_version: int
+    name: str                                         # "microchip_atdf"
+    def matches(self, info: BuildInfo) -> bool: ...   # responsible for this build?
+    def locate(self, info: BuildInfo) -> Path | None: ...  # where is the device file?
+    def load(self, path: Path) -> DeviceModel: ...
+```
+
+- `BuildInfo` holds what the core reads from the build: `CONFIG_SOC`, `CONFIG_SOC_SERIES`,
+  `CONFIG_SOC_FAMILY`, the vendor from `soc.yml`/`board.yml`, the west workspace and the module
+  directories.
+- **Finding the file is entirely the provider's job.** Pack paths such as `.mchp_packs` or
+  `hal_microchip/packs` exist only inside the ATDF provider.
+
+**Pinctrl formatter interface:** `compatibles`, `to_overlay(signal) -> str`,
+`from_overlay(value) -> pad id` and `render_group(signals) -> dts text`. A formatter checks every
+generated name against the pinctrl header or `.dtsi` it targets.
+
+**Recipe interface:** `compatibles`, `pin_roles(instance)`, `derived_props(assignment)` and
+`kconfig()`.
+
+### Neutral device model
+
+The model is deliberately small. Everything vendor-specific is either opaque to the core or sits in
+`attrs`:
+
+```python
+@dataclass
+class DeviceModel:
+    name: str                       # "ATSAME54P20A"
+    packages: list[Package]         # pad id -> package pin/ball
+    instances: dict[str, Instance]  # "SERCOM2" -> Instance
+    constraints: list[Constraint]
+
+@dataclass
+class Instance:
+    name: str                       # "SERCOM2"
+    kind: str                       # "SERCOM"
+    base: int | None
+    signals: list[Signal]
+
+@dataclass
+class Signal:
+    role: str                       # "PAD0", "TX", "SDA", ...
+    pad: str                        # opaque pin id: "PA09", "PA9", "GPIO_AD_B0_12", "P0.06"
+    mux: object                     # opaque; only the matching formatter interprets it
+    group: str | None = None        # e.g. the ATDF IOSET
+    attrs: dict = field(default_factory=dict)
+
+@dataclass
+class Constraint:                   # e.g. "signals of one instance should share a group"
+    kind: str
+    severity: str                   # "warning" | "error"
+    message: str                    # text supplied by the provider ("pads from different IOSETs …")
+```
+
+### What must not happen now
+
+- **No ATDF or Microchip terms in the core or the UI.** IOSET is a generic group constraint in the
+  core; the word "IOSET" and the warning text come from the ATDF provider.
+- **No assumptions about pin names.** A pad is an opaque id. The provider supplies a display name
+  and a sort key.
+- **No mux knowledge in the core.** Function "D", AF7 or ALT2 is interpreted only by the formatter.
+- **No hard dependency on a plugin.** Without a matching provider, everything that comes from the
+  bindings still works: the form, the checks, and pins as free text with completion from the
+  pinctrl header macros. So the tool is useful for every vendor before any vendor plugin exists.
+- **The plugin API has a version.** Each plugin declares `api_version`. The core skips a plugin
+  with an incompatible version and reports why, so community plugins never break silently.
+
+### Plugin discovery
+
+1. **Built-in registry:** a decorator (`@register_provider`, `@register_formatter`,
+   `@register_recipe`) for the plugins in the repo.
+2. **Python entry points** (`dt_explorer.providers`, `dt_explorer.formatters`,
+   `dt_explorer.recipes`) via `importlib.metadata.entry_points`. A vendor plugin can then ship as its
+   own pip package, without a fork. This costs only a few lines and belongs in the first version.
+
+The UI shows which plugins are loaded and which one handles the current build.
+
+### Open source prerequisites
+
+- A `LICENSE` file. Apache-2.0 matches Zephyr.
+- A short `CONTRIBUTING.md`: "How to write a provider / formatter / recipe", with the Microchip
+  plugins as the reference.
+- Small vendor test files. The ATDF files in `hal_microchip` are Apache-2.0, so a trimmed excerpt
+  can be committed as a test fixture.
+
 ## Code structure
 
-The configurator is a separate concern that can be tested without the GUI, so it goes into its own
-modules. This breaks the current single-file layout, so update CLAUDE.md when it lands. The core
-contains no device-specific code. Family and driver knowledge sit in two small, clearly separated
-places: the pinctrl formatters and the recipes.
+The single file becomes a package. Update CLAUDE.md when this lands.
 
-### `atdf.py` (new, no NiceGUI, the same for every Microchip device)
+```
+dt_explorer/
+  core/
+    build.py        BuildModel (today's code), BuildInfo
+    device.py       neutral DeviceModel
+    plugins.py      registry, entry points, api_version check
+    draft.py        draft, render_overlay, suggest_kconfig
+    validate.py     fast checks
+    west_tools.py   New build / Full build / Verify with west
+  ui/               NiceGUI: today's page plus Configure, Draft tab, pin map, New build
+  providers/
+    microchip_atdf.py
+  formatters/
+    atmel_sam0.py
+    microchip_port_g1.py
+  recipes/
+    atmel_sam0_sercom.py
+tests/              per plugin, with small fixture files
+dt_explorer.py      thin launcher, so dt_explorer.bat keeps working
+```
 
-- Finds the ATDF as described above.
-- Parses instances, signals (group, index, function, pad, IOSET) and package pinouts. The result
-  is a device-independent model: *instance → signal → possible pins*.
+### `core/build.py`
 
-### `pinctrl_fmt.py` (new, one function per pinctrl binding)
+- Today's `BuildModel`. It also accepts a ready EDT object, not only `edt.pickle`. The preview can
+  then reuse the existing traffic light and detail view unchanged.
+- It produces the `BuildInfo` for the providers.
 
-- The function is selected by the compatible of the build's pinctrl node (`atmel,sam0-pinctrl`,
-  `atmel,sam-pinctrl`, `microchip,port-g1-pinctrl`, …).
-- It answers two questions:
-  - **ATDF signal → overlay notation**, e.g. pad `PB25`, function `D`, `SERCOM2/PAD0` gives
-    `PB25D_SERCOM2_PAD0`. Note that the DFP writes `PA09D` while Zephyr writes `PA9D`.
-  - **Existing overlay value → physical pin**, which the pin map and the conflict check need.
-- It checks each generated name against the family's Zephyr pinctrl header or `.dtsi`. A name that
-  does not exist there is an error, not a guess.
+### `providers/microchip_atdf.py`
 
-### `configurator.py` (new, no NiceGUI)
+- `matches`: the SoC vendor is Microchip/Atmel.
+- `locate`: `hal_microchip/packs` first, then the installed DFPs, as described in
+  *Finding the ATDF automatically*.
+- `load`: parses instances, signals (pad, function, IOSET) and package pinouts into the neutral
+  model. The IOSET becomes `Signal.group` plus a `Constraint` with the IOSET warning text.
+
+### `formatters/`
+
+- `atmel_sam0.py`: pad `PB25`, function `D`, `SERCOM2/PAD0` gives `PB25D_SERCOM2_PAD0`. The DFP
+  writes `PA09D` while Zephyr writes `PA9D`.
+- `microchip_port_g1.py`: the same macro names, but they expand to `MCHP_PINMUX(b, 25, d, periph)`.
+- Both check each generated name against the Zephyr pinctrl header. A name that does not exist is an
+  error, not a guess.
+
+### `core/draft.py`
 
 - **Draft.** For each node: the chosen compatible, property values, the pin for each role, and later
   child nodes. It is plain data, stored as JSON in the app folder:
   `<app>/.dt_explorer/<build folder name>.draft.json` (e.g. `build_same54_xpro.draft.json`). It
   survives a reload and a pristine rebuild (`west build -p`), and it can be committed with the app
   if wanted.
-- **Recipes per driver compatible.**
-  - Without a recipe, the configurator shows the generic form generated from the binding. Pin roles
-    then come straight from the ATDF signal names.
-  - A recipe such as `atmel,sam0-uart` adds named pin roles, derived properties (`rxpo`/`txpo` from
-    the chosen pads; for SPI `dipo`/`dopo`) and Kconfig suggestions (`CONFIG_SERIAL`, `CONFIG_I2C`,
-    `CONFIG_SPI`, …).
-  - Driver knowledge lives in the recipes. It is in neither the binding nor the ATDF.
-- **`render_overlay(draft)`** returns the overlay text. **`suggest_kconfig(draft)`** returns the
-  `prj.conf` lines, from two sources:
+- **Without a recipe**, the configurator shows the generic form generated from the binding. Pin
+  roles then come straight from the provider's signal roles.
+- **`render_overlay(draft)`** returns the overlay text through the matching formatter.
+- **`suggest_kconfig(draft)`** returns the `prj.conf` lines, from two sources:
   1. the recipe's fixed table, where a recipe exists;
   2. otherwise, derived from Kconfig. Load the Kconfig tree with Zephyr's own `kconfiglib`
      (`zephyr/scripts/kconfig/kconfiglib.py`, from the analysed workspace, like edtlib). Find the
@@ -204,22 +338,20 @@ places: the pinctrl formatters and the recipes.
 
   When both exist, the recipe wins. The derived suggestions are shown separately for comparison,
   so a wrong recipe table becomes visible.
-- **`validate(draft)`** runs the checks described below.
 
-### `west_tools.py` (new, no NiceGUI)
+### `recipes/atmel_sam0_sercom.py`
+
+Named pin roles, derived properties (`rxpo`/`txpo` from the chosen pads; for SPI `dipo`/`dopo`) and
+the Kconfig table (`CONFIG_SERIAL`, `CONFIG_I2C`, `CONFIG_SPI`, …) for `atmel,sam0-uart`,
+`atmel,sam0-i2c` and `atmel,sam0-spi`. Driver knowledge lives here; it is in neither the binding
+nor the device file.
+
+### `core/west_tools.py`
 
 Runs every west call the tool makes: "New build…" and "Full build" (see *Boards and builds*), and
 "Verify with west" (see *Checks*). Each call runs as a subprocess in the background, with its
 output streamed to a log panel. The board list is read from `board.yml` files and does not call
 `west boards`.
-
-### `dt_explorer.py`
-
-- UI only: the "Configure…" button, the form, the Draft tab, the pin map, the badge and the
-  "New build…" dialog.
-- Refactor: `BuildModel` must also accept a ready EDT object, not only `edt.pickle`. The preview
-  can then reuse the existing traffic light and detail view unchanged.
-- New traffic-light state "not linked yet" for builds without `zephyr.elf` (see below).
 
 ## Checks
 
@@ -233,11 +365,12 @@ output streamed to a log panel. The board list is read from `board.yml` files an
    - Our own checks:
      - **Pin conflict.** A pin is already used by the `pinmux` of another `pinctrl-0` or by a GPIO
        phandle.
-     - **IOSET.** Pads of one peripheral come from different IOSETs. This is a **warning**, not an
-       error: the pin is highlighted yellow with the reason, and the snippet is still generated.
-       The SAM D5x/E5x datasheet only guarantees timing within one IOSET; the exact wording has not
-       been checked yet. Make it stricter only once it has. Not every device family has IOSETs
-       (no `ioset` attribute in the ATDF means no check).
+     - **Provider constraints**, e.g. the ATDF IOSET rule: pads of one peripheral come from
+       different IOSETs. This is a **warning**, not an error: the pin is highlighted yellow with the
+       provider's reason, and the snippet is still generated. The SAM D5x/E5x datasheet only
+       guarantees timing within one IOSET; the exact wording has not been checked yet. Make it
+       stricter only once it has. Not every device family has IOSETs (no `ioset` attribute in the
+       ATDF means no constraint).
      - **Missing required properties.**
 2. **Authoritative check, "Verify with west" button.**
    - Runs `west build --cmake-only` into a separate scratch build directory with
@@ -295,8 +428,11 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 
 ## Phases
 
-1. **Pin map, read-only.** This tests ATDF discovery, the ATDF parser and the `atmel,sam0-pinctrl`
-   formatter against the SAM E54 labs. It also brings the first pytest tests into the repo.
+1. **Package layout, plugin registry and pin map (read-only).** First move today's code into the
+   package and add the neutral device model, the plugin registry with entry points and the API
+   version check. Only then write the ATDF provider and the `atmel,sam0-pinctrl` formatter as the
+   first plugins. The pin map tests all of this against the SAM E54 labs. This phase brings the
+   first pytest tests into the repo, plus `LICENSE` and `CONTRIBUTING.md`.
 2. **"New build…" with board selection**, `--cmake-only`, the "not linked yet" state and
    "Full build". It comes early because phase 4 needs a `sam_e54_xpro` build anyway.
 3. **SERCOM configurator for UART/I2C/SPI**, with the Draft tab and the fast check.
@@ -326,6 +462,7 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 | Kconfig suggestions | Both: recipe table where one exists, otherwise derived with kconfiglib; the recipe wins |
 | IOSET violation | Warning, not an error, until the datasheet wording is checked |
 | Board for phase 4 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
+| Other vendors | Not implemented, but possible through plugins (provider, formatter, recipe); the core never reads a vendor file |
 
 ## Open questions
 
