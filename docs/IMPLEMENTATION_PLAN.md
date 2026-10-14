@@ -312,7 +312,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P3.1 | done | 0546fb7 |
 | P3.2 | done | 3876c45 |
-| P3.3 | open | |
+| P3.3 | done | 7037d88 |
 | P3.4 | open | |
 | P3.5 | open | |
 
@@ -554,4 +554,5 @@ surprising, and anything you were unsure about.
 | P2.3 | [P2.3.md](evidence/P2.3.md) | 27 boards with provider vendors (builder reproduced), 823 with all vendors; no vendor strings in west_tools/new_build |
 | P7.3b | [P7.3b.md](evidence/P7.3b.md) | Human provided the SG61 files 2026-10-15; builder found the CAD folder byte-identical to SG41 (same PCB "SGxx" R5); BOM EV09H35A rev 5.0: U401 = PIC32CX1025SG61128-E/XCB. EXT1/EXT2 identical to SG41 (40 pins, 0 differences): the U401 pads at positions 27, 102–105 (PC04, PB26–PB29 on SG41) carry no net on this PCB. So the PB26–PB29/PC04 conflict in P6.2 comes from the source side (SAME54 Xpro EXT1 SPI on PB26–PB29), not from the CUlt connectors. Pipeline marks pins on NC positions `available: false`. Builder re-run 14 passed |
 | P1.6 | [P1.6.md](evidence/P1.6.md) | lab1: 128 pins, 23 used, 77 free, 1 conflict (PC18: led_0 gpio + TCC0 WO2 pinctrl); console PB24/PB25 on sercom2, LED PC18. Limits: `my_led@41008000` (custom binding with plain `port`/`pin` ints) is not detected; pinmux ints are decoded by re-reading the macro names from the source line in zephyr.dts (formatters have no int decoder); GPIO controller → pad group by address order (heuristic, documented). Builder: screenshot checked, re-run 7 passed |
+| P3.3 | [P3.3.md](evidence/P3.3.md) | rendered SERCOM2 overlay applied to zephyr.dts with sercom2 stripped → edtlib compare equal to the original (compatible, status, rxpo, txpo, current-speed, chosen, pinmux 0x3391/0x3381); Kconfig: recipe path for I2C (CONFIG_I2C, CONFIG_I2C_SAM0), kconfiglib path without recipe (`atmel,sam0-adc` → ADC_SAM0 → ADC; `gpio-leds` → LED_GPIO → LED), first load ≈ 5 s then cached. Agent stopped on one red test from registry pollution between test files; builder fix: autouse fixture in tests/conftest.py restores the registry after every test |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

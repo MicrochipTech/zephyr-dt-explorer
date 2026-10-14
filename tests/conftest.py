@@ -73,3 +73,16 @@ def rtos4_build(rtos4_ws: Path):
         return build
 
     return get
+
+
+@pytest.fixture(autouse=True)
+def _restore_plugin_registry():
+    """Tests may clear the plugin registry; restore it so test order does not matter."""
+    from dt_explorer.core import plugins
+    saved = {k: dict(d) for k, d in plugins._registry.items()}
+    saved_skipped = list(plugins._skipped)
+    yield
+    for k, d in saved.items():
+        plugins._registry[k].clear()
+        plugins._registry[k].update(d)
+    plugins._skipped[:] = saved_skipped
