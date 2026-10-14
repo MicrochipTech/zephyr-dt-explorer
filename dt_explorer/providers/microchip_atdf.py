@@ -128,6 +128,7 @@ def _int(text: str | None) -> int | None:
 class MicrochipAtdfProvider:
     api_version = 1
     name = "microchip-atdf"
+    board_vendors = ("atmel", "microchip")
 
     def matches(self, info) -> bool:
         vendor = (getattr(info, "vendor", None) or "").lower()

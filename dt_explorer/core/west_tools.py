@@ -14,7 +14,6 @@ from typing import Callable, Iterable
 
 import yaml
 
-DEFAULT_VENDORS = ("microchip", "atmel")
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -170,15 +169,18 @@ def module_board_roots(ws: Path) -> list:
     return roots
 
 
-def list_boards(ws: Path, vendors: Iterable = DEFAULT_VENDORS,
+def list_boards(ws: Path, vendors: Iterable | None = None,
                 extra_board_dirs: Iterable = ()) -> list:
-    """Boards whose board.yml has one of `vendors`, sorted by name.
+    """Boards whose board.yml vendor is one of `vendors`, sorted by name.
+
+    `vendors=None` means every vendor. The vendor strings a UI should default to come from the
+    registered providers (`plugins.board_vendors()`), not from this module.
 
     Searches `zephyr/boards`, the board roots of modules and `extra_board_dirs`.
     Does not call west.
     """
     ws = Path(ws)
-    vend = {v.lower() for v in vendors}
+    vend = None if vendors is None else {str(v).lower() for v in vendors}
     dirs = [ws / "zephyr" / "boards", *module_board_roots(ws), *map(Path, extra_board_dirs)]
     seen, boards = set(), []
     for d in dirs:
@@ -194,7 +196,7 @@ def list_boards(ws: Path, vendors: Iterable = DEFAULT_VENDORS,
                 continue
             vendor = str(b.get("vendor", "")).lower()
             name = str(b.get("name", ""))
-            if vendor not in vend or not name or (name, yml.parent) in seen:
+            if (vend is not None and vendor not in vend) or not name or (name, yml.parent) in seen:
                 continue
             seen.add((name, yml.parent))
             socs = b.get("socs") or []

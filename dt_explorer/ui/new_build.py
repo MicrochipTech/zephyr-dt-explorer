@@ -15,7 +15,7 @@ from typing import Callable
 
 from nicegui import ui
 
-from ..core import west_tools
+from ..core import plugins, west_tools
 
 APP_SCAN_DEPTH = 4
 _SKIP_DIRS = {".git", ".venv", ".west", ".vscode", "modules", "zephyr", "bootloader", "node_modules",
@@ -117,7 +117,9 @@ def open_new_build(root: Path | None, on_built: Callable[[Path], None]):
         ui.notify(f"Workspace Python not found: {py}", type="negative")
         return
     apps = find_apps(ws)
-    boards = west_tools.list_boards(ws)
+    vendors = plugins.board_vendors()           # default filter from the providers; () = all
+    boards = west_tools.list_boards(ws, vendors=vendors or None)
+    vendor_note = f" {'/'.join(v.capitalize() for v in vendors)}" if vendors else ""
     app_opts = {str(a): str(a.relative_to(ws)) for a in apps}
     all_names = [b.name for b in boards]
     by_name = {b.name: b for b in boards}
@@ -134,7 +136,7 @@ def open_new_build(root: Path | None, on_built: Callable[[Path], None]):
         with ui.row().classes("w-full items-end gap-3 no-wrap"):
             flt = ui.input("Filter boards", placeholder="e.g. same54, pic32cx").classes("w-48") \
                 .props("dark dense clearable")
-            board_sel = ui.select(all_names, value=None, label=f"Board ({len(all_names)} Microchip/Atmel)",
+            board_sel = ui.select(all_names, value=None, label=f"Board ({len(all_names)}{vendor_note})",
                                   with_input=True).classes("grow").props("dark dense options-dense")
         board_info = ui.label("").classes("text-xs text-grey-5")
         name_in = ui.input("Build folder name", value="").classes("w-full").props("dark dense")

@@ -45,6 +45,12 @@ class DeviceDataProvider(Protocol):
     def load(self, path: Path) -> DeviceModel: ...
 
 
+# Optional attribute of a DeviceDataProvider (not a required protocol member, so existing providers
+# stay valid): ``board_vendors: tuple[str, ...]``, the ``vendor`` strings of the board.yml files the
+# provider serves, e.g. ``("atmel", "microchip")``. The board list defaults to these; see
+# ``board_vendors()``.
+
+
 @runtime_checkable
 class PinctrlFormatter(Protocol):
     api_version: int
@@ -167,6 +173,16 @@ def discover_entry_points() -> int:
 
 def providers() -> list[DeviceDataProvider]:
     return list(_registry["provider"].values())
+
+def board_vendors() -> tuple[str, ...]:
+    """Union of the optional ``board_vendors`` attributes of all registered providers, sorted.
+
+    Empty when no provider declares one; the caller then shows every vendor.
+    """
+    out: set[str] = set()
+    for p in providers():
+        out.update(str(v).lower() for v in (getattr(p, "board_vendors", None) or ()))
+    return tuple(sorted(out))
 
 def formatters() -> list[PinctrlFormatter]:
     return list(_registry["formatter"].values())
