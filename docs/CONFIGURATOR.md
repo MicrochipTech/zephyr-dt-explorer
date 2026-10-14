@@ -249,10 +249,17 @@ appears in the build list. Two extensions are planned.
 - **Dialog.** Choose an app and a board. The tool then runs
   `west build -b <board> -d <app>/build_<board> --cmake-only`. Afterwards `find_builds()` picks up
   the new folder on its own.
-- **Why `--cmake-only` should be enough.** As far as known, all files the explorer reads, except
-  `zephyr.elf`, are created during the CMake configure step: `edt.pickle`, `zephyr.dts`,
-  `zephyr.dts.pre`, `.config`, `compile_commands.json` and `devicetree_generated.h`. This takes
-  about 10–20 s. Confirm it by running it once before relying on it.
+- **`--cmake-only` is enough (checked 2026-10-14 with lab1/`same54_xpro`, 25 s).** The configure
+  step creates every file the explorer reads except `zephyr.elf` and `zephyr.map`: `edt.pickle`,
+  `zephyr.dts`, `zephyr.dts.pre`, `.config`, `compile_commands.json`, `devicetree_generated.h`,
+  `zephyr_modules.txt` and `CMakeCache.txt`. Compared with the full build of the same app, the
+  explorer finds the same 86 nodes and the same 112 compiled files. The only difference is the 7
+  nodes that are `device` in the full build, which become `nodevice` without the ELF. That is
+  exactly the gap the new state has to close.
+- **Current code crashes on such a build.** `BuildModel._device_ords()` falls back to
+  `zephyr/zephyr.map` without checking that the file exists, so it raises `FileNotFoundError` when
+  neither the ELF nor the map is present. Fix this as part of phase 2: return "unknown" instead of
+  an empty set.
 - **Board list.** Every `board.yml` with `vendor: microchip` or `vendor: atmel`; there are 27 in the
   current Zephyr tree. This matches the scope "generic across Microchip devices".
 - **New state "not linked yet".** Without `zephyr.elf` the tool cannot tell whether a device made it
@@ -288,7 +295,11 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
    (`boards/microchip/sam/sam_e54_xpro`). It is the new Microchip port of the same hardware as
    `same54_xpro`, but it uses `microchip,port-g1-pinctrl`. So the same physical board and the
    installed SAME54 pack are enough; only a second build of a lab with `-b sam_e54_xpro` is
-   needed. Because the hardware is the same, the generated pins can be compared one to one with
+   needed. **Prerequisite:** the module `hal_microchip` (`modules/hal/microchip`) is listed in
+   `zephyr/west.yml` but not checked out in the RTOS4 workspace. Without it the build fails while
+   preprocessing the board's own `sam_e54_xpro-pinctrl.dtsi`
+   (`dt-bindings/sam/sam_d5x_e5x/atsame54/atsame54p20a-pinctrl.h: No such file or directory`).
+   Fetch it first with `west update hal_microchip`. Because the hardware is the same, the generated pins can be compared one to one with
    phase 3. This phase includes transferring the lab's `same54_xpro.overlay` to `sam_e54_xpro`.
    A different device (`pic32cx_sg61_cult`, `pic32cm_jh01_cnano`) can follow later; the matching
    packs are not installed yet.
