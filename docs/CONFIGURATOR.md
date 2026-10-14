@@ -31,6 +31,9 @@ that Zephyr supports and for which an ATDF exists. The SAM E54 is only the first
 through plugins, so the community can add other vendors' device files later without changing the
 core. See *Architecture: vendor plugins*.
 
+**Porting between devices and vendors** becomes possible on the same basis: the draft stores
+*what* is wanted (a UART at 115200 baud on TX/RX), not the vendor notation. See *Porting*.
+
 Out of scope for the implementation:
 - plugins for other vendors (ST, NXP, Nordic, …),
 - clock trees, electrical checks and DMA channel allocation,
@@ -202,8 +205,10 @@ class DeviceDataProvider(Protocol):
 `from_overlay(value) -> pad id` and `render_group(signals) -> dts text`. A formatter checks every
 generated name against the pinctrl header or `.dtsi` it targets.
 
-**Recipe interface:** `compatibles`, `pin_roles(instance)`, `derived_props(assignment)` and
-`kconfig()`.
+**Recipe interface:** `compatibles`, `pin_roles(instance)`, `derived_props(assignment)`,
+`kconfig()`, and the reverse direction `lift(props, pins) -> roles`. For example, `lift` turns
+`rxpo = <1>`, `txpo = <0>` plus the chosen pads back into "RX on PB24, TX on PB25". Porting needs
+both directions.
 
 ### Neutral device model
 
@@ -320,8 +325,20 @@ dt_explorer.py      thin launcher, so dt_explorer.bat keeps working
 
 ### `core/draft.py`
 
-- **Draft.** For each node: the chosen compatible, property values, the pin for each role, and later
-  child nodes. It is plain data, stored as JSON in the app folder:
+- **Draft.** It stores the *intent* separately from the vendor-specific realisation, so it can be
+  carried to another device:
+
+  | Part | Example | Portable |
+  |---|---|---|
+  | Class | `uart` (from the base binding `uart-controller.yaml` in the binding's include chain) | yes |
+  | Roles | TX, RX | yes |
+  | Neutral properties | `current-speed = 115200` (declared in the base binding) | yes |
+  | Use | `zephyr,console` (chosen), alias `my-uart` | yes |
+  | Instance | `sercom2` | no |
+  | Pin per role | TX → PB25, RX → PB24 | no (board hardware) |
+  | Vendor properties | `rxpo`, `txpo` (declared only in the vendor binding) | no, derived again by the target's recipe |
+
+  Child nodes follow later. The draft is plain data, stored as JSON in the app folder:
   `<app>/.dt_explorer/<build folder name>.draft.json` (e.g. `build_same54_xpro.draft.json`). It
   survives a reload and a pristine rebuild (`west build -p`), and it can be committed with the app
   if wanted.
@@ -426,6 +443,31 @@ under `boards/<vendor>/<board>/`:
 
 Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 
+## Porting
+
+Moving an app from one device or vendor to another is the configurator run in both directions. It
+works only because the draft stores intent (see `core/draft.py`).
+
+1. **Lift.** Read the source build's overlay and board `.dts` back into intent:
+   - the formatter's `from_overlay` gives the physical pins,
+   - the recipe's `lift` gives the roles,
+   - the binding include chain gives the class (`uart-controller.yaml`, `i2c-controller.yaml`,
+     `spi-controller.yaml`, …), and the base binding tells which properties are neutral.
+2. **Map.** On the target build, find a free instance of the same class (e.g. SERCOM2 → USART1).
+   The target's provider offers pins per role, and the target's recipe derives the vendor
+   properties.
+3. **Report what cannot be mapped automatically:**
+   - **Node labels in app code.** `DT_NODELABEL(sercom2)` in `src/` is vendor-specific. The
+     explorer already finds these references (the Overview). The tool suggests replacing them with
+     `DT_ALIAS`/`DT_CHOSEN` and generates the matching alias in the target overlay, so the code
+     becomes portable.
+   - **Vendor properties without a counterpart** on the target.
+   - **Kconfig differences** (driver symbols, subsystem options).
+   - **Pins.** They depend on the target board's hardware, so the tool can only suggest them.
+
+The output is the target overlay, the `prj.conf` lines and the report. Nothing in the source app
+is changed.
+
 ## Phases
 
 1. **Package layout, plugin registry and pin map (read-only).** First move today's code into the
@@ -453,6 +495,8 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 6. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
    `on-bus: i2c`) and the generic binding form for other peripherals (ADC, TC, …).
 7. **Custom board wizard** (see *Creating a custom board*).
+8. **"Port to board…"** (see *Porting*). Phase 4 is its first, simplest case: same hardware, same
+   vendor, different Zephyr port.
 
 ## Decisions (2026-10-14)
 
@@ -463,6 +507,7 @@ Zephyr finds the board through `BOARD_ROOT` or the app's `zephyr/module.yml`.
 | IOSET violation | Warning, not an error, until the datasheet wording is checked |
 | Board for phase 4 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
 | Other vendors | Not implemented, but possible through plugins (provider, formatter, recipe); the core never reads a vendor file |
+| Draft format | Intent-based: class, roles, neutral properties and use, kept apart from instance, pins and vendor properties |
 
 ## Open questions
 
