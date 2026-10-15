@@ -2,8 +2,9 @@
 
 The pipeline lives in ``core/port_report.py``; this module is the glue. It runs the pipeline in a worker
 thread (progress lines go through a queue into a log), shows the target overlay, the .conf lines and the
-report sections, and can run 'Verify with west' on the TARGET build. Nothing is written into the app
-(card P5.6 does that).
+report sections, and can run 'Verify with west' on the TARGET build. 'Apply to app' writes the result as
+``<app>/boards/<target board>.overlay`` / ``.conf`` (``core/apply.py``): new files only; an existing file is
+shown as a diff and replaced only when the user ticks it.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from nicegui import run, ui
 
+from ..core import apply as apply_mod
 from ..core import verify as verify_mod
 from ..core.buildinfo import BuildInfoError, read_build_info
 from ..core.port_report import PortResult, port_build
@@ -65,7 +67,7 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
         ui.label(f"Source build: {source}  [{src_board}]").classes("text-xs text-grey-5 font-mono") \
             .props("id=port-source")
         ui.label("The target build is a build of the same app for the new board (a cmake-only build is enough). "
-                 "The result is the target overlay, the .conf lines and a report; nothing is written into the app.") \
+                 "The result is the target overlay, the .conf lines and a report; \"Apply to app\" writes them as the board files of the app.") \
             .classes("text-xs text-grey-5")
         with ui.row().classes("w-full items-end gap-3 no-wrap"):
             sel = ui.select(options, value=next(iter(options), None), label="Target build (other board)",
@@ -145,7 +147,7 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
                        f"{check_summary(result.report.findings or [])}")
         status.classes(replace="text-sm " + ("text-red-4" if errs else "text-green-4"))
         with out:
-            render_result(result, tgt)
+            render_result(result, tgt, source)
 
     run_btn.on_click(do_run)
     dlg.open()
@@ -164,7 +166,7 @@ def _code_block(title: str, text: str, language: str, file_name: str, elem_id: s
     ui.code(text, language=language).classes("w-full text-xs").props(f"id={elem_id}")
 
 
-def render_result(result: PortResult, target: Path) -> None:
+def render_result(result: PortResult, target: Path, source: Path | None = None) -> None:
     """Overlay, conf, report sections and the verify controls (call inside the result container)."""
     rep = result.report
     _code_block("Target overlay", result.overlay, "c", "port.overlay", "port-overlay")
@@ -197,6 +199,8 @@ def render_result(result: PortResult, target: Path) -> None:
                     ui.badge(f.severity, color=color).classes("text-xs")
                     ui.label(f"{f.kind}: {f.message}").classes("text-xs").style("white-space: normal")
     _render_verify(target, result.overlay, result.conf)
+    if source is not None:
+        _render_apply(source, target, result)
 
 
 def _render_verify(target: Path, overlay_text: str, conf_text: str) -> None:
@@ -262,3 +266,76 @@ def _render_verify(target: Path, overlay_text: str, conf_text: str) -> None:
         timer = ui.timer(0.2, drain)
 
     vbtn.on_click(run_verify)
+
+
+def _render_apply(source: Path, target: Path, result: PortResult) -> None:
+    """'Apply to app': plan (new / exists + diff), confirmation, write, hint for the next build."""
+    ui.separator()
+    with ui.row().classes("items-center gap-2"):
+        ui.label("Apply to the app").classes("font-bold")
+        abtn = ui.button("Apply to app…", icon="save").props("flat dense no-caps id=port-apply")             .props('title="write boards/<target board>.overlay and .conf into the app of the source build; '
+                   'new files only, an existing file is shown as a diff"')
+    box = ui.column().classes("w-full gap-2").props("id=port-apply-box")
+
+    def show_plan() -> None:
+        box.clear()
+        try:
+            app = apply_mod.app_dir_of(source)
+            board, single = apply_mod.target_of(target)
+            plan = apply_mod.plan_apply(app, board, result.overlay, result.conf, single_soc=single,
+                                        source_board=board_of(source))
+        except apply_mod.ApplyError as exc:
+            with box:
+                ui.label(f"Cannot apply: {exc}").classes("text-sm text-red-4").props("id=port-apply-error")
+            return
+        checks: dict[str, ui.checkbox] = {}
+        with box:
+            ui.label(f"App: {plan.app_dir}   target board: {plan.board_target}").classes("text-xs font-mono")                 .props("id=port-apply-app")
+            for fp in plan.files:
+                with ui.column().classes("w-full gap-1").props(f"id=port-apply-{fp.kind}"):
+                    color = {"new": "text-green-4", "exists": "text-orange-4"}.get(fp.action, "text-grey-5")
+                    ui.label(f"{fp.action.upper()}: {fp.path}").classes(f"text-sm font-mono {color}")
+                    if fp.comment_only:
+                        ui.label(f"The {fp.kind} holds only comments (nothing to apply); it is not written.")                             .classes("text-xs text-grey-5")
+                    if fp.note:
+                        ui.label(fp.note).classes("text-xs text-orange-4")
+                    if fp.identical:
+                        ui.label("The existing file already has this content.").classes("text-xs text-grey-5")
+                    if fp.diff:
+                        ui.label("Diff: existing file -> port result. Nothing is written unless you tick the box.")                             .classes("text-xs text-grey-5")
+                        ui.code(fp.diff, language="diff").classes("w-full text-xs").props(f"id=port-apply-diff-{fp.kind}")
+                        checks[fp.kind] = ui.checkbox(f"Replace the existing {fp.path.name}")                             .props(f"dense id=port-apply-replace-{fp.kind}")
+            writable = [f for f in plan.files if not (f.comment_only or f.identical)]
+            res_label = ui.label().classes("text-sm font-mono").props("id=port-apply-result")
+            res_label.style("white-space: pre-wrap")
+            res_label.set_visibility(False)
+            with ui.row().classes("items-center gap-2"):
+                go = ui.button("Write files", icon="check").props("no-caps id=port-apply-go")
+                go.set_enabled(bool(writable))
+                ui.button("Cancel", icon="close", on_click=box.clear).props("flat no-caps id=port-apply-cancel")
+            if not writable:
+                ui.label("Nothing to write.").classes("text-sm text-grey-5")
+
+            def do_write() -> None:
+                ow = {k for k, c in checks.items() if c.value}
+                try:
+                    res = apply_mod.apply(plan, overwrite=ow)
+                except (apply_mod.ApplyError, OSError) as exc:
+                    res_label.text = f"Write failed: {exc}"
+                    res_label.classes(replace="text-sm font-mono text-red-4")
+                    res_label.set_visibility(True)
+                    return
+                lines = res.lines()
+                if res.written or res.overwritten:
+                    lines.append(f"Next: west build -b {plan.board_target} {plan.app_dir}"
+                                 f"   (or use \"New build…\" for the target board)")
+                res_label.text = chr(10).join(lines)
+                res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten
+                                                                  else "text-orange-4"))
+                res_label.set_visibility(True)
+                go.set_enabled(False)
+                ui.notify("Board files written." if res.written or res.overwritten else "Nothing was written.")
+
+            go.on_click(do_write)
+
+    abtn.on_click(show_plan)
