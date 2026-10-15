@@ -384,7 +384,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.3 | done | cb820bd → master |
 | P5.4 | done | edbbc04 |
 | P5.4b | open | |
-| P5.4c | open | |
+| P5.4c | done | b16e35b → master |
 | P5.6 | open | |
 | P5.7 | done | fcea955 → master |
 | P5.5 | open | |
@@ -594,4 +594,5 @@ surprising, and anything you were unsure about.
 | P4.1 | [P4.1.md](evidence/P4.1.md) | valid draft (SERCOM1 I2C PC22/PC23) rc 0 in 28.7 s (UI 45.5 s); typo `clock-frequncy` → rc 1 with Zephyr's "devicetree error: … is not declared in 'properties:'" shown in the UI; lab1 build folder identical before/after (416 files, same content hash). Board from `CONFIG_BOARD_TARGET`; scratch in %TEMP%\dt_explorer_verify. Full suite 308 passed, 0 skipped |
 | P5.4 | [P5.4.md](evidence/P5.4.md) | lab1/lab3 → sam_e54_xpro: target cmake-only builds ok; overlay empty (target board already sets SERCOM2 console identically), conf comments only; verify rc 0 (28 s / 33 s); report: sercom4 SPI / sercom7 I2C `no_target`, my_led/eeprom/mytemp/http not ported, all 10 lab3 code refs listed; P5.7's moved console ports to a `sercom2_uart_edit` override, rc 0. Gaps: `&clock { gclkperiph … }` children not emitted for SERCOMs the target does not configure (report note only); app-defined overlay nodes not carried → builder decision + card P5.4b; docs → P5.4c |
 | P3.7 | [P3.7.md](evidence/P3.7.md) | header one row at 1500 px (chips moved into a "Legend" menu), I2C dialog without sq-size/cq-size (deny list: in v4.3.0 they are declared in i2c-controller.yaml itself) |
+| P5.4c | [P5.4c.md](evidence/P5.4c.md) | README/GUI.md: Legend, Edit pins…, Port to board…, Verify with west, Write to app (grep PASS in both); wrap known-issue removed; 8 new, 27 regenerated images; west-running shots reused from evidence |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
