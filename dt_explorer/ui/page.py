@@ -9,7 +9,7 @@ from pathlib import Path
 
 from nicegui import ui
 
-from . import configure, draft_tab, new_build, package_view, pinmap
+from . import configure, draft_tab, new_build, package_view, pinmap, port
 from ..core.build import (DRV_COMPAT_RE, HELPER_HEADER, ORIGIN_STYLE, STATE_STYLE, BuildModel,
                           NodeOrigin, find_builds, fkey, fmt_value, header_defines, node_ident,
                           origin_kind)
@@ -168,6 +168,9 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         ui.button("Full build", icon="build",
                   on_click=lambda: new_build.open_full_build(ROOT, state.model.build, reload)) \
             .props("flat no-caps color=white")
+        ui.button("Port to board…", icon="swap_horiz",
+                  on_click=lambda: port.open_port(state.model, state.builds, ROOT)) \
+            .props("flat no-caps color=white id=port-open")
         ui.space()
         for kind, (col, txt) in ORIGIN_STYLE.items():
             if kind != "other":
