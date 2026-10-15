@@ -538,6 +538,25 @@ Shows the log of the tool (see README, section Log) while it runs; the lines are
 
 The log contains local paths including the user name; read it before you send it to someone.
 
+## 11b. Left panel — tab **Changes**
+
+Shows what git sees in the app folder of the open build (`APPLICATION_SOURCE_DIR`), for example after **Apply to app…**.
+It is read only: the tool never commits, reverts or checks out. Direct link: `tab=changes`.
+
+- The list is git's own: `git status --porcelain` limited to the app folder (modified `M`, added `A`, deleted `D`,
+  renamed `R`, untracked `?`). Files matched by `.gitignore` do not appear.
+- A purple **dtx** badge marks files the tool writes: `boards/<board>.overlay` and `.conf` of the build's board,
+  `dt_explorer.overlay` / `dt_explorer.conf`, anything below `dtx_devices/` or `.dt_explorer/`, and any file that
+  contains a `/* dt_explorer ... begin ... */` ... `/* dt_explorer end */` block (also a `CMakeLists.txt` that names
+  `dtx_devices`). The badge does not change the list.
+- Click a file name: the source viewer opens with `git diff` against HEAD. Added lines are green, removed lines red,
+  hunk headers blue. An untracked file is shown whole as added; a binary file is only named.
+- The number on the tab is the number of changed files. It appears after the first read.
+- git is read when the tab opens and when you press **Refresh**, never in between. The line under the button shows the
+  time of the last read, the branch and the short HEAD hash (`HEAD (no commits yet)` for a new repository).
+- If the app folder is not inside a git repository, or git is not on PATH, the tab shows a message instead of the list;
+  everything else works as before.
+
 ## 12. Direct links (URL parameters)
 
 Every view can be opened directly, for example from slides or lab instructions:
@@ -548,7 +567,7 @@ Every view can be opened directly, for example from slides or lab instructions:
 | `node` | `node=/my_led@41008000` | Select this node |
 | `macros=1` | | Expand the generated-macro section |
 | `bprops=1` | | Expand the table of all binding properties |
-| `tab` | `tab=pins` | Start on a tab: `include`, `pins`, `package`, `board` or `draft` (default: Nodes) |
+| `tab` | `tab=pins` | Start on a tab: `include`, `pins`, `package`, `board`, `draft`, `log` or `changes` (default: Nodes) |
 | `file` | `file=zephyr\dts\arm\atmel\same5x.dtsi` | Select this file in the include tree |
 | `src`, `line` | `src=apps\lab3\boards\same54_xpro.overlay&line=20` | Open the source viewer |
 
