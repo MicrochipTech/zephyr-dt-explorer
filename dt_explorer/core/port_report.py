@@ -35,7 +35,7 @@ from pathlib import Path
 
 from . import pins as pins_mod
 from . import plugins
-from .build import BuildModel
+from .build import BuildModel, origin_kind
 from .buildinfo import BuildInfo, parse_config, read_build_info
 from .draft import BindingIndex, Draft, DraftNode, Use
 from .kconfig_suggest import KconfigLoadError, KconfigSuggestion, load_kconfig, suggest_kconfig
@@ -127,6 +127,8 @@ class PortReport:
     pin_issues: list[PinIssue] = field(default_factory=list)
     unported: list[Unported] = field(default_factory=list)
     not_representable: list[str] = field(default_factory=list)
+    carried: list[Carried] = field(default_factory=list)
+    not_carried: list[NotCarried] = field(default_factory=list)
     findings: list[Finding] | None = None
     notes: list[str] = field(default_factory=list)
 
@@ -170,6 +172,10 @@ class PortReport:
                       f"  ({'a node of that path/label exists in the target' if u.in_target else 'NOT in the target'})")
         us += [f"not representable: {x}" for x in self.not_representable]
         out.append(("5. Nodes without translation and not representable children", us or ["none"]))
+        cs = [f"carried: {c.desc}  ({c.kind}, {c.source}:{c.line})" for c in self.carried]
+        cs += [f"not carried: {n.desc}  ({n.kind}, {n.source}" + (f":{n.line}" if n.line else "") + f"): {n.reason}"
+               for n in self.not_carried]
+        out.append(("5b. App-defined nodes of the app overlay", cs or ["none"]))
         if self.findings is not None:
             fs = [f"{f.severity}: {f.kind}: {f.message}" for f in self.findings]
             out.append(("6. Fast check on the target build", fs or ["no findings"]))
@@ -301,7 +307,7 @@ def _clock_notes(src_node, t: Translation) -> list[str]:
 
 def _not_ported_hint(snode) -> str:
     return (f"no enabled counterpart of {snode.path} in the target build; the node is not carried over "
-            "(section 5), so no alias can point at it yet")
+            "(sections 5, 5b), so no alias can point at it yet")
 
 
 def _strip_status(text: str) -> str:
@@ -310,6 +316,374 @@ def _strip_status(text: str) -> str:
 
 def _rename(text: str, old: str, new: str) -> str:
     return re.sub(rf"(?<![\w-]){re.escape(old)}(?![\w-])", new, text)
+
+
+# ---- app-defined nodes: carried verbatim from the app overlay -------------------------------------
+@dataclass
+class Carried:
+    desc: str                           # "my_led0: my_led@41008000" or "/aliases foo"
+    path: str                           # devicetree path in the source build
+    kind: str                           # node | property
+    source: str                         # overlay file (relative to the west top)
+    line: int
+
+
+@dataclass
+class NotCarried:
+    desc: str
+    path: str
+    kind: str
+    source: str
+    line: int
+    reason: str
+
+
+@dataclass
+class _Item:
+    kind: str                           # node | prop | directive
+    name: str                           # node name incl. unit address / property name / directive
+    labels: list[str]
+    text: str                           # original text, starts at the first token, ends at ';'
+    line: int
+    clean: str = ""                     # same text with comments and strings blanked
+    items: list = field(default_factory=list)       # body items of a node
+
+
+@dataclass
+class _Cand:
+    item: _Item
+    path: str                           # source devicetree path of the node (of the node itself or of its property)
+    wrapper: str                        # "/" | "&label" | "&{/path}" in the target overlay
+    source: str
+    include_lines: list
+    covered: bool = False               # handled by a recipe/translation: silently skipped
+    reason: str = ""                    # set = not carried
+    refs: list = field(default_factory=list)        # ("label", name) | ("path", path)
+    defined: list = field(default_factory=list)     # labels defined inside the text
+
+
+def _blank(arr: list[str], text: str, s: int, e: int) -> None:
+    for k in range(s, e):
+        if text[k] != "\n":
+            arr[k] = " "
+
+
+def _mask(text: str) -> tuple[str, str]:
+    """(comments blanked, comments and string contents blanked); same length, newlines kept."""
+    a, b = list(text), list(text)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            _blank(b, text, i + 1, min(j, n))
+            i = j + 1
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            _blank(a, text, i, j)
+            _blank(b, text, i, j)
+            i = j
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            _blank(a, text, i, j)
+            _blank(b, text, i, j)
+            i = j
+        else:
+            i += 1
+    return "".join(a), "".join(b)
+
+
+def _preproc(text: str, mask: list[str]) -> list[str]:
+    """Blank the preprocessor lines (with continuations) in `mask`; return their text."""
+    found: list[str] = []
+    raw = text.splitlines(keepends=True)
+    pos = i = 0
+    while i < len(raw):
+        start, body = pos, raw[i]
+        pos += len(raw[i])
+        if body.lstrip().startswith("#"):
+            while body.rstrip("\r\n").endswith("\\") and i + 1 < len(raw):
+                i += 1
+                body += raw[i]
+                pos += len(raw[i])
+            found.append(body.strip())
+            _blank(mask, text, start, pos)
+        i += 1
+    return found
+
+
+def _match(clean: str, i: int, end: int) -> int:
+    """Index of the '}' that closes the '{' at i."""
+    depth = 0
+    for k in range(i, end):
+        if clean[k] == "{":
+            depth += 1
+        elif clean[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return k
+    return end - 1
+
+
+def _parse_items(orig: str, clean: str, start: int, end: int) -> list[_Item]:
+    out: list[_Item] = []
+    i = start
+    while i < end:
+        if clean[i].isspace():
+            i += 1
+            continue
+        j = i
+        while j < end and clean[j] not in ";{":
+            j += 1
+        if j >= end:
+            break
+        line = orig.count("\n", 0, i) + 1
+        if clean[j] == ";":
+            head = clean[i:j].strip()
+            m = re.match(r"[^\s=;]+", head)
+            name = m.group(0) if m else head
+            out.append(_Item("directive" if name.startswith("/") and name != "/" else "prop",
+                             name, [], orig[i:j + 1], line, clean[i:j + 1]))
+            i = j + 1
+            continue
+        k = _match(clean, j, end)
+        e = k + 1
+        while e < end and clean[e].isspace():
+            e += 1
+        e = e + 1 if e < end and clean[e] == ";" else k + 1
+        header = clean[i:j].strip()
+        labels = re.findall(r"([A-Za-z_]\w*)\s*:", header)
+        name = re.sub(r"^(?:[A-Za-z_]\w*\s*:\s*)+", "", header).strip()
+        out.append(_Item("node", name, labels, orig[i:e], line, clean[i:e], _parse_items(orig, clean, j + 1, k)))
+        i = e
+    return out
+
+
+def _defined_labels(it: _Item) -> list[str]:
+    out = list(it.labels)
+    for c in it.items:
+        if c.kind == "node":
+            out += _defined_labels(c)
+    return out
+
+
+def _refs_of(it: _Item) -> list[tuple[str, str]]:
+    body = it.clean
+    refs = [("path", m) for m in re.findall(r"&\{([^}]*)\}", body)]
+    body = re.sub(r"&\{[^}]*\}", "", body)
+    return refs + [("label", m) for m in re.findall(r"&([A-Za-z_]\w*)", body)]
+
+
+def _body_text(text: str) -> str:
+    """The item text re-indented by one tab; deeper lines keep their indentation relative to the closing line."""
+    lines = text.rstrip().splitlines()
+    if len(lines) == 1:
+        return "\t" + lines[0]
+    base = len(lines[-1]) - len(lines[-1].lstrip())
+    rest = [x for x in lines[1:] if x.strip()]
+    cut = min(base, min(len(x) - len(x.lstrip()) for x in rest))
+    return "\n".join(["\t" + lines[0]] + [("\t" + x[cut:]) if x.strip() else "" for x in lines[1:]])
+
+
+def _include_resolves(inc: str, tgt: BuildModel, overlay_dir: Path) -> bool:
+    m = re.match(r'#\s*include\s*([<"])([^>"]+)[>"]', inc)
+    if not m:
+        return True
+    zb = Path(tgt.zephyr_base)
+    dirs = [zb / "include", zb / "dts", zb / "dts" / "common", Path(tgt.build) / "zephyr" / "include" / "generated",
+            Path(tgt.app_dir), Path(tgt.app_dir) / "dts", Path(tgt.app_dir) / "include"]
+    dirs += [d for d in (zb / "dts").glob("*") if d.is_dir()]
+    for pat in ("modules/*/include", "modules/*/*/include", "modules/*/dts", "modules/*/*/dts"):
+        dirs += [d for d in zb.parent.glob(pat) if d.is_dir()]
+    if m.group(1) == '"':
+        dirs.insert(0, overlay_dir)
+    return any((d / m.group(2)).is_file() for d in dirs)
+
+
+def _overlay_files(src: BuildModel) -> list[Path]:
+    """The overlay files that contributed to the source devicetree (origin kind overlay)."""
+    files: dict[str, Path] = {}
+    for o in (getattr(src, "origins", None) or {}).values():
+        for f in [o.file, *[p.file for p in o.props.values()]]:
+            if f and origin_kind(f) == "overlay" and f not in files:
+                p = src.resolve(f)
+                if p.is_file():
+                    files[f] = p
+    return [files[k] for k in sorted(files)]
+
+
+def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: PortReport,
+                     ported_labels: dict[str, str]) -> tuple[list[str], set[str], set[str]]:
+    """Copy what the app overlay defines and no translation covers into the target overlay.
+
+    Returns (overlay pieces, source paths that were handled, labels that the carried text defines).
+    A node goes over when every label/path it references exists in the target devicetree (or is defined by
+    other carried text); a child of a ported bus only when the bus node is ported and enabled there.
+    """
+    origins = getattr(src, "origins", None) or {}
+    cov_paths = {c.path: c for c in lift.covered}
+    cov_labels = {c.label for c in lift.covered if c.label}
+    res_by_path = {n.source_path: n for n in rep.nodes}
+    used_states: list[str] = []                 # pin states of covered nodes: written with the pins, not copied
+    for cp in cov_paths:
+        node = src.by_path.get(cp)
+        for pn, p in (getattr(node, "props", None) or {}).items():
+            if pn.startswith("pinctrl-") and pn != "pinctrl-names":
+                used_states += [x.path for x in (p.val or []) if getattr(x, "path", None)]
+    pin_ctrl = {n.path for n in src.edt.nodes if any(plugins.get_formatter(c) for c in (n.compats or []))}
+
+    cands: list[_Cand] = []
+    includes: dict[str, list[str]] = {}
+
+    def add(item: _Item, path: str, wrapper: str, source: str, covered=False, reason="") -> None:
+        c = _Cand(item, path, wrapper, source, includes.get(source, []), covered, reason)
+        c.refs, c.defined = _refs_of(item), _defined_labels(item)
+        cands.append(c)
+
+    def walk(items: list[_Item], parent: str, wrapper: str, source: str, parent_covered: bool) -> None:
+        for it in items:
+            if it.kind == "directive":
+                add(it, parent, wrapper, source, reason=f"{it.name} is not carried over")
+                continue
+            if it.kind == "prop":
+                labels = [r for k, r in _refs_of(it) if k == "label"]
+                if parent_covered or parent in cov_paths or (
+                        parent in ("/aliases", "/chosen") and labels and all(x in cov_labels for x in labels)):
+                    add(it, parent, wrapper, source, covered=True)      # the translation / the use entries do it
+                else:
+                    add(it, parent, wrapper, source)
+                continue
+            path = ("/" + it.name) if parent == "/" else f"{parent}/{it.name}"
+            origin = origins.get(path)
+            defined_here = (origin is None and path not in src.by_path) or \
+                (origin is not None and origin_kind(origin.file) == "overlay")
+            if not defined_here:                                         # existing node that the overlay edits
+                walk(it.items, path, f"&{{{path}}}", source, parent_covered or path in cov_paths)
+            elif any(path == s or path.startswith(s + "/") for s in used_states):
+                add(it, path, wrapper, source, covered=True)
+            elif any(path.startswith(p + "/") for p in pin_ctrl):
+                add(it, path, wrapper, source,
+                    reason="pin state that no ported node uses; pin groups are written for the ported nodes only")
+            elif parent in cov_paths:
+                r = res_by_path.get(parent)
+                if r is not None and r.status in ("emitted", "identical"):
+                    add(it, path, "&" + ported_labels.get(cov_paths[parent].label or "", cov_paths[parent].label or ""),
+                        source)
+                else:
+                    why = (r.lines or r.notes or [""])[0] if r is not None else ""
+                    add(it, path, wrapper, source, reason=(
+                        f"bus &{cov_paths[parent].label} is not ported and enabled on the target "
+                        f"[{r.status if r is not None else 'unknown'}]" + (f": {why}" if why else "")))
+            else:
+                add(it, path, wrapper, source)
+
+    for f in _overlay_files(src):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        a, b = _mask(text)
+        mask = list(b)
+        incl = _preproc(text, mask)
+        b = "".join(mask)
+        source = src.rel(f)
+        includes[source] = [x for x in incl if re.match(r"#\s*include\b", x)]
+        for blk in _parse_items(text, b, 0, len(text)):
+            if blk.kind != "node":
+                if blk.name not in ("/dts-v1/", "/plugin/"):
+                    add(blk, "?", "/", source, reason="statement outside a node block is not carried over")
+            elif blk.name == "/":
+                walk(blk.items, "/", "/", source, False)
+            elif blk.name.startswith("&{") and blk.name.endswith("}"):
+                walk(blk.items, blk.name[2:-1], blk.name, source, blk.name[2:-1] in cov_paths)
+            elif blk.name.startswith("&"):
+                node = src.edt.label2node.get(blk.name[1:])
+                if node is None:
+                    add(blk, "?", blk.name, source, reason=f"label {blk.name[1:]} is not in the source devicetree")
+                else:
+                    walk(blk.items, node.path, "&" + ported_labels.get(blk.name[1:], blk.name[1:]), source,
+                         node.path in cov_paths)
+            else:
+                add(blk, "?", "/", source, reason="a named node block outside / and &label is not carried over")
+
+    # ---- decide per candidate ---------------------------------------------------------------------
+    todo = [c for c in cands if not c.covered]
+    tgt_labels = set(tgt.edt.label2node)
+    enabled_by_port = set(ported_labels.values())
+
+    for c in todo:
+        if c.reason:
+            continue
+        if c.wrapper != "/":
+            node = tgt.by_path.get(c.wrapper[2:-1]) if c.wrapper.startswith("&{") \
+                else tgt.edt.label2node.get(c.wrapper[1:])
+            if node is None:
+                c.reason = f"{c.wrapper} does not exist in the target devicetree"
+            elif node.status != "okay" and c.wrapper[1:] not in enabled_by_port:
+                c.reason = f"{c.wrapper} is disabled in the target devicetree"
+        if not c.reason and c.item.kind == "node" and c.wrapper == "/" and "/" + c.item.name in tgt.by_path:
+            c.reason = f"a node /{c.item.name} already exists in the target devicetree"
+        if not c.reason:
+            clash = [x for x in c.defined if x in tgt_labels]
+            if clash:
+                c.reason = f"label {clash[0]} already exists in the target devicetree"
+    changed = True
+    while changed:                      # references must exist in the target or be defined by carried text
+        changed = False
+        avail = tgt_labels | {x for c in todo if not c.reason for x in c.defined}
+        dropped = {x: c for c in todo if c.reason for x in c.defined}
+        for c in todo:
+            if c.reason:
+                continue
+            for kind, ref in c.refs:
+                if (kind == "label" and (ref in avail or ported_labels.get(ref) in tgt_labels)) \
+                        or (kind == "path" and ref in tgt.by_path):
+                    continue
+                c.reason = f"references {ref} missing in target"
+                if ref in dropped:
+                    c.reason += f" ({ref} is not carried: {dropped[ref].reason})"
+                changed = True
+                break
+
+    def desc(c: _Cand) -> str:
+        it = c.item
+        if it.kind == "node":
+            return " ".join([*(f"{x}:" for x in it.labels), it.name])
+        return f"{c.path} {it.name}" if it.kind == "prop" else it.name
+
+    pieces: list[str] = []
+    handled: set[str] = set()
+    carried_labels: set[str] = set()
+    ok = [c for c in todo if not c.reason]
+    inc_seen = list(dict.fromkeys(i for c in ok for i in c.include_lines))
+    for c in todo:
+        it = c.item
+        kind = {"node": "node", "prop": "property"}.get(it.kind, "statement")
+        handled.add(c.path)
+        if c.reason:
+            rep.not_carried.append(NotCarried(desc(c), c.path, kind, c.source, it.line, c.reason))
+            continue
+        body = _body_text(it.text)
+        for k, ref in c.refs:           # a ported node whose label differs in the target
+            if k == "label" and ref not in tgt_labels and ported_labels.get(ref) in tgt_labels:
+                body = re.sub(rf"&{re.escape(ref)}(?![\w-])", "&" + ported_labels[ref], body)
+        head = "/ {" if c.wrapper == "/" else f"{c.wrapper} {{"
+        pieces.append(f"/* carried from {c.source}:{it.line} */\n{head}\n{body}\n}};\n")
+        rep.carried.append(Carried(desc(c), c.path, kind, c.source, it.line))
+        carried_labels.update(c.defined)
+    if pieces:
+        good = []
+        for inc in inc_seen:
+            first = next(c for c in ok if inc in c.include_lines).source
+            if _include_resolves(inc, tgt, src.resolve(first).parent):
+                good.append(inc)
+            else:
+                rep.not_carried.append(NotCarried(inc, "-", "include", first, 0,
+                                                  "does not resolve in the target workspace; carried text may need it"))
+        if good:
+            pieces.insert(0, "\n".join(good) + "\n")
+    return pieces, handled, carried_labels
 
 
 # ---- the pipeline ------------------------------------------------------------------------------
@@ -468,8 +842,11 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         pieces.append(f"/* &{tlabel}: {dn.compatible} -> {t.target} */\n{text.rstrip()}\n")
 
     # ---- other nodes of the source build that were written by the board or the app ------------
+    step("carrying app-defined nodes ...")
+    carried_pieces, handled, carried_labels = _carry_app_nodes(src, tgt, lift, rep, ported_labels)
+    pieces += carried_pieces
     for u in lift.uncovered:
-        if u.origin in ("soc", "module"):
+        if u.origin in ("soc", "module") or u.path in handled:
             continue
         tn = tgt.by_path.get(u.path) or next((tgt.edt.label2node[x] for x in u.labels if x in tgt.edt.label2node), None)
         rep.unported.append(Unported(u.path, list(u.labels), u.compatible, u.origin,
@@ -491,6 +868,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         ref = LabelRef(r["file"], r["line"], r["macro"], kind, name, "missing", "")
         if kind == "NODELABEL":
             tn = tgt.edt.label2node.get(name)
+            if name in carried_labels:
+                continue                    # defined by app text that this port carries over
             if tn is not None and (tn.status == "okay" or name in ported_labels):
                 continue                    # resolves; a disabled node is enabled by this overlay
             if tn is not None:

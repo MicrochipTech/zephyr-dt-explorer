@@ -16,6 +16,7 @@ import pytest
 
 from dt_explorer.core import plugins
 from dt_explorer.core import port_report as pr
+from dt_explorer.core.build import NodeOrigin
 from dt_explorer.core.buildinfo import BuildInfo
 from dt_explorer.core.device import DeviceModel, Instance, Package, Signal
 from dt_explorer.core.draft import Draft, DraftNode, Use
@@ -179,7 +180,7 @@ def world(tmp_path, monkeypatch):
         return KconfigSuggestion(compat, dict(sym), "recipe",
                                  already_enabled=[k for k, v in sym.items() if f"{k}={v}" in cfg])
     monkeypatch.setattr(pr, "suggest_kconfig", fake_suggest)
-    return NS(src=src, tgt=tgt, draft=draft, tgt_uses=tgt_uses)
+    return NS(src=src, tgt=tgt, draft=draft, tgt_uses=tgt_uses, lift=lift, tmp=tmp_path)
 
 
 def test_port_build_synthetic(world):
@@ -250,3 +251,127 @@ def test_pad_that_the_instance_lacks_is_reported_not_raised(world):
     n = {x.label: x for x in res.report.nodes}["u1"]
     assert n.status == "error" and "pad P1 is not a signal" in " ".join(n.notes)
     assert any(p.ported and "&u1" in p.nodes for p in res.report.pin_issues)
+
+
+# ---- app-defined nodes from the app overlay (P5.4b) -------------------------------------------------
+OVERLAY = """#include <dt-bindings/acme/gone.h>
+/ {
+    /* a custom node that only references labels of the target */
+    mine: led@1000 {
+        compatible = "acme,led";
+        owner = <&u0>;
+        status = "okay";
+    };
+    /* references a label that the target lacks */
+    lost: led@2000 {
+        compatible = "acme,led";
+        owner = <&nolabel>;
+    };
+    /* references another app node that is not carried */
+    chain: led@3000 {
+        compatible = "acme,led";
+        other = <&lost>;
+    };
+    aliases {
+        my-owner = &mine;      // goes over
+        console0 = &u1;       // u1 is ported by its translation
+    };
+};
+
+&u1 { status = "okay"; current-speed = <1>; };      /* covered node: left to the translation */
+
+&i0 {
+    status = "okay";
+    sens: sensor@4f { reg = <0x4f>; };              /* child of a bus without a target driver */
+};
+
+&u0 {
+    probe: probe@1 { reg = <1>; };                  /* child of an enabled, identical node */
+};
+"""
+
+
+def test_mask_and_parse_items():
+    text = '/* c */ / {\n\ta: n@1 { p = "x;{"; }; // t\n\tq = <1>;\n};\n'
+    _a, b = pr._mask(text)
+    assert "c" not in b.split("/")[1] and '"x;{"' not in b and len(b) == len(text)
+    top = pr._parse_items(text, b, 0, len(text))
+    assert [(i.kind, i.name) for i in top] == [("node", "/")]
+    body = top[0].items
+    assert [(i.kind, i.name, i.labels, i.line) for i in body] == [("node", "n@1", ["a"], 2), ("prop", "q", [], 3)]
+    assert body[0].text == 'a: n@1 { p = "x;{"; };' and pr._defined_labels(body[0]) == ["a"]
+    s = "&x { p = <&y 1>, &{/a/b}; };"
+    assert pr._refs_of(pr._parse_items(s, s, 0, len(s))[0].items[0]) == [("path", "/a/b"), ("label", "y")]
+
+
+def test_body_text_reindents_by_one_tab():
+    assert pr._body_text("a: n {\n        p = <1>;\n    };") == "\ta: n {\n\t    p = <1>;\n\t};"
+    assert pr._body_text("q = <1>;") == "\tq = <1>;"
+
+
+def _overlay_world(world, text=OVERLAY):
+    tmp = world.tmp
+    f = tmp / "app.overlay"
+    f.write_text(text)
+    src, tgt = world.src, world.tgt
+    plain = lambda p: NS(path=p, labels=[], compats=[], status="okay", children={}, regs=[], props={})   # noqa: E731
+    src.by_path["/aliases"], tgt.by_path["/aliases"] = plain("/aliases"), plain("/aliases")
+    src.origins = {"/aliases": NodeOrigin("zephyr\\dts\\skeleton.dtsi", 1),
+                   "/led@1000": NodeOrigin("apps\\x\\boards\\b.overlay", 4)}
+    src.resolve = lambda p: f
+    src.rel = lambda p: "boards\\b.overlay"
+    src.edt.label2node.update({"i0": src.by_path["/s/i0"], "u0": src.by_path["/s/u0"], "u1": src.by_path["/s/u1"]})
+    tgt.zephyr_base = tmp / "zb"
+    tgt.app_dir = tmp / "app"
+    world.lift.uncovered[:] = [UncoveredNode("/led@1000", ["mine"], "acme,led", "overlay", "no recipe")]
+    return f
+
+
+def test_app_defined_nodes_are_carried_or_reported(world):
+    _overlay_world(world)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    rep, ov = res.report, res.overlay
+
+    # carried: the node that references only target labels, verbatim, and the alias of an uncovered node
+    assert "/* carried from boards\\b.overlay:4 */\n/ {\n\tmine: led@1000 {" in ov
+    assert '\t    compatible = "acme,led";' in ov and "owner = <&u0>;" in ov
+    assert "&{/aliases} {\n\tmy-owner = &mine;\n};" in ov
+    # a bus child of an enabled ported node goes over wrapped in the target label
+    assert "&u0 {\n\tprobe: probe@1 { reg = <1>; };\n};" in ov
+    assert [c.desc for c in rep.carried] == ["mine: led@1000", "/aliases my-owner", "probe: probe@1"]
+
+    # not carried: dangling reference, reference to a node that is not carried, bus without target driver
+    nc = {n.desc: n.reason for n in rep.not_carried}
+    assert nc["lost: led@2000"] == "references nolabel missing in target"
+    assert nc["chain: led@3000"].startswith("references lost missing in target (lost is not carried: references nolabel")
+    assert nc["sens: sensor@4f"].startswith("bus &i0 is not ported and enabled on the target [no_target]")
+    assert "does not resolve in the target workspace" in nc["#include <dt-bindings/acme/gone.h>"]
+    # the covered node's own properties and the alias of a ported node are left to the translation
+    assert "console0" not in ov and ov.count("current-speed") == 1
+    assert not any("console0" in k or "current-speed" in k for k in nc)
+
+    # not listed as 'carry by hand' any more; references in src/ to a carried label resolve
+    assert rep.unported == []
+    text = "\n".join(rep.lines())
+    assert "5b. App-defined nodes" in text and "carried: mine: led@1000" in text
+    assert "not carried: lost: led@2000" in text
+
+
+def test_include_that_resolves_is_carried(world):
+    _overlay_world(world)
+    inc = world.tmp / "zb" / "include" / "dt-bindings" / "acme"
+    inc.mkdir(parents=True)
+    (inc / "gone.h").write_text("")
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert res.overlay.index("#include <dt-bindings/acme/gone.h>") < res.overlay.index("/* carried from")
+    assert not any(n.kind == "include" for n in res.report.not_carried)
+
+
+def test_existing_label_or_node_in_target_is_not_overwritten(world):
+    _overlay_world(world, "/ {\n\tu0: led@1000 { x = <1>; };\n\tled@2000 { y = <1>; };\n};\n")
+    world.tgt.by_path["/led@2000"] = NS(path="/led@2000", labels=[], compats=[], status="okay", regs=[], props={})
+    res = pr.port_build(world.src, world.tgt, check=False)
+    why = sorted(n.reason for n in res.report.not_carried)
+    assert why == ["a node /led@2000 already exists in the target devicetree",
+                   "label u0 already exists in the target devicetree"]
+    assert not res.report.carried
