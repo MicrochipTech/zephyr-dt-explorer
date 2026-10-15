@@ -317,7 +317,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P3.5 | done | b0d4f98 |
 | P3.6 | done | ac29235 → master |
 | P3.7 | done | 4f0a2d7 → master |
-| P3.8 | running | |
+| P3.8 | done | 3abb921 |
 
 **P3.1 Intent-based draft.**
 - Dep: P1.2. Scope: `dt_explorer/core/draft.py`.
@@ -660,4 +660,5 @@ surprising, and anything you were unsure about.
 | P5.6 | [P5.6.md](evidence/P5.6.md) | apply on a lab1 copy wrote `boards/sam_e54_xpro.overlay` (conf comments-only → skipped); `west build -b sam_e54_xpro` without options rc 0 (94 s), `Found devicetree overlay: …/sam_e54_xpro.overlay`, my_led `__device_dts_ord_3` in nm; second apply: identical → no-op, different → refused with diff (UI: overwrite only via checkbox); real lab1 unchanged. Naming per Zephyr extensions.cmake (short name only for single-SoC boards). Incidents: agent ran `taskkill /IM py.exe` (killed the builder preview, restarted) and amended its commit twice (history checked: linear, nothing lost) |
 | P6.2 | [P6.2.md](evidence/P6.2.md) | 8 cmake-only target builds of the unmodified labs on main: all rc 0 (≈ 83 s). Port with 354710c: SG41 verify rc 1 for all labs (board uses `&sercom4` as console UART; ported SPI leaves `current-speed`), SG61 verify rc 0 only because `&sercom4` was dropped silently (PB27 not on package). SG61 pin report: exactly PB26/PB27/PB29 for every lab (same54_xpro.dts itself enables sercom4 SPI there), SG41 none. Also: PD08/PD09 conflict with SG61 board `sercom6`; SDA/SCL swapped at the CUlt connector; lab3 `DT_ALIAS(sercom3)` missing. → fix card P6.3, re-run P6.2b |
 | P5.5 | [P5.5.md](evidence/P5.5.md) | lab0/lab1/lab2 ported + applied to copies, plain `west build -b sam_e54_xpro` links (120/105/149 s), my_led `__device_dts_ord_3` in the image; lab3 compile fails: `mytemp0`/`my_http0`/`DT_ALIAS(sercom3)` need the SERCOM I2C bus, which has no g1 driver in Zephyr v4.3.0 (predicted by report sections 3/5b) → workspace limitation, re-checked against zephyr-main in P6.2b. Real apps unchanged (fc.exe). Not tested on hardware (HC-4) |
+| P3.8 | [P3.8.md](evidence/P3.8.md) | recipe serves `microchip,sercom-g1-uart/-i2c/-spi`; on the main pic32cx_sg41_cult build SERCOM1 I2C (PA00/PA01) + SERCOM3 UART (PA22/PA23) render and validate with no errors; g1 Kconfig table lists only CONFIG_SERIAL/I2C/SPI (the g1 driver symbols are promptless `default y` via DT_HAS_…, assigning them in a conf would abort the build). sam0 tests untouched (0 removed lines). 372 passed. Builder re-run 58 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
