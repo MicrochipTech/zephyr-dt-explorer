@@ -315,6 +315,8 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P3.3 | done | 7037d88 |
 | P3.4 | done | cc9b28a |
 | P3.5 | done | b0d4f98 |
+| P3.6 | done | ac29235 → master |
+| P3.7 | open | |
 
 **P3.1 Intent-based draft.**
 - Dep: P1.2. Scope: `dt_explorer/core/draft.py`.
@@ -351,6 +353,13 @@ Status values: `open`, `running`, `done`, `blocked`.
 - Accept: end-to-end in the browser (Playwright or screenshots): configure an unused SERCOM as I2C,
   the snippet appears in the Draft tab, the package view highlights the pins; README and
   `docs/GUI.md` updated in a follow-up *light* card P3.6 (scope: those two files, plus `docs/make_screenshots.py`). P3.6 also documents the "New build…" and "Full build" buttons from P2.2 and fixes the header wrap (the origin chips break into a second row since P2.2).
+
+**P3.7 Header wrap and noise fields.** *light*
+- Dep: P3.6. Scope: `dt_explorer/ui/page.py` (header only), `dt_explorer/ui/configure.py` (property field list only).
+- Do: the header fits one row at 1500 px again (origin chips compact, e.g. smaller or in a menu); the Configure
+  dialog hides base-binding properties that are not about the peripheral (`sq-size`, `cq-size`: keep a generic rule,
+  e.g. hide properties from bindings outside the class base binding's own file, or a small deny list in the UI).
+- Accept: screenshot of the header at 1500 px in one row; the I2C dialog without `sq-size`/`cq-size`; suite green.
 
 ### Phase 4: authoritative check
 
@@ -562,4 +571,5 @@ surprising, and anything you were unsure about.
 | P6.1 | [P6.1.md](evidence/P6.1.md) | lab1 (86 nodes, v4.3.0) and main pic32cx_sg41_cult hello_world (111 nodes, 4.5.0-rc1) open together in both orders; lab1 still equals its golden; no `devicetree*` left in sys.modules/sys.path; validate() works on both. `kconfig_suggest.py` still patches sys.path itself (main builds not covered there). Full suite 286 passed, 0 skipped (all three env vars). Builder re-run of test_model_host passed |
 | P3.5 | [P3.5.md](evidence/P3.5.md) | Playwright on lab1: SERCOM1 → I2C, SDA PC22, SCL PC23, 100 kHz → snippet with `#address-cells`/`#size-cells` (render now emits binding `const` props), CONFIG_I2C + CONFIG_I2C_SAM0, check 0 errors (PC18 info only), PC22/PC23 purple in the package view; negative: SERCOM0 on PB24/PA05 → 2 pin_conflict errors + IOSET warning. 301 passed. Also fixed: tab clicks delivered strings (Pins/Package were empty on click). Builder: screenshot checked; test_render/test_translate now load edtlib via EdtlibHost (passed only in suite order before). Cosmetic: base-binding props `sq-size`/`cq-size` appear as I2C fields → P3.6 |
 | P5.7 | [P5.7.md](evidence/P5.7.md) | lab1 console SERCOM2 moved PB25/PB24 → PA09/PA08 (PA12/13 taken by GMAC); validate 0 errors; west cmake-only rc 0, scratch zephyr.dts `pinctrl-0 = <&sercom2_uart_edit>` with pinmux 0x3290/0x3280, board group unused. Override: group renamed `<label>_<cls>_edit` in ui/configure.py (render.py unchanged). **Finding:** parallel agents shared `apps\lab1\.dt_explorer` (one agent's draft broke another's validate) → evidence runs must redirect drafts to scratch. Builder re-run 21 passed |
+| P3.6 | [P3.6.md](evidence/P3.6.md) | README + GUI.md sections for Pins, Package, New build…, Full build, Configure…, Draft/check (element grep PASS in both files); make_screenshots.py got `--port` and Playwright shots; 6 new, ~25 regenerated images (header got taller). Incident: an accidental Full build on lab1 during development; builder checked lab1 `edt.pickle`/`zephyr.elf` still dated 2026-10-13. Header wrap and `sq-size`/`cq-size` → P3.7 |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
