@@ -28,6 +28,7 @@ Nothing is written into the app. ``check`` (fast check) and ``verify.verify`` (Z
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from dataclasses import dataclass, field, replace
@@ -44,6 +45,8 @@ from .lift import LiftReport, lift_build
 from .render import RenderContext, RenderError, _signals, render_overlay
 from .translate import Ref, Sym, Translation
 from .validate import Finding, validate
+
+log = logging.getLogger("dt_explorer.port")
 
 _check_lock = threading.Lock()          # validate() shares an unsynchronised binding-read cache
 _NO_EMIT = ("compatible", "status")
@@ -814,6 +817,7 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     `on_step(text)` reports progress. The fast check runs on the target build unless `check` is False.
     """
     def step(text: str) -> None:
+        log.info("port step: %s", text)
         if on_step:
             on_step(text)
 
@@ -827,6 +831,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     if src.build.resolve() == tgt.build.resolve():
         rep.notes.append("source and target are the same build folder")
 
+    log.info("port %s (%s) -> %s (%s), fast check=%s", src.build, rep.source_board, tgt.build,
+             rep.target_board, check)
     step("lifting the source build ...")
     draft, lift = lift_build(src, src_info)
     src_usage = pins_mod.used_pins(src, src_info)
@@ -1141,6 +1147,10 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         step("fast check on the target build ...")
         with _check_lock:
             rep.findings = validate(tgt.build, overlay)
+    log.info("port done: overlay %d chars, conf %d chars, %d kconfig row(s), %d finding(s)",
+             len(overlay), len(conf), len(rep.kconfig), len(rep.findings or []))
+    for f in rep.findings or []:
+        log.debug("port finding: %s", f)
     return PortResult(overlay=overlay, conf=conf, report=rep, draft=ported_draft)
 
 

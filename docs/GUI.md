@@ -472,6 +472,23 @@ The Draft tab opens by itself after Save. Use `tab=draft` in a link to open it d
 
 ---
 
+## 11a. Left panel — tab **Log**
+
+Shows the log of the tool (see README, section Log) while it runs; the lines are the same as in the log file
+`%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log`, which is named above the lines. Direct link: `tab=log`.
+
+- **Level** hides lines below DEBUG, INFO or WARNING. The buffer holds the last 5000 lines.
+- **DEBUG** switches the detail level of the tool itself: with it on, the tool also records a line for every node
+  with the reason for its traffic-light dot (status, compatible, binding found, driver files and whether they
+  were compiled, linked or not), for example
+  `state wdog (/soc/watchdog@40002000): nobuild/orange [status="okay"; compatible=atmel,sam0-watchdog; binding=yes; driver files: wdt_sam0.c (compiled: none); linked=True] - A driver exists but is disabled in Kconfig ...`.
+  Start with `--debug` to have it on from the first line.
+- **Copy** puts the context header (tool commit, Python, NiceGUI, Zephyr version, workspace, build, board, SoC,
+  ATDF file, plugins) and the visible lines on the clipboard.
+- The arrow button scrolls to the newest line.
+
+The log contains local paths including the user name; read it before you send it to someone.
+
 ## 12. Direct links (URL parameters)
 
 Every view can be opened directly, for example from slides or lab instructions:

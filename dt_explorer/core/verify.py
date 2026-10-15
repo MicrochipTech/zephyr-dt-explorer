@@ -8,6 +8,7 @@ read (CMakeCache.txt, zephyr/.config), never written. Pure core module: no UI im
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ from typing import Callable
 
 from . import west_tools
 from .buildinfo import BuildInfoError, parse_cmake_cache, read_build_info
+
+log = logging.getLogger("dt_explorer.verify")
 
 OVERLAY_NAME = "dt_explorer.overlay"
 CONF_NAME = "dt_explorer.conf"
@@ -92,6 +95,9 @@ def plan(build_dir: Path | str, overlay_text: str, conf_text: str,
     overlay, conf = work / OVERLAY_NAME, work / CONF_NAME
     overlay.write_text(overlay_text or "", encoding="utf-8", newline="\n")
     conf.write_text(conf_text or "", encoding="utf-8", newline="\n")
+    log.info("verify plan for %s: board=%s app=%s workspace=%s; scratch files %s (%d chars), %s (%d chars)",
+             build_dir, board, info.app_source_dir, info.workspace, overlay, len(overlay_text or ""),
+             conf, len(conf_text or ""))
     return VerifyPlan(info.workspace, python, info.app_source_dir, board, work, build, overlay, conf)
 
 
@@ -117,6 +123,11 @@ def parse_output(lines: list[str], returncode: int | None, limit: int = 12) -> t
 
 def result_of(run: west_tools.WestRun, p: VerifyPlan | None = None) -> VerifyResult:
     errors, warnings = parse_output(run.lines, run.returncode)
+    log.info("verify result: %s (rc=%s, %.1fs), %d error line(s), %d warning(s)",
+             "ok" if run.returncode == 0 else "FAILED", run.returncode, run.duration,
+             len(errors), len(warnings))
+    for e in errors:
+        log.warning("verify error line: %s", e)
     return VerifyResult(ok=run.returncode == 0, returncode=run.returncode, errors=errors,
                         warnings=warnings, log_tail=run.lines[-15:], duration=run.duration,
                         scratch=p.build if p else None, cmd=run.cmd)
@@ -129,6 +140,7 @@ def verify(build_dir: Path | str, overlay_text: str, conf_text: str,
     run, p = start(build_dir, overlay_text, conf_text, on_line, scratch_root)
     run.wait(timeout)
     if run.running:
+        log.warning("verify timed out after %ss, cancelling", timeout)
         run.cancel()
         run.wait(30)
     return result_of(run, p)
@@ -144,6 +156,8 @@ def write_to_app(app_dir: Path | str, overlay_text: str, conf_text: str) -> list
     out = []
     for name, text in ((OVERLAY_NAME, overlay_text), (CONF_NAME, conf_text)):
         path = app / name
+        log.info("write %s (%s, %d bytes, confirmed by the caller)", path,
+                 "overwrites existing file" if path.exists() else "new file", len((text or "").encode("utf-8")))
         path.write_text(text or "", encoding="utf-8", newline="\n")
         out.append(path)
     return out

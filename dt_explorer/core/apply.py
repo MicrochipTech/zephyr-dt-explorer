@@ -29,6 +29,7 @@ so that a conflicting second file is never created. A revision-less name applies
 from __future__ import annotations
 
 import difflib
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +37,8 @@ from pathlib import Path
 import yaml
 
 from .buildinfo import BuildInfoError, read_build_info
+
+log = logging.getLogger("dt_explorer.apply")
 
 
 class ApplyError(Exception):
@@ -198,6 +201,8 @@ def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, 
                 if fp.diff and not fp.diff.endswith("\n"):
                     fp.diff += "\n"
         plan.files.append(fp)
+        log.info("apply plan %s: %s -> %s%s", kind, fp.action, fp.path,
+                 f" ({len(fp.diff.splitlines())} diff lines)" if fp.diff else "")
     return plan
 
 
@@ -209,14 +214,18 @@ def apply(plan: ApplyPlan, overwrite: set | None = None) -> ApplyResult:
     boards = (plan.app_dir / "boards").resolve()
     for fp in plan.files:
         if fp.comment_only or fp.identical:
+            log.info("apply: skip %s (%s)", fp.path, fp.action)
             res.skipped.append(fp.path)
             continue
         if fp.path.resolve().parent != boards:                  # defensive: only <app>/boards/<file>
             raise ApplyError(f"refusing to write outside {boards}: {fp.path}")
         if fp.exists and not ({str(fp.path), fp.kind} & ow):
+            log.warning("apply: refused to overwrite %s (exists, overwrite not confirmed)", fp.path)
             res.refused.append(fp.path)
             continue
         fp.path.parent.mkdir(parents=True, exist_ok=True)
+        log.info("apply: write %s (%s, %d bytes%s)", fp.path, "overwrite, confirmed" if fp.exists else "new file",
+                 len(fp.text.encode("utf-8")), f", {len(fp.diff.splitlines())} diff lines" if fp.diff else "")
         fp.path.write_text(fp.text, encoding="utf-8", newline="\n")
         (res.overwritten if fp.exists else res.written).append(fp.path)
     return res

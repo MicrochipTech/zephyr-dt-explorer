@@ -5,6 +5,7 @@ Pure core module: standard library and pyyaml only, no UI imports.
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import threading
 import time
@@ -13,6 +14,10 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 import yaml
+
+from .log import log_external
+
+log = logging.getLogger("dt_explorer.west")
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -61,6 +66,7 @@ class WestRun:
                            capture_output=True, creationflags=_NO_WINDOW)
 
     def _run(self):
+        log.info("starting %s (cwd %s)", " ".join(self.cmd), self.cwd)
         try:
             proc = subprocess.Popen(
                 self.cmd, cwd=str(self.cwd), env=self.env,
@@ -71,6 +77,7 @@ class WestRun:
             self._emit(f"cannot start {self.cmd[0]}: {exc}")
             self.returncode = -1
             self.duration = time.monotonic() - self._start
+            log_external(log, self.cmd, -1, self.duration, self.lines, self.cwd)
             return
         with self._lock:
             self._proc = proc
@@ -81,6 +88,9 @@ class WestRun:
             self._emit(line.rstrip("\r\n"))
         self.returncode = proc.wait()
         self.duration = time.monotonic() - self._start
+        if self.cancelled:
+            log.info("cancelled by the user")
+        log_external(log, self.cmd, self.returncode, self.duration, self.lines, self.cwd)
 
     @property
     def running(self) -> bool:
@@ -180,6 +190,7 @@ def list_boards(ws: Path, vendors: Iterable | None = None,
     Does not call west.
     """
     ws = Path(ws)
+    t0 = time.monotonic()
     vend = None if vendors is None else {str(v).lower() for v in vendors}
     dirs = [ws / "zephyr" / "boards", *module_board_roots(ws), *map(Path, extra_board_dirs)]
     seen, boards = set(), []
@@ -204,4 +215,6 @@ def list_boards(ws: Path, vendors: Iterable | None = None,
                 name=name, vendor=vendor, full_name=str(b.get("full_name", name)),
                 socs=[str(s.get("name", "")) for s in socs], qualifiers=_qualifiers(socs),
                 path=yml.parent))
+    log.info("listed %d boards (vendors=%s) in %s in %.2fs", len(boards),
+             "all" if vend is None else ",".join(sorted(vend)), ws, time.monotonic() - t0)
     return sorted(boards, key=lambda x: x.name)

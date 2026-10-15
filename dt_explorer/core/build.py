@@ -1,14 +1,18 @@
 """Devicetree Explorer core: parsers and BuildModel (no NiceGUI)."""
 
 import json
+import logging
 import pickle
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .model_host import EdtlibHost
+
+log = logging.getLogger("dt_explorer.build")
 
 ORIGIN_STYLE = {          # category -> (colour on dark background, caption)
     "overlay": ("#81c784", "Overlay (app)"),
@@ -178,6 +182,8 @@ class DriverIndex:
 
 class BuildModel:
     def __init__(self, build: Path):
+        t0 = time.perf_counter()
+        log.info("loading build %s", build)
         self.build = build
         zdir = build / "zephyr"
         cache = (build / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
@@ -188,17 +194,28 @@ class BuildModel:
         wt = self._cache_val(cache, "WEST_TOPDIR")
         self.west_top = Path(wt) if wt and Path(wt).is_dir() else self.zephyr_base.parent
 
+        log.info("ZEPHYR_BASE=%s APPLICATION_SOURCE_DIR=%s WEST_TOPDIR=%s",
+                 self.zephyr_base, self.app_dir, self.west_top)
+        t1 = time.perf_counter()
         self.edt = EdtlibHost.for_zephyr_base(self.zephyr_base).load_edt(zdir / "edt.pickle")
+        log.info("read %s (edtlib from %s): %d nodes in %.2fs", zdir / "edt.pickle", self.zephyr_base,
+                 len(self.edt.nodes), time.perf_counter() - t1)
 
+        t1 = time.perf_counter()
         self.origins = parse_zephyr_dts(zdir / "zephyr.dts")
+        log.info("read %s: origins of %d nodes in %.2fs", zdir / "zephyr.dts", len(self.origins),
+                 time.perf_counter() - t1)
         pre = zdir / "zephyr.dts.pre"
         self.includes = parse_includes(pre) if pre.exists() else None
+        log.info("read %s: include tree %s", pre, "built" if self.includes else "not available")
         self.file_contrib = self._file_contrib()
         self.generated = (zdir / "include" / "generated" / "zephyr" / "devicetree_generated.h") \
             .read_text(encoding="utf-8", errors="replace")
         self.linked = (zdir / "zephyr.elf").exists() or (zdir / "zephyr.map").exists()
         self.device_ords = self._device_ords(cache, zdir)
         self.compiled = self._compiled_files(build)
+        log.info("image: linked=%s, %d device ordinals, %d compiled source files",
+                 self.linked, len(self.device_ords), len(self.compiled))
 
         module_dirs, all_modules = [], []
         mods = build / "zephyr_modules.txt"
@@ -210,7 +227,10 @@ class BuildModel:
                     if parts[0] not in ("cmsis", "cmsis_6", "picolibc", "atmel"):
                         module_dirs.append(Path(parts[1]).resolve())
         scan = [self.zephyr_base / "drivers", self.zephyr_base / "soc", self.app_dir] + module_dirs
+        t1 = time.perf_counter()
         self.drivers = DriverIndex.get([d for d in scan if d.exists()])
+        log.info("driver index: %d compatibles in %d scanned folders (%.2fs, cached per folder set)",
+                 len(self.drivers), len([d for d in scan if d.exists()]), time.perf_counter() - t1)
 
         # binding search path (same dts_root order Zephyr uses: app, modules, zephyr)
         roots = [self.app_dir] + all_modules + [self.zephyr_base]
@@ -221,6 +241,7 @@ class BuildModel:
                 for y in bdir.rglob("*.yaml"):
                     self.yaml_index.setdefault(y.name, y.resolve())
         self._yaml_cache: dict = {}
+        log.info("binding index: %d YAML files in %d roots", len(self.yaml_index), len(roots))
 
         self.by_path = {n.path: n for n in self.edt.nodes}
         # alias2node returns dtlib nodes -> map to edtlib nodes via their path
@@ -228,6 +249,11 @@ class BuildModel:
                         for a, n in self.edt._dt.alias2node.items() if n.path in self.by_path}
         self.chosen = {compat_ident(k): self.by_path.get(n.path, n) for k, n in self.edt.chosen_nodes.items()}
         self.code_refs = self._code_refs()
+        log.info("build loaded: %d nodes, %d aliases, %d code references in %.2fs total",
+                 len(self.by_path), len(self.aliases), len(self.code_refs), time.perf_counter() - t0)
+        from . import log as _dtlog
+        if _dtlog.enabled:
+            _dtlog.log_header(self)
 
     @classmethod
     def from_edt(cls, edt, build_dir: Path, origins: dict | None = None) -> "BuildModel":
@@ -276,11 +302,16 @@ class BuildModel:
         elf = zdir / "zephyr.elf"
         if nm and elf.exists():
             try:
-                out = subprocess.run([nm, str(elf)], capture_output=True, text=True, timeout=60).stdout
+                t0 = time.perf_counter()
+                r = subprocess.run([nm, str(elf)], capture_output=True, text=True, timeout=60)
+                out = r.stdout
+                from .log import log_external
+                log_external(log, [nm, elf], r.returncode, time.perf_counter() - t0, r.stderr)
                 return {int(x) for x in re.findall(r"__device_dts_ord_(\d+)\s*$", out, re.M)}
-            except (OSError, subprocess.SubprocessError):
-                pass
+            except (OSError, subprocess.SubprocessError) as exc:
+                log.warning("nm failed (%s), falling back to zephyr.map", exc)
         if not (zdir / "zephyr.map").exists():
+            log.info("no zephyr.elf / zephyr.map: build not linked, device ordinals unknown")
             return set()        # not linked yet (e.g. west build --cmake-only)
         mp = (zdir / "zephyr.map").read_text(errors="replace")
         mp = mp.split("Linker script and memory map", 1)[-1]
@@ -403,6 +434,31 @@ class BuildModel:
         return sorted(files)
 
     def state(self, node) -> tuple:
+        res = self._state(node)
+        if log.isEnabledFor(logging.DEBUG):
+            seen = self.__dict__.setdefault("_state_logged", set())
+            if (node.path, res[0]) not in seen:
+                seen.add((node.path, res[0]))
+                try:
+                    self._log_state(node, res)
+                except Exception:
+                    pass
+        return res
+
+    def _log_state(self, node, res) -> None:
+        key, text = res
+        color, caption = STATE_STYLE.get(key, ("?", key))
+        drv = self.drivers_for(node)
+        names = ", ".join(d.name for d in drv) or "none"
+        comp = [d.name for d in drv if d in self.compiled]
+        parts = [f'status="{node.status}"', f"compatible={node.compats[0] if node.compats else '-'}",
+                 f"binding={'yes' if node.binding_path else 'no'}",
+                 f"driver files: {names}" + (f" (compiled: {', '.join(comp) or 'none'})" if drv else ""),
+                 f"linked={self.linked}"]
+        log.debug("state %s (%s): %s [%s] - %s", node.labels[0] if node.labels else node.path,
+                  node.path, f"{key}/{color}", "; ".join(parts), text.split(". ")[0].rstrip("."))
+
+    def _state(self, node) -> tuple:
         if node.dep_ordinal in self.device_ords:
             return "device", f"Device created: __device_dts_ord_{node.dep_ordinal} is in the image."
         if node.status != "okay":

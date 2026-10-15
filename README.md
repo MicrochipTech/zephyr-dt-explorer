@@ -48,6 +48,22 @@ Direct link to a node: `http://localhost:8765/?build=apps/lab1/build_same54_xpro
 
 More URL parameters: `&tab=include|pins|package|board|draft`, `&src=<file relative to the west workspace>&line=<n>`.
 
+## Log
+
+The tool writes a log of what it does, sees and decides: files read, node/binding/driver counts and
+timings, the `state()` reason behind each traffic-light dot (DEBUG), every external call (`west`, `nm`,
+`cmake`, `git`: command, exit code, duration, last output lines), every file written and errors with
+their traceback. The same lines go to a file and to the **Log** tab.
+
+| What | Where |
+|---|---|
+| Log file | `%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log` (rotating, the last 10 days are kept; folder overridable with the environment variable `DTX_LOG_DIR`) |
+| **Log** tab | Live lines (last 5000), **Level** filter (DEBUG / INFO / WARNING), **DEBUG** switch, **Copy** (context header plus the visible lines, ready to paste into a Claude Code session) |
+| `--debug` | `py dt_explorer.py <folder> --debug` starts with DEBUG on; works with `--no-browser` |
+| Context header | Tool commit, Python, NiceGUI, Zephyr version, workspace, build folder, board, SoC, ATDF file and version, loaded plugins; written at start and whenever a build is loaded |
+
+**Privacy:** the log contains local paths including your user name. Read it before you send it to someone.
+
 ## Data sources (all in the build folder)
 
 `zephyr/zephyr.dts` (origin comments), `zephyr/zephyr.dts.pre` (include tree), `zephyr/edt.pickle` (Zephyr's edtlib), `zephyr/zephyr.elf`
