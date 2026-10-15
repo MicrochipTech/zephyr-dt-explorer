@@ -539,7 +539,7 @@ exception of P5.5.
 | P7.3 | done | 7d3f349 → master |
 | P7.3b | done | cb702b2 → master |
 | P7.4 | done | ccb9d19 → master |
-| P7.5 | running | |
+| P7.5 | done | abceb3b → master |
 
 **P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
 - Dep: P1.2. Scope: `dt_explorer/core/board.py` (neutral `BoardNetlist`),
@@ -830,4 +830,5 @@ surprising, and anything you were unsure about.
 | P3.8 | [P3.8.md](evidence/P3.8.md) | recipe serves `microchip,sercom-g1-uart/-i2c/-spi`; on the main pic32cx_sg41_cult build SERCOM1 I2C (PA00/PA01) + SERCOM3 UART (PA22/PA23) render and validate with no errors; g1 Kconfig table lists only CONFIG_SERIAL/I2C/SPI (the g1 driver symbols are promptless `default y` via DT_HAS_…, assigning them in a conf would abort the build). sam0 tests untouched (0 removed lines). 372 passed. Builder re-run 58 passed |
 | P6.3 | [P6.3.md](evidence/P6.3.md) | all 8 lab ports to SG41/SG61 verify rc 0 (SG41 was rc 1); skipped nodes are `conflict` with one line per reason (target uses the instance as another compatible incl. chosen console; pad used by another target node, e.g. SG61 `&sercom6` on PD08/PD09; pad not on package, e.g. SG61 PB27) plus a connector-based suggestion ("spi on EXT1 of the target: MOSI PB24, MISO PC25; no pad for SCK → SERCOM0 …"); code refs to conflicting nodes reported; lab1 → sam_e54_xpro overlay unchanged. Found: `BuildModel.west_top` must come from `WEST_TOPDIR` for cross-workspace builds → builder fixed it in core/build.py (goldens unchanged, full suite 381 passed) |
 | P6.2b | [P6.2b.md](evidence/P6.2b.md) | all 8 lab ports to SG41/SG61 verify rc 0, no silent drops, every conflict with reason + suggestion (SG41: sercom2/4/7 conflict with board sercom0/console/sercom6; SG61: sercom2 emitted, sercom4/7 conflict, PB26/27/29 not on package). lab3 → main sam_e54_xpro: sercom3/4/7 emitted, mytemp0/my_http0 carried, applied to a copy; build fails only on Zephyr 4.5 HTTP-server API renames in the app's main.c (app API drift, not a tool issue); with the two renames in a throw-away copy it links (sercom3 g1 I2C device in the image) → closes the P5.5 lab3 exception. Cosmetic: report section 3 says `DT_ALIAS(sercom3) [missing]` although the overlay adds the alias → phase 8 input. Not tested on hardware (HC-4) |
+| P7.5 | [P7.5.md](evidence/P7.5.md) | README/GUI.md: Board tab, report sections 5b and 7, conflicts, Apply to app… (grep PASS in both); 3 new live shots, Apply/verify shots reused; make_screenshots.py takes `DTX_PORT_TARGET` for the port shots. **Version 1 complete.** |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
