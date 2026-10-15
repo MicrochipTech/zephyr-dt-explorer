@@ -29,6 +29,7 @@ Direct link to a node: `http://localhost:8765/?build=apps/lab1/build_same54_xpro
 |---|---|
 | Text colour in the tree | File that defines the node: green = app overlay, blue = board, grey = SoC/Zephyr, purple = module |
 | `overlay` badge | Node exists elsewhere but the app overlay changed a property (e.g. `status`) |
+| **Legend** menu (header) | Colour key of the trees and of the Origin column: green = overlay (app), blue = board, grey = SoC/Zephyr, purple = module, yellow = binding default |
 | Dot | green = device in image · orange = driver exists but disabled by Kconfig · red = driver built but no device · cyan = driver built, build not linked yet (`--cmake-only`) · grey = `status = "disabled"` · blue-grey = no driver (CPU, memory, child nodes) |
 | Red banner | A driver from a module/app was compiled but no node with its `compatible` is `okay` — typical cause: overlay not saved or `compatible` misspelled |
 | Overview | Every `DT_NODELABEL` / `DT_ALIAS` / `DT_CHOSEN` in the app's `src/`, resolved to its node |
@@ -39,8 +40,10 @@ Direct link to a node: `http://localhost:8765/?build=apps/lab1/build_same54_xpro
 | **Pins** tab | Every pin of the chip's package with its state: free, used, conflict (more than one user), or power/other. Shows which node and function uses a pin; node paths open the node. Filter by pin, pad, node or function; Show = all, used or free |
 | **Package** tab | The same pin states drawn on the package outline (QFP, BGA). Click a pin to see its users. Draft pins are purple until the draft is built |
 | **Configure…** button | On a `status = "disabled"` node of a supported peripheral (SERCOM as UART, I2C or SPI): pick the class, pads and properties, then Save adds the node to the draft |
-| **Draft** tab | The draft nodes (edit or remove), the overlay snippet (Copy, Download), the suggested `prj.conf` lines and **Check**: validates the draft overlay and lists errors, warnings and infos (pin conflicts, missing properties) |
+| **Edit pins…** button | On an enabled node (`status = "okay"`) of a supported peripheral: the same dialog with the current pads and properties; Save puts the change into the draft under its own pinctrl group, the board's group stays as it is |
+| **Draft** tab | The draft nodes (edit or remove), the overlay snippet (Copy, Download), the suggested `prj.conf` lines and **Check**: validates the draft overlay and lists errors, warnings and infos (pin conflicts, missing properties). **Verify with west** runs Zephyr's own configure step on the draft in a scratch folder (the build folder is not touched); **Write to app** copies the overlay and `.conf` into the app folder after a confirmation |
 | **New build…** and **Full build** | Header buttons. New build: choose app folder and board, run a cmake-only build (fast; devices show "not linked yet"). Full build: `west build` of the current build folder with a streamed log, reloads the build when it finishes |
+| **Port to board…** | Header button. Ports the app of the current build to another board: pick a build of the same app for the other board (or create one), then **Run port** shows the target overlay, the `.conf` lines and a port report (what translates, Kconfig differences, references and pins the target does not resolve, nodes to carry over by hand) and a fast check. **Verify with west** checks the port on the target in a scratch folder. Nothing is written into the app |
 
 More URL parameters: `&tab=include|pins|package|draft`, `&src=<file relative to the west workspace>&line=<n>`.
 

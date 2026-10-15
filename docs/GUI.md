@@ -10,7 +10,7 @@ The window has three areas:
 
 | Area | Content |
 |---|---|
-| **Header** (top) | Build selection, reload, New build…, Full build, colour legend |
+| **Header** (top) | Build selection, reload, New build…, Full build, Port to board…, Legend |
 | **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Draft** (pending configurator changes) |
 | **Right panel** | Details of whatever is selected on the left; the overview when nothing is selected |
 
@@ -34,8 +34,12 @@ workspace, an app folder or a single build folder; every build below it is offer
 - **Reload**: scans for builds again and reloads the current one. Press it after every
   `west build`.
 - **New build…** and **Full build**: start a build from the explorer (see below).
-- **Colour legend**: the text colour used in both trees and in the *Origin* column. It tells
-  you **which kind of file** something comes from:
+- **Port to board…**: ports the app of the current build to another board (section 1.3).
+- **Legend** (right end of the header): a menu with the text colours used in both trees and in the
+  *Origin* column. It tells you **which kind of file** something comes from. Click it to open the key:
+
+![Legend menu](img/legend_menu.png)
+
 
 | Colour | Category | Typical files |
 |---|---|---|
@@ -44,9 +48,6 @@ workspace, an app folder or a single build folder; every build below it is offer
 | grey | SoC / Zephyr | `zephyr/dts/arm/...dtsi`, `zephyr/include/.../dt-bindings/*.h` |
 | purple | Module | `modules/...` (e.g. pinctrl headers from `hal_atmel`) |
 | yellow | Binding default | Value written in no `.dts` file; it comes only from `default:` in the binding YAML |
-
-**Known issue:** when the window is narrower than the header's content, the origin chips (Overlay,
-Board, SoC, Module) move to a second line, as in the image above. Not fixed yet.
 
 ### 1.1 New build…
 
@@ -69,6 +70,48 @@ green (device created) or red (driver built, no device). Use it after a cmake-on
 changing the app. **Cancel build** stops it.
 
 ![Full build dialog](img/full_build_dialog.png)
+
+### 1.3 Port to board…
+
+![Port to board dialog](img/port_dialog.png)
+
+**Port to board…** takes the app of the current build and shows what it would look like on another
+board of the same app: the overlay and `.conf` lines for the target, and a report of what could not be
+carried over. The source build is not changed, and the dialog writes nothing into the app.
+
+- **Target build**: a build of the same app for another board (the list shows only builds of a different
+  board). **Create target build…** opens New build… for it; a cmake-only build is enough. Or type a build
+  folder path below the list.
+- **Run port**: runs the port. The log shows the steps, and the result appears below the log.
+
+The result has these parts:
+
+- **Target overlay** and **Target .conf**: the text for the target, with **Copy** and **Download**.
+- **Port report**: numbered sections, each one expandable:
+
+| Section | Content |
+|---|---|
+| 1. Nodes: translated and untranslatable properties | Each node of the source and its translation to the target's binding. Lines say what is identical, what is not emitted, or why a node is not ported (`no_target`: the target workspace has no binding or driver for it; `no_node`: the target build has no such node) |
+| 2. Kconfig differences | Each `prj.conf` line of the source with its value in the source and in the target `.config`, e.g. a symbol that the target Kconfig tree does not define |
+| 3. Node references in src/ that the target does not resolve | Each `DT_NODELABEL(...)` / `DT_ALIAS(...)` of the app that the target lacks, with a suggestion |
+| 4. Pins not available on the target SoC | Pins that the source uses but the target package does not have |
+| 5. Nodes without translation and not representable children | Nodes that have to be carried over by hand, and child nodes that the draft cannot represent yet |
+
+  Below the sections, **Fast check on the target build** lists the findings of the same check as in the
+  Draft tab (section 11) on the ported overlay.
+
+![Port report](img/port_report.png)
+
+The example ports lab1 (SAME54 Xplained Pro) to the PIC32CX SG61 test build in `_soltest`. The report
+lists the SERCOMs that have no counterpart there, the `DT_NODELABEL(my_led0)` of the app that the target
+does not define (with the alias suggestion), and the PB26/PB27/PB29 pins that are not on the TQFP128 package.
+
+- **Verify with west**: runs Zephyr's own check of the port on the target: a cmake-only build of the target
+  board into a scratch folder with the target overlay and `.conf` (about 30 s). The target build is not
+  touched. A green line says that Zephyr accepts the port; a red line says it rejects it, and the errors are
+  shown under the log.
+
+![Verify with west on the target](img/port_verify.png)
 
 ---
 
@@ -146,6 +189,8 @@ The overview lists every `DT_NODELABEL(...)`, `DT_ALIAS(...)` and `DT_CHOSEN(...
   the driver at its `DT_DRV_COMPAT` line.
 - **Configure…** button: shown on a disabled node of a supported peripheral. It opens the
   configurator (section 10).
+- **Edit pins…** button: shown on an enabled node of a supported peripheral. It opens the same
+  dialog, filled with the node's current pins (section 10.1).
 
 For child nodes without their own `compatible` (for example a button below `gpio-keys`), the
 card explains that the parent's binding describes them and that the app reads them directly:
@@ -319,6 +364,18 @@ SERCOM1 into an I2C controller: SDA on PC22, SCL on PC23.
 The draft is kept for this build. Saving the dialog does not build anything; use the check in the
 Draft tab, and copy the snippet into your app overlay.
 
+### 10.1 Edit pins… (enabled nodes)
+
+![Edit pins dialog](img/edit_pins_dialog.png)
+
+On an enabled node (`status = "okay"`), **Edit pins…** opens the same dialog for changing the pads and
+properties of that node. The example is SERCOM2 of lab1 as UART: TX PB25, RX PB24, filled in from the
+node as it is built.
+
+- The change goes to the draft as an edit of the node. Its pinctrl group gets the name
+  `<label>_<class>_edit` (for example `sercom2_uart_edit`), so the board's own group is not changed.
+- **Cancel** closes the dialog and changes nothing.
+
 ---
 
 ## 11. Left panel — tab **Draft**
@@ -342,6 +399,26 @@ The pending changes of the current build. The number on the tab counts the draft
 | error (red) | The overlay would not work, e.g. two nodes use the same pin or a required property is missing |
 | warning (orange) | The overlay works but needs attention, e.g. a pinmux IOSET mix |
 | info (grey) | For information, e.g. a pin conflict that already exists in the build |
+
+### 11.1 Authoritative check: Verify with west and Write to app
+
+The **Check** above is a fast check in Python. The two buttons below use Zephyr itself.
+
+**Verify with west** runs `west build --cmake-only` of the build's board into a scratch folder in
+`%TEMP%`, with the draft overlay and the Kconfig lines (about 15–45 s). The build folder is not touched.
+A green line says that Zephyr accepts the draft; a red line says that it rejects it, and the errors are
+shown under the log.
+
+![Verify with west accepted](img/draft_verify_ok.png)
+
+![Verify with west rejected](img/draft_verify_fail.png)
+
+**Write to app** copies the draft into the app folder as `dt_explorer.overlay` and `dt_explorer.conf`.
+A confirmation first names the folder and lists the files that would be overwritten. Zephyr reads the two
+files only if the app's `CMakeLists.txt` or your west command refers to them, for example with
+`-DEXTRA_DTC_OVERLAY_FILE=dt_explorer.overlay -DEXTRA_CONF_FILE=dt_explorer.conf`.
+
+![Write to app confirmation](img/draft_write_dialog.png)
 
 The Draft tab opens by itself after Save. Use `tab=draft` in a link to open it directly.
 

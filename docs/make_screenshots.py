@@ -9,10 +9,15 @@ and the Draft tab need clicks, so they are driven with Playwright (`py -m pip in
 They save one draft in apps\\lab1\\.dt_explorer and delete it again (and the folder, if it was
 created for it). The script refuses to start while that draft file exists.
 
+The Port to board… dialog runs its pipeline (no west, nothing written) and shows the report. Its
+"Verify with west" and the Draft tab's "Verify with west" / "Write to app" run west or write into the app,
+so those shots are not produced here: they are copied from the evidence images (REUSED below).
+
     py docs/make_screenshots.py [--port 8765] [--crop-only]
 """
 import argparse
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -20,6 +25,15 @@ from urllib.parse import quote
 
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 IMG = Path(__file__).parent / "img"
+EVID = Path(__file__).parent / "evidence" / "img"
+# docs image name -> evidence image it is copied from (shots that would run west or write into apps\)
+REUSED = {
+    "draft_verify_ok.png":    "P4.1_ok.png",           # Draft tab, Verify with west, rc 0
+    "draft_verify_fail.png":  "P4.1_fail.png",         # Draft tab, Verify with west, rc 1
+    "draft_write_dialog.png": "P4.1_write_dialog.png", # Write to app confirmation
+    "port_verify.png":        "P5.4_verify.png",       # Port dialog, Verify with west on the target
+}
+CUT_OLD_HEADER = {"draft_verify_ok.png", "draft_verify_fail.png"}   # Draft tab shots with the old header
 WS = Path(os.environ.get("DTX_RTOS4_WS", r"C:\Masters\26020_RTOS4\zephyrproject"))
 LAB1 = "build=apps/lab1/build_same54_xpro"
 DRAFT_DIR = WS / "apps" / "lab1" / ".dt_explorer"
@@ -48,20 +62,21 @@ SHOTS = {  # name -> (query, width, height)
 
 
 CROPS = {  # element image -> (source screenshot, box (left, top, right, bottom))
-    "el_header":        ("node_led", (0, 0, 1500, 116)),
-    # boxes are measured below the header, which is 116 px high since the origin chips wrap (see GUI.md 1)
-    "el_tree":          ("node_led", (0, 116, 515, 662)),
-    "el_node_head":     ("node_led", (515, 139, 1490, 384)),
-    "el_props":         ("node_led", (515, 800, 1490, 1112)),
-    "el_code_macros":   ("node_led", (515, 1117, 1490, 1700)),
-    "el_binding":       ("node_binding", (515, 354, 1490, 1164)),
-    "el_nobinding":     ("node_nobinding", (515, 139, 1490, 504)),
-    "el_coderefs":      ("overview", (515, 270, 1490, 757)),
-    "el_child_state":   ("node_button", (515, 137, 1490, 362)),
-    "el_include_tree":  ("include_file", (0, 114, 515, 867)),
-    "el_include_file":  ("include_file", (515, 137, 1490, 652)),
-    "el_header_defs":   ("include_header", (515, 137, 1490, 732)),
-    "el_orphan":        ("orphan", (0, 120, 1500, 224)),
+    "el_header":        ("node_led", (0, 0, 1500, 74)),
+    # boxes are measured below the header, which is 74 px high: one row since P3.7 (the origin chips are in
+    # the Legend menu). Before P3.7 the chips wrapped and the header was 116 px high (see GUI.md 1).
+    "el_tree":          ("node_led", (0, 74, 515, 620)),
+    "el_node_head":     ("node_led", (515, 97, 1490, 342)),
+    "el_props":         ("node_led", (515, 758, 1490, 1070)),
+    "el_code_macros":   ("node_led", (515, 1075, 1490, 1658)),
+    "el_binding":       ("node_binding", (515, 312, 1490, 1122)),
+    "el_nobinding":     ("node_nobinding", (515, 97, 1490, 462)),
+    "el_coderefs":      ("overview", (515, 228, 1490, 715)),
+    "el_child_state":   ("node_button", (515, 95, 1490, 320)),
+    "el_include_tree":  ("include_file", (0, 72, 515, 825)),
+    "el_include_file":  ("include_file", (515, 95, 1490, 610)),
+    "el_header_defs":   ("include_header", (515, 95, 1490, 690)),
+    "el_orphan":        ("orphan", (0, 78, 1500, 182)),
 }
 
 
@@ -125,6 +140,60 @@ def ui_shots(base):
         print(name, (IMG / f"{name}.png").exists())
 
 
+def extra_ui_shots(base):
+    """Header Legend menu, Edit pins… dialog (enabled SERCOM2, not saved), Port to board… dialog and its report.
+
+    Nothing is saved: Edit pins is cancelled, and "Run port" only reads the two builds (no west, no files).
+    """
+    from playwright.sync_api import sync_playwright
+    IMG.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p:
+        br = p.chromium.launch(executable_path=str(CHROME), headless=True)
+        pg = br.new_page(viewport={"width": 1500, "height": 1000})
+        pg.goto(f"{base}?{LAB1}")
+        pg.locator("#legend-btn").click()
+        pg.wait_for_timeout(600)
+        pg.screenshot(path=IMG / "legend_menu.png", clip={"x": 0, "y": 0, "width": 1500, "height": 260})
+        pg.keyboard.press("Escape")
+
+        pg.goto(f"{base}?{LAB1}&node={quote('/soc/sercom@41012000', safe='')}")
+        pg.locator("#cfg-edit").click()
+        pg.locator("#cfg-dialog").wait_for(state="visible")
+        pg.wait_for_timeout(800)
+        pg.screenshot(path=IMG / "edit_pins_dialog.png")
+        pg.locator("#cfg-dialog").get_by_role("button", name="Cancel").click()
+
+        pg.goto(f"{base}?{LAB1}")
+        pg.locator("#port-open").click()
+        pg.locator("#port-dialog").wait_for(state="visible")
+        pg.wait_for_timeout(800)
+        pg.screenshot(path=IMG / "port_dialog.png")
+        pg.locator("#port-run").click()
+        pg.wait_for_function("() => { const e = document.querySelector('#port-status');"
+                             " return !!e && e.innerText.trim() !== '' && !e.innerText.includes('porting'); }",
+                             timeout=300000)
+        pg.wait_for_timeout(800)
+        pg.locator("#port-report").screenshot(path=IMG / "port_report.png")
+        pg.locator("#port-close").click()
+        br.close()
+        print(name, (IMG / f"{name}.png").exists())
+
+
+def copy_reused():
+    """Shots that must not be re-taken here (they run west or write into apps\\): copied from the evidence.
+
+    Evidence shots of the Draft tab are from before P3.7 and still show the wrapped 116 px header: those are cut below it.
+    """
+    from PIL import Image
+    for dst, src in REUSED.items():
+        if dst in CUT_OLD_HEADER:
+            im = Image.open(EVID / src)
+            im.crop((0, 116, im.size[0], im.size[1])).save(IMG / dst)
+        else:
+            shutil.copyfile(EVID / src, IMG / dst)
+        print("reused", dst, "<-", src)
+
+
 def main(port):
     base = f"http://localhost:{port}/"
     if DRAFT.exists():          # checked first: the Draft shots need a clean build
@@ -138,7 +207,9 @@ def main(port):
                             f"--user-data-dir={profile}", f"--screenshot={out}", base + "?" + query],
                            check=False, capture_output=True, timeout=120)
             print(name, out.exists())
+    extra_ui_shots(base)
     ui_shots(base)
+    copy_reused()
     crops()
     (IMG / "tree_full.png").unlink(missing_ok=True)
 
