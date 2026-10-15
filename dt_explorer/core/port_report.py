@@ -57,7 +57,7 @@ class NodeResult:
     source_compatible: str
     target_compatible: str | None = None
     target_path: str | None = None
-    status: str = "emitted"             # emitted | identical | no_target | no_translation | no_node | error
+    status: str = "emitted"             # emitted | identical | conflict | no_target | no_translation | no_node | error
     translated: dict = field(default_factory=dict)       # target property -> value (all of them)
     emitted: list[str] = field(default_factory=list)     # properties that went into the overlay
     same_in_target: list[str] = field(default_factory=list)   # translated but already so in the target
@@ -324,6 +324,118 @@ def _strip_status(text: str) -> str:
 
 def _rename(text: str, old: str, new: str) -> str:
     return re.sub(rf"(?<![\w-]){re.escape(old)}(?![\w-])", new, text)
+
+
+def _adopt_west_topdir(model) -> None:
+    """Relative file names in zephyr.dts are relative to the west topdir of the build. A build whose app lives in
+    another west workspace than its Zephyr (``BuildModel`` assumes ``ZEPHYR_BASE.parent``) would not find the
+    board files, so the pads of its nodes would stay unknown; take ``WEST_TOPDIR`` from the CMake cache."""
+    cache = getattr(model, "build", None)
+    cache = Path(cache) / "CMakeCache.txt" if cache is not None else None
+    if cache is None or not cache.is_file():
+        return
+    m = re.search(r"^WEST_TOPDIR:\w+=(.+)$", cache.read_text(encoding="utf-8", errors="replace"), re.M)
+    if m and Path(m.group(1).strip()).is_dir():
+        model.west_top = Path(m.group(1).strip())
+
+
+def _users_of(tgt: BuildModel, tnode) -> str:
+    """Chosen entries and aliases of the target build that point at `tnode`, as text."""
+    ch = [k for k, c in tgt.edt.chosen_nodes.items() if getattr(c, "path", None) == tnode.path]
+    al = [a for a, n in tgt.edt._dt.alias2node.items() if getattr(n, "path", None) == tnode.path]
+    return ", ".join([f"chosen {c}" for c in ch] + [f"alias {a}" for a in al])
+
+
+def _node_name(tgt: BuildModel, path: str) -> str:
+    n = tgt.by_path.get(path)
+    return f"&{_label(n)}" if n is not None and n.labels else path
+
+
+def _target_conflicts(dn, tnode, t, tgt: BuildModel, tgt_usage, tgt_dev, pkg) -> list[str]:
+    """Reasons why a node must not be put on `tnode` of the target board (empty: no conflict).
+
+    (a) the target node is enabled with another compatible; (b) a ported pad is used by another enabled
+    node of the target build; (c) a ported pad is not on the target package (or not a pad of the device).
+    """
+    out: list[str] = []
+    tl = _label(tnode) or dn.label
+    if tnode.status == "okay" and t.target not in tnode.compats:
+        users = _users_of(tgt, tnode)
+        out.append(f"the target board enables &{tl} as {tnode.compats[0] if tnode.compats else '?'}"
+                   + (f" ({users})" if users else "") + f"; the port would make it {t.target}")
+    on_pkg = set(pkg.pins.values()) if pkg is not None else set()
+    known = pins_mod.device_pads(tgt_dev) if tgt_dev is not None else set()
+    for role, pad in dn.pins.items():
+        if tgt_dev is not None and pad not in known:
+            out.append(f"{role} pad {pad} is not a pad of the target device {tgt_dev.name}")
+        elif pkg is not None and pad not in on_pkg:
+            out.append(f"{role} pad {pad} is not on package {pkg.name} of the target device {tgt_dev.name}")
+        others = list(dict.fromkeys(_node_name(tgt, u.node) for u in tgt_usage.uses.get(pad, [])
+                                    if u.node != tnode.path))
+        if others:
+            out.append(f"{role} pad {pad} is used by {', '.join(others)} (enabled in the target board)")
+    return out
+
+
+def _conflict_suggestion(dn, tnode, tgt: BuildModel, tgt_usage, tgt_dev, pkg,
+                         src_board: str | None, tgt_board: str | None) -> str:
+    """Text only: target pads at the same connector pins, and the instances that can mux them for the same roles."""
+    hint = "choose instance and pads with Configure..."
+    sb, tb = board_desc.load_board(src_board), board_desc.load_board(tgt_board)
+    if sb is None or tb is None or tgt_dev is None:
+        return f"no connector data for both boards; {hint}"
+    on_pkg = set(pkg.pins.values()) if pkg is not None else set()
+    mapped: dict[str, tuple[str, str]] = {}             # role -> (connector, target pad)
+    missing: list[str] = []
+    for role, pad in dn.pins.items():
+        found = None
+        for conn in sb.connectors:
+            tconn = next((c for c in tb.connectors if c.name == conn.name and c.type == conn.type), None)
+            for key, pin in conn.pins.items():
+                if pin.pad == pad and tconn is not None:
+                    tp = tconn.pins.get(key)
+                    ok = tp is not None and tp.pad and (not on_pkg or tp.pad in on_pkg)
+                    found = (conn.name, tp.pad if ok else None, key)
+                    break
+            if found:
+                break
+        if found and found[1]:
+            mapped[role] = (found[0], found[1])
+        else:
+            missing.append(f"{role} ({pad}, " + (f"{found[0]} pin {found[2]}" if found else "not on a connector") + ")")
+    if not mapped:
+        return f"no target pad at the connector pins of the source pads; {hint}"
+    recipe = plugins.get_recipe(dn.compatible) if dn.compatible else None
+    vfn = getattr(recipe, "valid_assignments", None)
+    valid = list(vfn(dn.cls)) if vfn is not None else None
+    busy = {_first_addr(n) for n in tgt.edt.nodes
+            if n.status == "okay" and n.path != tnode.path and _first_addr(n) is not None}
+    taken = {p for p, us in tgt_usage.uses.items() if any(u.node != tnode.path for u in us)}
+    fits: list[str] = []
+    for inst in tgt_dev.instances.values():
+        if recipe is not None and not recipe.pin_roles(inst, dn.compatible):
+            continue
+        if inst.base in busy:
+            continue
+        ok = True
+        for role, (_c, tpad) in mapped.items():
+            prs = {s.role for s in inst.signals if s.pad == tpad}
+            if not prs or tpad in taken or (valid is not None and not any(a.get(role) in prs for a in valid)):
+                ok = False
+                break
+        if ok:
+            fits.append(inst.name)
+    conn_names = ", ".join(dict.fromkeys(c for c, _p in mapped.values()))
+    text = f"{dn.cls} on {conn_names} of the target: " + ", ".join(f"{r} {p}" for r, (_c, p) in mapped.items())
+    if missing:
+        text += "; no pad there for " + ", ".join(missing)
+    used = [f"{p} by {', '.join(dict.fromkeys(_node_name(tgt, u.node) for u in tgt_usage.uses[p] if u.node != tnode.path))}"
+            for _c, p in mapped.values() if p in taken]
+    if used:
+        text += "; already used in the target build: " + ", ".join(used)
+    text += (f" -> instance(s) that can mux them: {', '.join(fits)}" if fits
+             else " -> no free instance can mux them for these roles")
+    return text + f" ({hint}; the port does not remap)"
 
 
 # ---- app-defined nodes: carried verbatim from the app overlay -------------------------------------
@@ -707,6 +819,7 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
 
     src = source if hasattr(source, "edt") else BuildModel(Path(source))
     tgt = target if hasattr(target, "edt") else BuildModel(Path(target))
+    _adopt_west_topdir(tgt)
     src_info, tgt_info = read_build_info(src.build), read_build_info(tgt.build)
     rep = PortReport(source=src.build.name, target=tgt.build.name,
                      source_board=src_info.board_target or src_info.board or "?",
@@ -740,6 +853,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     ported_pads: dict[str, list[str]] = {}
     ported_compats: list[tuple[str, str]] = []      # (source compatible, target compatible)
     cov_by_label = {c.label: c for c in lift.covered}
+    conflicts: dict[str, str] = {}                  # source label -> first reason; nodes that are not emitted
+    tgt_pkg = pins_mod.default_package(tgt_dev) if tgt_dev is not None else None
 
     for dn in draft.nodes:
         cov = cov_by_label.get(dn.label)
@@ -772,6 +887,17 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             continue
         if tgt_index.find(t.target) is None:
             res.notes.append(f"binding for {t.target} not found in the target workspace")
+        reasons = _target_conflicts(dn, tnode, t, tgt, tgt_usage, tgt_dev, tgt_pkg)
+        if reasons:
+            res.status = "conflict"
+            res.lines += [f"conflict: {x}" for x in reasons]
+            moved = dn.use.chosen + dn.use.aliases
+            res.lines.append("not emitted; the target board's node, chosen entries and aliases stay as they are"
+                             + (f" (not moved: {', '.join(moved)})" if moved else ""))
+            res.lines.append("suggestion: " + _conflict_suggestion(
+                dn, tnode, tgt, tgt_usage, tgt_dev, tgt_pkg, src_info.board, tgt_info.board))
+            conflicts[dn.label or tlabel] = reasons[0]
+            continue
 
         # source properties = board-written ones + what the source recipe derives from the roles
         props: dict = {"compatible": [dn.compatible], **dn.props, **dn.vendor_props}
@@ -879,6 +1005,12 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             tn = tgt.edt.label2node.get(name)
             if name in carried_labels:
                 continue                    # defined by app text that this port carries over
+            if name in conflicts:
+                ref.problem = "conflict"
+                ref.detail = f"the node is not ported ({conflicts[name]}); the label in the target is another node"
+                ref.suggestion = "resolve the conflict first (section 1)"
+                rep.label_refs.append(ref)
+                continue
             if tn is not None and (tn.status == "okay" or name in ported_labels):
                 continue                    # resolves; a disabled node is enabled by this overlay
             if tn is not None:
@@ -911,7 +1043,10 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             if tn is not None:
                 continue
             ref.detail = "alias does not exist in the target devicetree"
-            if snode is not None:
+            if snode is not None and _label(snode) in conflicts:
+                ref.detail += f"; the node is not ported ({conflicts[_label(snode)]})"
+                ref.suggestion = "resolve the conflict first (section 1)"
+            elif snode is not None:
                 tlbl = ported_labels.get(_label(snode) or "")
                 tc = _match_target(snode, None, tgt)
                 if tlbl is None and tc is not None and tc.status == "okay":

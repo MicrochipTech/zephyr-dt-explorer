@@ -246,6 +246,7 @@ def test_pin_override_on_an_enabled_node(world):
 
 
 def test_pad_that_the_instance_lacks_is_reported_not_raised(world):
+    world.tgt_uses.clear()                                                # no conflict with the target's users
     world.draft.nodes[1].pins = {"TX": "P1", "RX": "P2"}                  # U1 has P3/P4 only
     res = pr.port_build(world.src, world.tgt, check=False)
     n = {x.label: x for x in res.report.nodes}["u1"]
@@ -375,3 +376,132 @@ def test_existing_label_or_node_in_target_is_not_overwritten(world):
     assert why == ["a node /led@2000 already exists in the target devicetree",
                    "label u0 already exists in the target devicetree"]
     assert not res.report.carried
+
+
+# ---- conflicts with the target board (P6.3) -----------------------------------------------------------
+def _by_label(world):
+    return {x.label: x for x in pr.port_build(world.src, world.tgt, check=False).report.nodes}
+
+
+def _enable_u1_as_other(world):
+    t_u1 = world.tgt.by_path["/t/u1"]
+    t_u1.status, t_u1.compats = "okay", ["beta,other"]
+    return t_u1
+
+
+def test_conflict_target_node_enabled_with_another_compatible(world):
+    """(a) the target enables u1 as another class: not emitted, the reason names the target's users."""
+    t_u1 = _enable_u1_as_other(world)
+    world.tgt.edt.chosen_nodes["zephyr,console"] = t_u1
+    world.tgt.edt._dt.alias2node["tty"] = t_u1
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "conflict" and n.emitted == []
+    text = "\n".join(n.lines)
+    assert "enables &u1 as beta,other (chosen zephyr,console, alias tty)" in text
+    assert "not moved: zephyr,console, my-uart" in text and "suggestion:" in text
+    assert "&u1 {" not in res.overlay and "my-uart = &u1;" not in res.overlay
+    assert "zephyr,console" not in res.overlay
+    assert "[conflict]" in "\n".join(res.report.lines())
+    ref = {r.macro: r for r in res.report.label_refs}["DT_NODELABEL(u1)"]       # the label is another node now
+    assert ref.problem == "conflict" and ref.alias_entry == ""
+
+
+def test_conflict_pad_used_by_another_enabled_target_node(world):
+    """(b) P3 is used by a different enabled node of the target build."""
+    world.tgt_uses["P3"] = [NS(node="/t/i0", source="pinctrl")]
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "conflict"
+    assert any("TX pad P3 is used by &i0" in x for x in n.lines)
+    assert "&u1 {" not in res.overlay and "P3_U1" not in res.overlay
+
+
+def test_conflict_pad_not_on_target_package(world):
+    """(c) P8 is a pad of the device but not on the package."""
+    world.draft.nodes[1].pins = {"TX": "P3", "RX": "P8"}
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "conflict" and not any("cannot render" in x for x in n.notes)
+    assert any("RX pad P8 is not on package QFP8 of the target device BETA1" in x for x in n.lines)
+    assert "&u1 {" not in res.overlay
+
+
+def test_conflict_pad_unknown_to_the_device(world):
+    world.draft.nodes[1].pins = {"TX": "P3", "RX": "P9"}
+    n = _by_label(world)["u1"]
+    assert n.status == "conflict" and any("not a pad of the target device BETA1" in x for x in n.lines)
+
+
+def test_no_node_is_dropped_silently(world):
+    """Every covered node of the source has a section-1 line; a node that is not emitted says why."""
+    world.draft.nodes[1].pins = {"TX": "P3", "RX": "P8"}
+    res = pr.port_build(world.src, world.tgt, check=False)
+    rep = res.report
+    assert [n.label for n in rep.nodes] == [d.label for d in world.draft.nodes]
+    sec1 = dict(rep.sections())["1. Nodes: translated and untranslatable properties"]
+    for n in rep.nodes:
+        assert any(x.startswith(f"&{n.label} ") for x in sec1)
+        if n.status not in ("emitted", "identical"):
+            assert n.lines or n.notes, n.label
+        if f"&{n.label} {{" in res.overlay:
+            assert n.status in ("emitted", "identical")
+
+
+class _RecipeWithAssignments(FakeRecipe):
+    def valid_assignments(self, cls):
+        yield {"TX": "PAD0", "RX": "PAD1"}
+
+
+def test_conflict_suggestion_names_connector_pads_and_instances(world, monkeypatch):
+    from dt_explorer.core import board_desc as bd
+    pins = lambda a, b: {"1": bd.ConnPin("1", "UART_TX", a), "2": bd.ConnPin("2", "UART_RX", b)}   # noqa: E731
+    boards = {"acme_board": bd.BoardDesc("acme_board", "Acme", [bd.Connector("X1", "hdr", pins("P5", "P6"))]),
+              "beta_board": bd.BoardDesc("beta_board", "Beta", [bd.Connector("X1", "hdr", pins("P3", "P4"))])}
+    monkeypatch.setattr(pr.board_desc, "load_board", lambda b, dirs=None: boards.get(b))
+    monkeypatch.setattr(pr, "read_build_info", lambda b: BuildInfo(
+        build_dir=Path(b), board=world.src.board if Path(b) == world.src.build else world.tgt.board))
+    plugins.register_recipe(_RecipeWithAssignments)
+    world.draft.nodes[1].pins = {"TX": "P5", "RX": "P6"}                  # the source pads at connector X1
+    _enable_u1_as_other(world)
+    n = _by_label(world)["u1"]
+    sug = next(x for x in n.lines if x.startswith("suggestion:"))
+    assert "uart on X1 of the target: TX P3, RX P4" in sug
+    assert "instance(s) that can mux them: U1" in sug and "does not remap" in sug
+
+
+def test_conflict_suggestion_without_board_data_is_still_given(world):
+    _enable_u1_as_other(world)
+    n = _by_label(world)["u1"]
+    assert any(x.startswith("suggestion: no connector data") for x in n.lines)
+
+
+def test_west_topdir_is_taken_from_the_cmake_cache(tmp_path):
+    """A build whose app is in another west workspace than its Zephyr resolves board files via WEST_TOPDIR."""
+    top = tmp_path / "top"
+    top.mkdir()
+    b = tmp_path / "b"
+    b.mkdir()
+    (b / "CMakeCache.txt").write_text(f"WEST_TOPDIR:UNINITIALIZED={top.as_posix()}\n")
+    m = NS(build=b, west_top=tmp_path / "elsewhere")
+    pr._adopt_west_topdir(m)
+    assert m.west_top == top
+    m2 = NS(build=tmp_path / "nocache", west_top=tmp_path / "keep")
+    pr._adopt_west_topdir(m2)
+    assert m2.west_top == tmp_path / "keep"
+
+
+def test_conflict_suggestion_says_which_target_pads_are_taken(world, monkeypatch):
+    from dt_explorer.core import board_desc as bd
+    pins = lambda a, b: {"1": bd.ConnPin("1", "UART_TX", a), "2": bd.ConnPin("2", "UART_RX", b)}   # noqa: E731
+    boards = {"acme_board": bd.BoardDesc("acme_board", "Acme", [bd.Connector("X1", "hdr", pins("P5", "P6"))]),
+              "beta_board": bd.BoardDesc("beta_board", "Beta", [bd.Connector("X1", "hdr", pins("P3", "P4"))])}
+    monkeypatch.setattr(pr.board_desc, "load_board", lambda b, dirs=None: boards.get(b))
+    monkeypatch.setattr(pr, "read_build_info", lambda b: BuildInfo(
+        build_dir=Path(b), board=world.src.board if Path(b) == world.src.build else world.tgt.board))
+    world.draft.nodes[1].pins = {"TX": "P5", "RX": "P6"}
+    world.tgt_uses["P3"] = [NS(node="/t/i0", source="pinctrl")]
+    n = _by_label(world)["u1"]
+    assert n.status == "conflict"
+    sug = next(x for x in n.lines if x.startswith("suggestion:"))
+    assert "already used in the target build: P3 by &i0" in sug and "no free instance" in sug

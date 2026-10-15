@@ -141,8 +141,10 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
         run_btn.set_enabled(True)
         st["result"], st["target"] = result, tgt
         errs = sum(1 for f in (result.report.findings or []) if f.severity == "error")
+        nconf = sum(1 for n in result.report.nodes if n.status == "conflict")
         status.text = (f"done: {len(result.draft.nodes)} node(s) carried over, "
-                       f"{len(result.report.label_refs)} node reference(s) to fix, "
+                       + (f"{nconf} node(s) in conflict with the target board (not emitted, see section 1), " if nconf else "")
+                       + f"{len(result.report.label_refs)} node reference(s) to fix, "
                        f"{len(result.report.pin_issues)} pin issue(s); fast check: "
                        f"{check_summary(result.report.findings or [])}")
         status.classes(replace="text-sm " + ("text-red-4" if errs else "text-green-4"))
