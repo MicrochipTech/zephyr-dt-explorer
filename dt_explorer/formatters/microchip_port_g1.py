@@ -89,15 +89,17 @@ def pinmux_value(port: str, pin: int, mux: str, func: str) -> int:
 
 
 def find_header(workspace: Path, soc: str) -> Path:
-    """Header of a west workspace, e.g. soc 'same54p20a' -> ``atsame54/atsame54p20a-pinctrl.h``."""
-    m = re.match(r"^(?:at)?(same\d\d)([a-z]\d+[a-z]?)", soc.lower())
-    if not m:
-        raise FormatterError(f"cannot derive a pinctrl header name from SoC {soc!r}")
-    chip = f"at{m.group(1)}{m.group(2)}"
-    path = Path(workspace) / HEADER_REL / f"at{m.group(1)}" / f"{chip}-pinctrl.h"
-    if not path.is_file():
-        raise FormatterError(f"pinctrl header not found: {path}")
-    return path
+    """Header of a west workspace by file name below hal_microchip's dt-bindings, e.g. soc
+    'same54p20a' -> ``sam/sam_d5x_e5x/atsame54/atsame54p20a-pinctrl.h``,
+    'pic32cx1025sg41128' -> ``pic32c/pic32cx_sg/pic32cx_sg41/pic32cx1025sg41128-pinctrl.h``."""
+    s = soc.lower()
+    names = [f"{s}-pinctrl.h"] + ([f"at{s}-pinctrl.h"] if not s.startswith("at") else [])
+    base = Path(workspace) / "modules" / "hal" / "microchip" / "include" / "dt-bindings"
+    for name in names:
+        hits = sorted(base.glob(f"**/{name}")) if base.is_dir() else []
+        if hits:
+            return hits[0]
+    raise FormatterError(f"pinctrl header for SoC {soc!r} not found below {base}")
 
 
 class MicrochipPortG1Formatter:
