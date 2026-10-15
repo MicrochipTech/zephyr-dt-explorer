@@ -14,16 +14,18 @@ their roles from the device model, pad names are opaque text.
 """
 from __future__ import annotations
 
+import copy
 import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from ..core import generic as G
 from ..core import pins as pins_mod
 from ..core import plugins
 from ..core.buildinfo import read_build_info
-from ..core.draft import (CLASS_BASES, BindingIndex, Draft, DraftNode, Use, detect_class, load_draft,
+from ..core.draft import (CLASS_BASES, BindingIndex, Draft, DraftChild, DraftNode, Use, detect_class, load_draft,
                           save_draft)
 from ..core.lift import lift_build
 from ..core.kconfig_suggest import KconfigSuggestion, suggest_kconfig
@@ -200,15 +202,57 @@ def parse_prop(spec: PropSpec, text) -> object | None:
 
 
 def build_node(*, option: ClassOption, instance, label: str, pins: dict[str, str], roles_order: list[str],
-               props: dict | None = None, chosen=(), aliases=()) -> DraftNode:
-    """The draft node for the dialog state. Roles without a pad are dropped."""
+               props: dict | None = None, chosen=(), aliases=(), children=()) -> DraftNode:
+    """The draft node for the dialog state. Roles without a pad are dropped. `children`: bus devices (P8.6)."""
     pins = {r: p for r, p in pins.items() if p}
     return DraftNode(
         cls=option.cls, roles=[r for r in roles_order if r in pins],
         props={k: v for k, v in (props or {}).items() if v is not None},
         use=Use(chosen=[c for c in chosen if c], aliases=[a for a in aliases if a]),
         instance=instance.name, pins={r: pins[r] for r in roles_order if r in pins},
-        vendor_props={}, compatible=option.compatible, label=label)
+        vendor_props={}, compatible=option.compatible, label=label, children=list(children))
+
+
+def revive_refs(draft: Draft | None) -> Draft | None:
+    """Node-level phandle values (``cs-gpios``) come back from JSON as ``{"label": ...}``; make them `Ref` again.
+
+    ``Draft.to_dict`` encodes the references of child nodes (``{"ref": ...}``) but writes node properties with
+    ``asdict``, which turns a `Ref` into ``{"label": ...}``.
+    """
+    from ..core.translate import Ref
+
+    def fix(v):
+        if isinstance(v, dict) and set(v) == {"label"} and isinstance(v["label"], str):
+            return Ref(v["label"])
+        if isinstance(v, dict):
+            return {k: fix(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [fix(x) for x in v]
+        return v
+
+    if draft is not None:
+        for n in draft.nodes:
+            n.props = fix(n.props)
+            n.vendor_props = fix(n.vendor_props)
+    return draft
+
+
+def child_gpio_pads(children, gpio_map, cs_entries=None) -> list[tuple[str, str]]:
+    """(pad, what) of every GPIO the children and the controller's ``cs-gpios`` use, e.g. ``("PB24", "bmi160@0 int-gpios")``."""
+    out = []
+    for i, e in enumerate(cs_entries or []):
+        pad = G.entry_pad(gpio_map, e)
+        if pad:
+            out.append((pad, f"cs-gpios[{i}]"))
+    for ch in children:
+        for sub in ch.walk():
+            for name, val in sub.props.items():
+                if name == "gpios" or name.endswith("-gpios"):
+                    for e in val if isinstance(val, list) else []:
+                        pad = G.entry_pad(gpio_map, e)
+                        if pad:
+                            out.append((pad, f"{sub.node_name} {name}"))
+    return out
 
 
 # ---- session: draft, rendering, Kconfig, check for one build -----------------------------------
@@ -225,10 +269,11 @@ class ConfigSession:
         self.device = self.usage.device
         self.index = BindingIndex([])
         self.index.by_name = dict(model.yaml_index)
-        self.draft = load_draft(model.app_dir, model.build) or Draft(build=model.build.name)
+        self.draft = revive_refs(load_draft(model.app_dir, model.build)) or Draft(build=model.build.name)
         self.findings: list[Finding] | None = None
         self.checked_overlay: str | None = None
         self._lifted: Draft | None = None
+        self._gpio_map: dict | None = None
 
     # -- node lookup
     def node_for_label(self, label: str):
@@ -253,6 +298,32 @@ class ConfigSession:
         if self._lifted is None:
             self._lifted, _report = lift_build(self.model, self.info)
         return next((n for n in self._lifted.nodes if n.label == label), None)
+
+    # -- bus devices (P8.6)
+    def gpio_map(self) -> dict[str, tuple[str, int]]:
+        """pad -> (GPIO controller label, pin); computed once per session."""
+        if self._gpio_map is None:
+            self._gpio_map = G.gpio_pad_map(self.model, self.device)
+        return self._gpio_map
+
+    def build_children(self, label: str) -> set[str]:
+        """Node names (``name@unit``) of the children the build already has below node `label`."""
+        node = self.node_for_label(label)
+        return set(node.children) if node is not None else set()
+
+    def build_cs_entries(self, label: str) -> list:
+        """The node's ``cs-gpios`` as the build has them, as draft entries ``[Ref, pin, flags]``."""
+        from ..core.translate import Ref
+        node = self.node_for_label(label)
+        prop = node.props.get(G.CS_PROP) if node is not None else None
+        out = []
+        for e in (prop.val if prop is not None else []):
+            ctrl = getattr(e, "controller", None)
+            data = getattr(e, "data", None) or {}
+            if ctrl is None or not ctrl.labels or "pin" not in data:
+                return []
+            out.append([Ref(ctrl.labels[0]), int(data["pin"]), int(data.get("flags", 0))])
+        return out
 
     def is_enabled(self, label: str) -> bool:
         node = self.node_for_label(label)
@@ -280,6 +351,8 @@ class ConfigSession:
                 continue
             for role, pad in n.pins.items():
                 out.setdefault(pad, []).append(f"{n.label} {role} (draft)")
+            for pad, what in child_gpio_pads(n.children, self.gpio_map(), n.props.get(G.CS_PROP)):
+                out.setdefault(pad, []).append(f"{n.label} {what} (draft)")
         return out
 
     # -- draft
@@ -320,7 +393,10 @@ class ConfigSession:
         return text
 
     def kconfig(self) -> list[KconfigSuggestion]:
-        compats = list(dict.fromkeys(n.compatible for n in self.draft.nodes if n.compatible))
+        compats = list(dict.fromkeys(
+            [n.compatible for n in self.draft.nodes if n.compatible]
+            + [sub.compatible[0] for n in self.draft.nodes for ch in n.children for sub in ch.walk()
+               if sub.compatible]))
         return [suggest_kconfig(c, self.model.build) for c in compats]
 
     def check(self) -> list[Finding]:
@@ -414,8 +490,10 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
           "busy": False}
     selects: dict[str, object] = {}
     prop_inputs: dict[str, tuple[PropSpec, object]] = {}
+    st.update(children=[], cs=[], cs_dirty=False)
 
-    with ui.dialog() as dlg, ui.card().style("min-width: 640px; max-width: 760px").props("id=cfg-dialog"):
+    with ui.dialog() as dlg, ui.card().style("min-width: 640px; max-width: 760px; max-height: 92vh; overflow-y: auto") \
+            .props("id=cfg-dialog"):
         ui.label(f"{'Edit pins of' if edit else 'Configure'} &{label}").classes("text-lg font-bold")
         ui.label(f"{node.path}  -  instance {inst.name}").classes("text-xs text-grey-5 font-mono")
         cls_toggle = ui.toggle({o.cls: o.cls.upper() for o in options}, value=st["opt"].cls) \
@@ -425,6 +503,11 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
         derived = ui.label().classes("text-sm font-mono").props("id=cfg-derived")
         ui.label("Properties").classes("font-bold")
         props_box = ui.column().classes("w-full gap-1")
+        children_section = ui.column().classes("w-full gap-1").props("id=cfg-children")
+        with children_section:
+            ui.label("Child devices").classes("font-bold")
+            children_box = ui.column().classes("w-full gap-0")
+            add_child_btn = ui.button("Add child device...", icon="add").props("no-caps flat dense id=cfg-child-add")
         ui.label("Use").classes("font-bold")
         chosen_in = ui.select(list(existing.use.chosen) if existing else [], multiple=True, new_value_mode="add-unique", label="chosen (e.g. zephyr,console)",
                               value=list(existing.use.chosen) if existing else []) \
@@ -433,8 +516,76 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
                              value=list(existing.use.aliases) if existing else []) \
             .props("dense outlined use-chips use-input").classes("w-full")
         with ui.row().classes("w-full justify-end"):
-            ui.button("Cancel", on_click=dlg.close).props("flat no-caps")
+            ui.button("Cancel", on_click=dlg.close).props("flat no-caps id=cfg-cancel")
             save_btn = ui.button("Save", icon="save").props("no-caps id=cfg-save")
+
+    # ---- child devices of a bus controller (P8.6): the list lives in `st`, Save writes it into the draft node
+    def init_children() -> None:
+        """Children and cs-gpios entries the dialog starts with: the draft's / the lifted node's, for a matching class."""
+        same = existing is not None and existing.cls == st["opt"].cls
+        st["children"] = [copy.deepcopy(c) for c in existing.children] if same else []
+        cs = list(existing.props.get(G.CS_PROP) or []) if same else []
+        st["cs"] = cs or (session.build_cs_entries(label) if st["opt"].cls == "spi" and edit else [])
+        st["cs_dirty"] = bool(cs)           # entries of the draft are written again; the board's only when changed
+
+    def taken_pads() -> dict[str, list[str]]:
+        """pad -> users, for the child dialog: build, other draft nodes, this dialog's pads and children."""
+        out = {p: list(v) for p, v in used.items()}
+        for role, pad in current_pins().items():
+            out.setdefault(pad, []).append(f"{label} {role} (this dialog)")
+        for pad, what in child_gpio_pads(st["children"], session.gpio_map(), st["cs"]):
+            out.setdefault(pad, []).append(f"{what} (this dialog)")
+        return out
+
+    def removable(child: DraftChild) -> bool:
+        return child.node_name not in session.build_children(label)      # a child of the board stays in the build
+
+    def remove_child(child: DraftChild) -> None:
+        st["children"] = [c for c in st["children"] if c is not child]
+        if st["opt"].cls == "spi":
+            a = G.child_address(child)
+            if a is not None:
+                st["cs"] = G.drop_cs_entry({G.CS_PROP: st["cs"]}, a).get(G.CS_PROP, [])
+                st["cs_dirty"] = True
+        refresh_children()
+
+    def refresh_children() -> None:
+        bus = st["opt"].cls
+        children_section.set_visibility(bus in G.BUS_CLASSES)
+        children_box.clear()
+        with children_box:
+            if not st["children"]:
+                ui.label("none").classes("text-xs text-grey-6")
+            for c in st["children"]:
+                cid = f"{c.name}-{c.unit}"
+                with ui.row().classes("w-full items-center gap-2 no-wrap").props(f"id=cfg-child-{cid}"):
+                    ui.label(f"{c.node_name}   {', '.join(c.compatible)}").classes("text-sm font-mono col")
+                    extra = [n for n in c.props if n != "reg" and (n == "gpios" or n.endswith("-gpios"))]
+                    if extra:
+                        ui.label(", ".join(extra)).classes("text-xs text-grey-5")
+                    if removable(c):
+                        ui.button(icon="delete", on_click=lambda _e, c=c: remove_child(c)) \
+                            .props(f"flat dense round size=sm id=cfg-child-remove-{cid}")
+                    else:
+                        ui.label("from the board").classes("text-xs text-grey-6")
+
+    def on_child_added(child: DraftChild, cs: list | None) -> None:
+        if cs is not None:
+            try:
+                st["cs"] = G.set_cs_entry({G.CS_PROP: st["cs"]}, G.child_address(child), cs)[G.CS_PROP]
+            except ValueError as exc:
+                ui.notify(str(exc), type="negative")
+                return
+            st["cs_dirty"] = True
+        st["children"].append(child)
+        refresh_children()
+
+    def open_child_dialog() -> None:
+        from .generic_form import open_child
+        open_child(session, bus=st["opt"].cls, parent_label=label, children=st["children"],
+                   cs_len=len(st["cs"]), taken=taken_pads, on_added=on_child_added)
+
+    add_child_btn.on_click(open_child_dialog)
 
     def current_pins() -> dict[str, str]:
         return {r: s.value for r, s in selects.items() if s.value}
@@ -471,6 +622,8 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
 
     def build_class_form() -> None:
         opt = st["opt"]
+        init_children()
+        refresh_children()
         roles = option_roles(opt, inst)
         req = set(required_roles(opt, roles))
         roles_box.clear()
@@ -524,9 +677,12 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
                 v = int(v)
             if v is not None:
                 props[name] = v
+        if opt.cls == "spi" and st["cs"] and st["cs_dirty"]:
+            props[G.CS_PROP] = st["cs"]
         dn = build_node(option=opt, instance=inst, label=label, pins=current_pins(),
                         roles_order=option_roles(opt, inst), props=props,
-                        chosen=chosen_in.value or [], aliases=alias_in.value or [])
+                        chosen=chosen_in.value or [], aliases=alias_in.value or [],
+                        children=st["children"] if opt.cls in G.BUS_CLASSES else [])
         session.upsert(dn)
         session.save()
         dlg.close()

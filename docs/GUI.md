@@ -454,6 +454,55 @@ The second picture is `&adc1` with the required `prescaler` emptied.
 
 A node that is already enabled and has no recipe (for example `wdog`) has no button in the node view.
 
+### 10.3 Child devices on a bus (I2C, SPI)
+
+![Add an SPI device](evidence/img/P8.6_child_dialog_spi.png)
+
+When the class is I2C or SPI, the dialog has a **Child devices** list below *Properties* and the button
+**Add child device…** (`cfg-child-add`). It opens a second dialog (`child-dialog`). The example is a
+`bosch,bmi160` on `&sercom5` as SPI.
+
+1. **Device (compatible)**: the bindings of the workspace whose `on-bus` is the bus of the node (type to
+   search). A bus controller is not offered. One compatible can have a binding per bus
+   (`bosch,bme280-i2c.yaml`, `bosch,bme280-spi.yaml`); the one for this bus is used.
+2. **Address** (`child-address`): for I2C the 7-bit address in hex (`76` or `0x76`), for SPI the chip-select
+   index, preset to the next free one. It becomes `reg` and the unit address (`bme280@76`). If another
+   device of this bus already has the address, an orange line names it; the dialog still saves, Check then
+   reports the error. Two devices of the same compatible get distinct node names (`bme280`, `bme280-2`), so
+   the compiler does not merge them.
+3. **Chip select (SPI only)**: a pad list (`child-cs-pad`) and the level (active low is preset). It writes
+   entry *index* of the controller's `cs-gpios`. The index must follow the entries that exist.
+4. **GPIO properties** of the binding (`int-gpios`, `reset-gpios`, `supply-gpios`, ...) are pad lists with a
+   level each (`child-gpio-<property>`); a required one must be set. Pads that something else uses are
+   listed with their users but not hidden: the overlay then reports the clash.
+5. **Properties**: the scalar properties of the binding (including `spi-max-frequency` and the other bus
+   properties), as in the generic form. **To fix** (`child-problems`) lists what is missing; **Add**
+   (`child-save`) stays off until it is empty.
+
+The list in the main dialog shows each child with a delete button (`cfg-child-remove-<name>-<unit>`). A child
+that the board file already has (for example `eeprom@5e` on `&sercom7`) is shown as *from the board* and
+cannot be removed. **Save** puts the children into the draft node; they render inside the node:
+
+```
+&sercom5 {
+	...
+	cs-gpios = <&portb 14 1>;
+	bmi160_0: bmi160@0 {
+		compatible = "bosch,bmi160";
+		reg = <0x0>;
+		spi-max-frequency = <1000000>;
+		int-gpios = <&portb 15 0>;
+	};
+};
+```
+
+The Draft tab suggests the driver symbols of the children (for example `CONFIG_BME280=y`). **Check** adds these
+rules: `bus_address_duplicate` (two I2C devices at one address or two SPI devices at one chip select, error),
+`spi_cs_missing` (chip select beyond the `cs-gpios` list, error) and `pin_conflict` for a GPIO pad that another
+node, or the same node's pinctrl, also uses (error).
+
+![The check reports a CS pad that the console uses](evidence/img/P8.6_draft_spi_pad_conflict.png)
+
 ---
 
 ## 11. Left panel — tab **Draft**

@@ -12,6 +12,13 @@ Findings:
   property is absent; the message names the node and the property). edtlib stops at the first error.
 * ``pin_conflict``: one pad is used by two or more nodes. Error when a node touched by the overlay
   takes part, otherwise ``info`` (``pin_conflict_existing``): the build already had it.
+* ``bus_address_duplicate``: two devices on one I2C bus with the same address, or two SPI devices with the
+  same chip-select index (error when one of them comes from the overlay, otherwise ``info``,
+  ``bus_address_duplicate_existing``). Two nodes with equal name and unit address would be merged by the
+  compiler, so the configurator never writes those.
+* ``spi_cs_missing``: an SPI device whose chip-select index is beyond the controller's ``cs-gpios`` list.
+* a GPIO pad (``cs-gpios``, ``int-gpios``, ``reset-gpios`` ...) that another node, or the same node's pinctrl,
+  also uses is a ``pin_conflict`` like any other pad clash.
 * ``provider_constraint``: signals of one instance come from different ``Signal.group`` values; the
   text is the one the device data provider supplied in its ``Constraint``.
 
@@ -199,7 +206,7 @@ def _conflicts(usage, model, touched: set[str]) -> list[Finding]:
     out = []
     for pad, uses in sorted(usage.uses.items()):
         paths = list(dict.fromkeys(u.node for u in uses))
-        if len(paths) < 2:
+        if len(paths) < 2 and len({u.source for u in uses}) < 2:      # one node: a pinctrl pad that is also a GPIO
             continue
         parts = []
         for path in paths:
@@ -207,10 +214,42 @@ def _conflicts(usage, model, touched: set[str]) -> list[Finding]:
             fns = ", ".join(dict.fromkeys(u.function for u in uses if u.node == path))
             parts.append(f"{_label(n) if n else path} ({path}: {fns})")
         involved = any(p in touched for p in paths)
+        what = f"{len(paths)} nodes" if len(paths) > 1 else "one node as pinctrl pin and as GPIO"
         out.append(Finding("error" if involved else "info",
                            "pin_conflict" if involved else "pin_conflict_existing",
-                           f"pad {pad} is used by {len(paths)} nodes: " + "; ".join(parts),
+                           f"pad {pad} is used by {what}: " + "; ".join(parts),
                            node=paths[0], pad=pad, nodes=tuple(paths), overlay=involved))
+    return out
+
+
+def _bus_checks(edt, touched: set[str]) -> list[Finding]:
+    """Duplicate I2C addresses / SPI chip-select indexes on one bus, SPI chip selects without a cs-gpios entry."""
+    out = []
+    for ctrl in edt.nodes:
+        kids = [c for c in ctrl.children.values()
+                if c.status == "okay" and c.on_buses and c.regs and c.on_buses[0] in ("i2c", "spi")]
+        by_reg: dict[tuple[str, int], list] = {}
+        for c in kids:
+            by_reg.setdefault((c.on_buses[0], c.regs[0].addr), []).append(c)
+        for (bus, addr), group in sorted(by_reg.items()):
+            if len(group) < 2:
+                continue
+            involved = any(c.path in touched for c in group)
+            what = f"I2C address 0x{addr:02x}" if bus == "i2c" else f"SPI chip select {addr}"
+            names = ", ".join(f"{c.name} ({c.path})" for c in group)
+            out.append(Finding("error" if involved else "info",
+                               "bus_address_duplicate" if involved else "bus_address_duplicate_existing",
+                               f"{what} is used by {len(group)} devices on &{_label(ctrl)}: {names}",
+                               node=group[0].path, nodes=tuple(c.path for c in group), overlay=involved))
+        cs = ctrl.props.get("cs-gpios")
+        if cs is not None:
+            n_cs = len(cs.val)
+            for c in kids:
+                if c.on_buses[0] == "spi" and c.regs[0].addr >= n_cs and (c.path in touched or ctrl.path in touched):
+                    out.append(Finding("error", "spi_cs_missing",
+                                       f"{c.name} uses chip select {c.regs[0].addr} but &{_label(ctrl)} has only "
+                                       f"{n_cs} cs-gpios entr{'y' if n_cs == 1 else 'ies'}",
+                                       node=c.path, nodes=(c.path, ctrl.path), overlay=True))
     return out
 
 
@@ -287,5 +326,6 @@ def validate(build_dir, overlay_text: str, *, timings: dict | None = None) -> li
     findings = [Finding("info", "edtlib_warning", m) for m in dict.fromkeys(cap.records)]
     findings += _conflicts(usage, model, touched)
     findings += _group_mixes(usage, model, touched)
+    findings += _bus_checks(edt, touched)
     t["total"] = time.perf_counter() - t0
     return findings

@@ -12,6 +12,7 @@ from dt_explorer.core import generic as G
 from dt_explorer.core.device import DeviceModel, Instance, Signal
 from dt_explorer.core.draft import BindingIndex, Draft
 from dt_explorer.core.render import RenderContext, render_overlay
+from dt_explorer.core.translate import Ref
 
 BASE = """
 properties:
@@ -221,3 +222,175 @@ def test_real_wdog_and_tc0_render_and_check(leer_session):
     assert s.overlay() == ('&wdog {\n\tstatus = "okay";\n};\n\n'
                            '&tc0 {\n\tstatus = "okay";\n\tcompatible = "atmel,sam0-tc32";\n\tprescaler = <64>;\n};\n')
     assert [f for f in s.check() if f.severity == "error"] == []
+
+
+# ---- child devices on a bus (P8.6) -----------------------------------------------------------------------
+I2C_DEVICE = """
+on-bus: i2c
+properties:
+  reg: {required: true}
+"""
+SPI_DEVICE = """
+on-bus: spi
+properties:
+  reg: {required: true}
+  spi-max-frequency: {type: int, required: true}
+  spi-cpol: {type: boolean}
+"""
+SENSOR_I2C = """
+description: Acme sensor on I2C
+compatible: "acme,sensor"
+include: [i2c-device.yaml]
+properties:
+  range:
+    type: int
+    enum: [2, 4, 8]
+  int-gpios: {type: phandle-array, required: true}
+  reset-gpios: {type: phandle-array}
+  friendly-name: {type: string}
+"""
+SENSOR_SPI = """
+description: Acme sensor on SPI
+compatible: "acme,sensor"
+include: [spi-device.yaml]
+properties:
+  int-gpios: {type: phandle-array}
+  mode: {type: int, required: true}
+"""
+CONTROLLER = """
+description: an I2C controller
+compatible: "acme,i2c"
+include: [i2c-device.yaml]
+bus: i2c
+"""
+NOBUS = """
+description: no bus
+compatible: "acme,none"
+properties:
+  x: {type: int}
+"""
+
+
+@pytest.fixture
+def bus_index(tmp_path) -> BindingIndex:
+    d = tmp_path / "bus"
+    d.mkdir()
+    for name, text in {"i2c-device.yaml": I2C_DEVICE, "spi-device.yaml": SPI_DEVICE, "acme,sensor-i2c.yaml": SENSOR_I2C,
+                       "acme,sensor-spi.yaml": SENSOR_SPI, "acme,i2c.yaml": CONTROLLER, "acme,none.yaml": NOBUS}.items():
+        (d / name).write_text(text)
+    return BindingIndex([d])
+
+
+def test_child_options_follow_on_bus(bus_index):
+    assert [o.compatible for o in G.child_options(bus_index, "i2c")] == ["acme,sensor"]    # the controller is no child
+    assert [o.compatible for o in G.child_options(bus_index, "spi")] == ["acme,sensor"]
+    assert G.child_options(bus_index, "i2c")[0].description == "Acme sensor on I2C"
+    assert G.child_options(bus_index, "uart") == []
+    assert G.binding_for("acme,sensor", bus_index, "spi").name == "acme,sensor-spi.yaml"
+    assert G.binding_for("acme,sensor", bus_index, "i2c").name == "acme,sensor-i2c.yaml"
+
+
+def test_child_form_is_bus_aware(bus_index):
+    i2c = {s.name: s for s in G.child_form("acme,sensor", bus_index, "i2c")}
+    spi = {s.name: s for s in G.child_form("acme,sensor", bus_index, "spi")}
+    assert list(i2c) == ["range", "friendly-name"]                       # reg and the gpio phandles are no scalar fields
+    assert list(spi) == ["mode", "spi-max-frequency", "spi-cpol"] and spi["spi-max-frequency"].required
+    assert [(g.name, g.required) for g in G.gpio_specs("acme,sensor", bus_index, "i2c")] == \
+        [("int-gpios", True), ("reset-gpios", False)]
+    assert [(g.name, g.required) for g in G.gpio_specs("acme,sensor", bus_index, "spi")] == [("int-gpios", False)]
+
+
+def test_parse_address():
+    assert G.parse_address("i2c", "76") == 0x76 and G.parse_address("i2c", "0x76") == 0x76
+    assert G.parse_address("spi", "2") == 2 and G.unit_of(0x76) == "76" and G.unit_of(0) == "0"
+    for bus, text, why in (("i2c", "", "required"), ("i2c", "zz", "not a hex address"), ("i2c", "80", "7 bits"),
+                           ("spi", "x", "not a chip-select index"), ("spi", "-1", "not a chip-select index")):
+        with pytest.raises(ValueError, match=why):
+            G.parse_address(bus, text)
+
+
+def test_check_child_problems(bus_index):
+    specs = G.child_form("acme,sensor", bus_index, "i2c")
+    gpios = G.gpio_specs("acme,sensor", bus_index, "i2c")
+    assert G.check_child("i2c", None, "", specs, {}, gpios, {}) == {
+        "compatible": "choose a device", "address": "required", "int-gpios": "required"}
+    assert G.check_child("i2c", "acme,sensor", "76", specs, {"range": "4"}, gpios, {"int-gpios": "PB14"}) == {}
+    assert set(G.check_child("i2c", "acme,sensor", "76", specs, {"range": "5"}, gpios, {"int-gpios": "PB14"})) == {"range"}
+
+
+def test_child_names_labels_and_unique_names(bus_index):
+    assert G.child_node_name("bosch,bme280") == "bme280" and G.child_node_name("jedec,spi-nor") == "spi-nor"
+    assert G.child_node_name("nodash") == "nodash" and G.child_label("spi-nor", "0") == "spi_nor_0"
+    a = G.build_child(bus="i2c", compatible="acme,sensor", address=0x76, props={"range": 4, "friendly-name": None},
+                      gpio_props={"int-gpios": [Ref("portb"), 14, 0]})
+    assert (a.node_name, a.labels, a.compatible) == ("sensor@76", ["sensor_76"], ["acme,sensor"])
+    assert a.props == {"reg": [0x76], "range": 4, "int-gpios": [[Ref("portb"), 14, 0]]}
+    b = G.build_child(bus="i2c", compatible="acme,sensor", address=0x76, siblings=[a])      # same name@unit would merge
+    assert b.node_name == "sensor-2@76" and b.labels == ["sensor_2_76"]
+    c = G.build_child(bus="i2c", compatible="acme,sensor", address=0x77, siblings=[a])
+    assert c.node_name == "sensor@77"
+    assert G.address_clashes([a, c], 0x76) == ["sensor@76"] and G.address_clashes([a, c], 0x76, skip="sensor@76") == []
+    # the child renders with its reg in hex, the labelled node and the gpio entry
+    from dt_explorer.core.render import render_child
+    assert render_child(a) == ('sensor_76: sensor@76 {\n\tcompatible = "acme,sensor";\n\treg = <0x76>;\n'
+                               '\trange = <4>;\n\tint-gpios = <&portb 14 0>;\n};')
+
+
+def test_cs_entries():
+    e0, e1 = [Ref("portb"), 14, 1], [Ref("portb"), 15, 1]
+    p = G.set_cs_entry({"x": 1}, 0, e0)
+    assert p == {"x": 1, "cs-gpios": [e0]}
+    p = G.set_cs_entry(p, 1, e1)
+    assert p["cs-gpios"] == [e0, e1]
+    with pytest.raises(ValueError, match="needs cs-gpios entries 0..2"):
+        G.set_cs_entry(p, 3, e0)
+    assert G.drop_cs_entry(p, 0)["cs-gpios"] == [e0, e1]            # an inner entry stays: later ones would shift
+    assert G.drop_cs_entry(p, 1)["cs-gpios"] == [e0]
+    assert "cs-gpios" not in G.drop_cs_entry({"cs-gpios": [e0]}, 0)
+
+
+def test_gpio_entry_and_pad(bus_index):
+    gmap = {"PB14": ("portb", 14), "PA00": ("porta", 0)}
+    e = G.gpio_entry(gmap, "PB14", G.GPIO_FLAGS["active low"])
+    assert e == [Ref("portb"), 14, 1] and G.entry_pad(gmap, e) == "PB14"
+    assert G.entry_pad(gmap, [Ref("portc"), 1, 0]) is None and G.entry_pad(gmap, "junk") is None
+    with pytest.raises(ValueError, match="no GPIO controller"):
+        G.gpio_entry(gmap, "PZ99")
+
+
+def test_real_bus_devices_of_the_workspace(leer_session):
+    s = leer_session
+    i2c = {o.compatible for o in G.child_options(s.index, "i2c")}
+    spi = {o.compatible for o in G.child_options(s.index, "spi")}
+    assert {"bosch,bme280", "bosch,bme680"} <= i2c and {"bosch,bme280", "bosch,bmi160", "jedec,spi-nor"} <= spi
+    assert "atmel,sam0-i2c" not in i2c                                        # a controller is no child
+    assert G.binding_for("bosch,bme280", s.index, "spi").name == "bosch,bme280-spi.yaml"
+    assert G.binding_for("bosch,bme280", s.index, "i2c").name == "bosch,bme280-i2c.yaml"
+    assert [g.name for g in G.gpio_specs("bosch,bmi160", s.index, "spi")] == ["supply-gpios", "int-gpios"]
+    assert {f.name: f.required for f in G.child_form("bosch,bmi160", s.index, "spi")}["spi-max-frequency"]
+
+
+def test_real_gpio_map_inverts_the_pad_lookup(leer_session):
+    s = leer_session
+    gmap = s.gpio_map()
+    assert gmap["PB24"] == ("portb", 24) and gmap["PA00"] == ("porta", 0) and gmap["PC22"] == ("portc", 22)
+    from dt_explorer.core.pins import _gpio_pad
+    ctrl = next(n for n in s.model.edt.nodes if n.labels and n.labels[0] == "portb")
+    assert _gpio_pad(s.model, s.device, ctrl, 24, []) == "PB24"
+
+
+def test_real_children_render_and_check(leer_session):
+    """SERCOM1 I2C with a bme280; the overlay is the one from the evidence run."""
+    from dt_explorer.ui import configure as C
+    s = leer_session
+    n = s.node_for_label("sercom1")
+    opt = next(o for o in s.options_for(n) if o.cls == "i2c")
+    kid = G.build_child(bus="i2c", compatible="bosch,bme280", address=0x76)
+    s.upsert(C.build_node(option=opt, instance=s.instance_of(n), label="sercom1", pins={"SDA": "PC22", "SCL": "PC23"},
+                          roles_order=C.option_roles(opt, s.instance_of(n)), children=[kid]))
+    text = s.overlay()
+    assert "\tbme280_76: bme280@76 {\n\t\tcompatible = \"bosch,bme280\";\n\t\treg = <0x76>;\n\t};" in text
+    assert "#address-cells = <1>;" in text and "#size-cells = <0>;" in text
+    assert [f for f in s.check() if f.severity == "error"] == []
+    assert {"CONFIG_BME280=y"} <= {f"{k}={v}" for k in [] for v in []} | {
+        f"{k}={v}" for sug in s.kconfig() for k, v in sug.symbols.items()}
