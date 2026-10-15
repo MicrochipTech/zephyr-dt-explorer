@@ -10,8 +10,8 @@ The window has three areas:
 
 | Area | Content |
 |---|---|
-| **Header** (top) | Build selection, reload, colour legend |
-| **Left panel** | Two tabs: **Nodes** (the devicetree) and **Include tree** (the source files) |
+| **Header** (top) | Build selection, reload, New build…, Full build, colour legend |
+| **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Draft** (pending configurator changes) |
 | **Right panel** | Details of whatever is selected on the left; the overview when nothing is selected |
 
 ---
@@ -33,6 +33,7 @@ workspace, an app folder or a single build folder; every build below it is offer
   contains `zephyr/edt.pickle`. Picking an entry loads that build.
 - **Reload**: scans for builds again and reloads the current one. Press it after every
   `west build`.
+- **New build…** and **Full build**: start a build from the explorer (see below).
 - **Colour legend**: the text colour used in both trees and in the *Origin* column. It tells
   you **which kind of file** something comes from:
 
@@ -43,6 +44,31 @@ workspace, an app folder or a single build folder; every build below it is offer
 | grey | SoC / Zephyr | `zephyr/dts/arm/...dtsi`, `zephyr/include/.../dt-bindings/*.h` |
 | purple | Module | `modules/...` (e.g. pinctrl headers from `hal_atmel`) |
 | yellow | Binding default | Value written in no `.dts` file; it comes only from `default:` in the binding YAML |
+
+**Known issue:** when the window is narrower than the header's content, the origin chips (Overlay,
+Board, SoC, Module) move to a second line, as in the image above. Not fixed yet.
+
+### 1.1 New build…
+
+![New build dialog](img/new_build_dialog.png)
+
+Creates a new build, for example for another app or board, without leaving the explorer.
+
+- **App folder** and **Board** (with a filter): the app to build and the board to build it for.
+- **Build folder name**: defaults to `build_<board>`; the full path is shown below it.
+- **Start**: runs a cmake-only build, which is quick but does not link the image. Its devices show
+  the cyan *Driver built, not linked yet* state until a full build has run (see 1.2).
+- When the build finishes, the list is refreshed and the new build is selected.
+- **Cancel build** stops a running build; **Close** hides the dialog.
+
+### 1.2 Full build
+
+**Full build** runs `west build -d <build folder>` for the build selected in the header. The log
+streams into the dialog. When the build succeeds, the explorer reloads it: the cyan states turn into
+green (device created) or red (driver built, no device). Use it after a cmake-only build, or after
+changing the app. **Cancel build** stops it.
+
+![Full build dialog](img/full_build_dialog.png)
 
 ---
 
@@ -118,6 +144,8 @@ The overview lists every `DT_NODELABEL(...)`, `DT_ALIAS(...)` and `DT_CHOSEN(...
 - **Status card**: the traffic-light state with an explanation. **Driver** shows the C file whose
   `#define DT_DRV_COMPAT` matches this node, and whether it was compiled. Click the path to open
   the driver at its `DT_DRV_COMPAT` line.
+- **Configure…** button: shown on a disabled node of a supported peripheral. It opens the
+  configurator (section 10).
 
 For child nodes without their own `compatible` (for example a button below `gpio-keys`), the
 card explains that the parent's binding describes them and that the app reads them directly:
@@ -238,7 +266,88 @@ The source viewer opens when you click any blue *file:line* link.
 
 ---
 
-## 8. Direct links (URL parameters)
+## 8. Left panel — tab **Pins**
+
+![Pins tab](img/pins_tab.png)
+
+One row per pin of the chip's package, in pin-number order. If the device has several packages,
+the **Package** list picks one.
+
+- **Summary line**, e.g. `128 pins, 23 used, 77 free, 1 with more than one user`.
+- **Show**: all pins, used pins only, or free pins only.
+- **Filter**: any text in the pin, pad, node or function columns.
+
+| Column | Meaning |
+|---|---|
+| Pin, Pad | Pin number and pad name, e.g. `PC22` |
+| State | **free** (nothing uses it) · **used** (one node) · **conflict** (more than one node uses it) · **other** (power, ground, NC, reset) |
+| Used by (node) | Node paths that use the pin. Click a path to open the node in the Nodes tab |
+| Role / function | What the node does with the pin, e.g. `pinctrl: B DAC.VOUT0 (default)` |
+| All possible functions | Every function the pin can take on this chip; the default is marked |
+
+---
+
+## 9. Left panel — tab **Package**
+
+![Package tab](img/package_tab.png)
+
+The same pin states drawn on the package outline. Pin 1 is at the top left of a QFP and ball A1 at
+the top left of a BGA; the numbering runs counter-clockwise.
+
+- **Package** list: switch to another package of the device.
+- **Legend with counts**: free (grey) · used (green) · conflict (orange) · power / other (dark blue) ·
+  draft (purple, not built yet).
+- **Click a pin**: the panel below shows its users and function, with links to the nodes.
+
+---
+
+## 10. Configurator — **Configure…** dialog
+
+![Configure dialog](img/configure_dialog.png)
+
+The dialog opens from the **Configure…** button of a disabled node (section 5.1). The example turns
+SERCOM1 into an I2C controller: SDA on PC22, SCL on PC23.
+
+1. **Class** (UART, I2C, SPI): the pads and properties below change with it.
+2. **Pads**: one pad per role. Pads that other nodes already use are still offered; the check
+   (section 11) reports the conflict. *Derived properties* lists the pads that are still to assign
+   (orange).
+3. **Properties**: the class properties, e.g. `clock-frequency`.
+4. **Use**: `chosen` and `aliases` entries for the node, if needed.
+5. **Save** adds the node to the draft and opens the Draft tab. **Cancel** closes the dialog.
+
+The draft is kept for this build. Saving the dialog does not build anything; use the check in the
+Draft tab, and copy the snippet into your app overlay.
+
+---
+
+## 11. Left panel — tab **Draft**
+
+![Draft tab](img/draft_tab.png)
+
+The pending changes of the current build. The number on the tab counts the draft nodes.
+
+- **Draft nodes**: one line per node. The pencil opens it in the Configure dialog; the bin removes
+  it from the draft.
+- **Overlay snippet**: the devicetree overlay for the draft. **Copy** puts it on the clipboard,
+  **Download** saves it as `draft.overlay`. Paste it into the app overlay yourself.
+- **Suggested prj.conf lines**: the Kconfig options the class needs, e.g. `CONFIG_I2C=y` and
+  `CONFIG_I2C_SAM0=y`.
+- **Check**: **Check again** runs the validation on the overlay. It takes a few seconds; a spinner
+  shows while it runs. The line above the results counts the errors, warnings and infos. Each
+  finding has a badge and a message that names the nodes and pins involved.
+
+| Badge | Meaning |
+|---|---|
+| error (red) | The overlay would not work, e.g. two nodes use the same pin or a required property is missing |
+| warning (orange) | The overlay works but needs attention, e.g. a pinmux IOSET mix |
+| info (grey) | For information, e.g. a pin conflict that already exists in the build |
+
+The Draft tab opens by itself after Save. Use `tab=draft` in a link to open it directly.
+
+---
+
+## 12. Direct links (URL parameters)
 
 Every view can be opened directly, for example from slides or lab instructions:
 
@@ -248,7 +357,7 @@ Every view can be opened directly, for example from slides or lab instructions:
 | `node` | `node=/my_led@41008000` | Select this node |
 | `macros=1` | | Expand the generated-macro section |
 | `bprops=1` | | Expand the table of all binding properties |
-| `tab=include` | | Start on the include tree |
+| `tab` | `tab=pins` | Start on a tab: `include`, `pins`, `package` or `draft` (default: Nodes) |
 | `file` | `file=zephyr\dts\arm\atmel\same5x.dtsi` | Select this file in the include tree |
 | `src`, `line` | `src=apps\lab3\boards\same54_xpro.overlay&line=20` | Open the source viewer |
 

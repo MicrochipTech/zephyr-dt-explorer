@@ -36,8 +36,13 @@ Direct link to a node: `http://localhost:8765/?build=apps/lab1/build_same54_xpro
 | Binding | Matched YAML with its `include:` hierarchy, `on-bus`/`bus`, cell names, child-binding; table of all allowed properties (type, required, default, enum, set/default/not set, declaring file). Values that only come from a binding `default:` appear as yellow "Binding default" rows. Nodes whose `compatible` has no binding are flagged deep orange |
 | **Include tree** tab | Which `.dts`/`.dtsi`/`.h` includes which (from the cpp line markers in `zephyr.dts.pre`); the app overlay comes last. Badge = entries in the final devicetree from that file. Click a file: include chain, contributed nodes/properties, or the constants a `.h` provides. Internal `sys/util_*.h` helpers hidden by default |
 | Source viewer | Every blue file:line link opens the file in the browser, target line highlighted, all lines of the same node marked; "Open in VS Code" jumps to the line |
+| **Pins** tab | Every pin of the chip's package with its state: free, used, conflict (more than one user), or power/other. Shows which node and function uses a pin; node paths open the node. Filter by pin, pad, node or function; Show = all, used or free |
+| **Package** tab | The same pin states drawn on the package outline (QFP, BGA). Click a pin to see its users. Draft pins are purple until the draft is built |
+| **Configure…** button | On a `status = "disabled"` node of a supported peripheral (SERCOM as UART, I2C or SPI): pick the class, pads and properties, then Save adds the node to the draft |
+| **Draft** tab | The draft nodes (edit or remove), the overlay snippet (Copy, Download), the suggested `prj.conf` lines and **Check**: validates the draft overlay and lists errors, warnings and infos (pin conflicts, missing properties) |
+| **New build…** and **Full build** | Header buttons. New build: choose app folder and board, run a cmake-only build (fast; devices show "not linked yet"). Full build: `west build` of the current build folder with a streamed log, reloads the build when it finishes |
 
-More URL parameters: `&tab=include`, `&src=<file relative to the west workspace>&line=<n>`.
+More URL parameters: `&tab=include|pins|package|draft`, `&src=<file relative to the west workspace>&line=<n>`.
 
 ## Data sources (all in the build folder)
 
