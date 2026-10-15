@@ -9,7 +9,7 @@ from pathlib import Path
 
 from nicegui import ui
 
-from . import board_view, changes_tab, configure, draft_tab, log_tab, new_build, package_view, pinmap, port
+from . import board_nodes, board_view, changes_tab, configure, draft_tab, log_tab, new_build, package_view, pinmap, port
 from ..core.build import (DRV_COMPAT_RE, HELPER_HEADER, ORIGIN_STYLE, STATE_STYLE, BuildModel,
                           NodeOrigin, find_builds, fkey, fmt_value, header_defines, node_ident,
                           origin_kind)
@@ -171,6 +171,9 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
         ui.button("Port to board…", icon="swap_horiz",
                   on_click=lambda: port.open_port(state.model, state.builds, ROOT)) \
             .props("flat no-caps color=white id=port-open")
+        ui.button("Board nodes…", icon="lightbulb",
+                  on_click=lambda: board_nodes.open_board_nodes(configure.session_for(state.model), draft_changed)) \
+            .props("flat no-caps color=white id=board-nodes-open")
         ui.space()
         with ui.button("Legend", icon="palette").props("flat no-caps color=white id=legend-btn"):
             with ui.menu(), ui.column().classes("gap-1 p-2"):

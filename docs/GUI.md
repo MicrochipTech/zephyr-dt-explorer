@@ -10,7 +10,7 @@ The window has three areas:
 
 | Area | Content |
 |---|---|
-| **Header** (top) | Build selection, reload, New build…, Full build, Port to board…, Legend |
+| **Header** (top) | Build selection, reload, New build…, Full build, Port to board…, Board nodes…, Legend |
 | **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Board** (the connectors), **Draft** (pending configurator changes) |
 | **Right panel** | Details of whatever is selected on the left; the overview when nothing is selected |
 
@@ -35,6 +35,7 @@ workspace, an app folder or a single build folder; every build below it is offer
   `west build`.
 - **New build…** and **Full build**: start a build from the explorer (see below).
 - **Port to board…**: ports the app of the current build to another board (section 1.3).
+- **Board nodes…**: adds LEDs, buttons, PWM LEDs, aliases and chosen entries to the draft (section 10.3).
 - **Legend** (right end of the header): a menu with the text colours used in both trees and in the
   *Origin* column. It tells you **which kind of file** something comes from. Click it to open the key:
 
@@ -502,6 +503,36 @@ rules: `bus_address_duplicate` (two I2C devices at one address or two SPI device
 node, or the same node's pinctrl, also uses (error).
 
 ![The check reports a CS pad that the console uses](evidence/img/P8.6_draft_spi_pad_conflict.png)
+
+### 10.4 Board nodes… (LEDs, buttons, PWM LEDs, aliases, chosen)
+
+![Board nodes dialog](evidence/img/P8.7_board_nodes_dialog.png)
+
+The header button **Board nodes…** edits the nodes that belong to the board, not to a peripheral:
+
+1. **Entries**: pick LED (`gpio-leds`), Button (`gpio-keys`) or PWM LED (`pwm-leds`; offered only when the
+   build has a PWM controller). Give it a **Name** (lower case letters, digits and `_`; it becomes the node
+   name and the label). An LED or button takes a **GPIO pad** (every pad shows who already uses it),
+   **active low**, and for a button **pull** (a button starts as pull-up, active low) and an optional
+   `zephyr,code`. A PWM LED takes the **PWM controller**, the **channel** and the **period** in ms. The
+   optional **label text** becomes the `label` property. **Add** refuses a bad name, a label the build
+   already has, and a pad or PWM channel used twice in the dialog.
+2. **Aliases** and **Chosen**: a name and the node it points at (a node of the build or one of the new board
+   nodes). The chosen name offers the common `zephyr,...` names and takes any other. Both are written as
+   path strings (`led1 = "/user_leds/led_user";`). Removing an entry removes the aliases that pointed at it.
+3. The line under the title lists the problems. A pad that something else already uses is a
+   **warning** here; the **Check** in the Draft tab reports it as the error `pin_conflict`. An alias or chosen
+   name that the build already has is a warning too (the overlay replaces it).
+4. **Save** puts one draft node in the Draft tab (row **board nodes**, pencil = edit again, trash = remove all).
+   An empty dialog removes it. The overlay writes `&{/} { user_leds { ... }; user_keys { ... };
+   user_pwm_leds { ... }; aliases { ... }; chosen { ... }; };`; the board's own `leds`, `buttons` and
+   `aliases` stay as they are.
+
+![Draft with a board node](evidence/img/P8.7_board_nodes_draft.png)
+
+Limits: the pad of an LED or button needs the GPIO controllers to map onto the device's pads (the same
+mapping the Pins tab uses); a PWM LED does not touch pins (the controller's own pinctrl does). Port to board…
+does not carry board nodes over.
 
 ---
 

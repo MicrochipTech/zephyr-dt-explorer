@@ -13,7 +13,9 @@ from ..core import apply as apply_mod
 from ..core import codegen as codegen_mod
 from ..core import verify as verify_mod
 from ..core.build import compat_ident
+from ..core import board_nodes as board_nodes_core
 from ..core.render import RenderError
+from . import board_nodes as board_nodes_ui
 
 SEVERITY_STYLE = {"error": ("error", "red-5"), "warning": ("warning", "orange-5"),
                   "info": ("info", "blue-grey-4")}
@@ -48,13 +50,16 @@ def render_draft_tab(container, session, edit, changed) -> None:
             return
         ui.label("Draft nodes").classes("font-bold")
         for n in session.draft.nodes:
-            with ui.row().classes("items-center gap-2 w-full").props(f"id=draft-node-{n.label}"):
-                ui.label(f"&{n.label}").classes("font-mono")
-                ui.label(f"{n.cls} on {n.instance}").classes("text-xs text-grey-4")
+            is_board = n.cls == board_nodes_core.BOARD_CLASS          # P8.7: the one node for LEDs, buttons, aliases ...
+            nid = "board" if is_board else n.label                    # ids: no "{/}" in them
+            with ui.row().classes("items-center gap-2 w-full").props(f"id=draft-node-{nid}"):
+                ui.label("board nodes" if is_board else f"&{n.label}").classes("font-mono")
+                ui.label(board_nodes_core.summary(n) if is_board else f"{n.cls} on {n.instance}") \
+                    .classes("text-xs text-grey-4")
                 ui.label(", ".join(f"{r} {p}" for r, p in n.pins.items())).classes("text-xs font-mono")
                 ui.space()
-                ui.button(icon="edit", on_click=lambda _e, lb=n.label: edit(lb)).props("flat dense round") \
-                    .tooltip("Edit")
+                ui.button(icon="edit", on_click=(lambda _e: board_nodes_ui.open_board_nodes(session, changed))
+                          if is_board else (lambda _e, lb=n.label: edit(lb))).props(f"flat dense round title=Edit id=draft-edit-{nid}")     # no .tooltip(): an id prop breaks its anchor
                 ui.button(icon="delete", on_click=lambda _e, lb=n.label: _remove(session, lb, changed)) \
                     .props("flat dense round").tooltip("Remove from the draft")
 
