@@ -244,12 +244,13 @@ def _render_apply(build, overlay_text: str, conf_text: str) -> None:
         ui.label("Apply to app").classes("font-bold")
         abtn = ui.button("Apply to app…", icon="save").props("flat dense no-caps id=draft-apply") \
             .props('title="write boards/<board>.overlay and .conf for the board of this build; '
-                   'new files only, an existing file is shown as a diff"')
+                   'a new file is created, an existing one gets a marked block appended"')
     ui.label("Writes the draft as boards/<board>.overlay and boards/<board>.conf for the board of this build. "
              "Zephyr picks these files up by itself, so a plain west build -b <board> uses the draft with no "
-             "extra options (unlike \"Write to app\" above). Only new files are created; if the app already has "
-             "such a file (its own board overlay), you see a diff and nothing changes unless you tick "
-             "\"Replace\".").classes("text-xs text-grey-5")
+             "extra options (unlike \"Write to app\" above). A missing file is created. If the app already has "
+             "such a file (its own board overlay), it is kept and the draft is APPENDED as a marked block "
+             "(you see the diff first; applying again replaces only that block; conf lines are added once). "
+             "Tick \"Replace\" to overwrite the file instead.").classes("text-xs text-grey-5")
     box = ui.column().classes("w-full gap-2").props("id=draft-apply-box")
 
     def show_plan() -> None:
@@ -276,13 +277,26 @@ def _render_apply(build, overlay_text: str, conf_text: str) -> None:
                         ui.label(fp.note).classes("text-xs text-orange-4")
                     if fp.identical:
                         ui.label("The existing file already has this content.").classes("text-xs text-grey-5")
+                    if fp.exists and fp.merged and not fp.comment_only and not fp.identical:
+                        if fp.append_note:
+                            ui.label(fp.append_note).classes("text-xs text-grey-5")
+                        if fp.append_diff:
+                            ui.label("Default: APPEND. The existing file stays as it is; the draft goes into a "
+                                     "block marked dt_explorer ... begin / end (applying again replaces only that "
+                                     "block). Diff of the file after the append:").classes("text-xs text-green-4") \
+                                .props(f"id=draft-apply-append-hint-{fp.kind}")
+                            ui.code(fp.append_diff, language="diff").classes("w-full text-xs") \
+                                .props(f"id=draft-apply-diff-{fp.kind}")
+                        else:
+                            ui.label("The marked block in the file is already up to date; appending changes nothing.") \
+                                .classes("text-xs text-grey-5")
                     if fp.diff:
-                        ui.label("Diff: existing file -> draft. This is the app's own file: replacing it drops "
-                                 "whatever the draft does not contain. Nothing is written unless you tick the "
-                                 "box.").classes("text-xs text-orange-4")
-                        ui.code(fp.diff, language="diff").classes("w-full text-xs") \
-                            .props(f"id=draft-apply-diff-{fp.kind}")
-                        checks[fp.kind] = ui.checkbox(f"Replace the existing {fp.path.name}") \
+                        with ui.expansion("Replace instead: diff existing file -> draft (drops whatever the "
+                                          "draft does not contain)").classes("text-xs text-orange-4") \
+                                .props(f"id=draft-apply-replace-box-{fp.kind}"):
+                            ui.code(fp.diff, language="diff").classes("w-full text-xs") \
+                                .props(f"id=draft-apply-diff-replace-{fp.kind}")
+                        checks[fp.kind] = ui.checkbox(f"Replace the existing {fp.path.name} instead of appending") \
                             .props(f"dense id=draft-apply-replace-{fp.kind}")
             writable = [f for f in plan.files if not (f.comment_only or f.identical)]
             res_label = ui.label().classes("text-sm font-mono").props("id=draft-apply-result")
@@ -297,22 +311,23 @@ def _render_apply(build, overlay_text: str, conf_text: str) -> None:
 
             def do_write() -> None:
                 ow = {k for k, c in checks.items() if c.value}
+                app_ = {f.kind for f in plan.files if f.exists and f.kind not in ow}   # default: append
                 try:
-                    res = apply_mod.apply(plan, overwrite=ow)
+                    res = apply_mod.apply(plan, overwrite=ow, append=app_)
                 except (apply_mod.ApplyError, OSError) as exc:
                     res_label.text = f"Write failed: {exc}"
                     res_label.classes(replace="text-sm font-mono text-red-4")
                     res_label.set_visibility(True)
                     return
                 lines = res.lines()
-                if res.written or res.overwritten:
+                if res.written or res.overwritten or res.appended:
                     lines.append(f"Next: west build -b {plan.board_target} {plan.app_dir}")
                 res_label.text = "\n".join(lines)
-                res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten
+                res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten or res.appended
                                                                   else "text-orange-4"))
                 res_label.set_visibility(True)
                 go.set_enabled(False)
-                ui.notify("Board files written." if res.written or res.overwritten else "Nothing was written.")
+                ui.notify("Board files written." if res.written or res.overwritten or res.appended else "Nothing was written.")
 
             go.on_click(do_write)
 

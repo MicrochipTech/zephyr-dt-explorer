@@ -129,7 +129,7 @@ The suggestions are text only. They name the target pads at the same connector p
 
 1. **Plan** (shown after the click), one block per board file of the port result:
    - **NEW**: the file does not exist in the app yet; it is written by **Write files**.
-   - **EXISTS**: the file exists and differs. The diff (existing file → port result) is shown; nothing is written unless **Replace the existing …** is ticked.
+   - **EXISTS**: the file exists and differs. Default is **append**: the app's own content stays and the port result goes into a block marked `/* dt_explorer port begin <date> */ … /* dt_explorer end */` (`id=port-apply-diff-<kind>` shows the file after the append; applying again replaces only that block; a `.conf` gets its lines added once, lines the file already has are left out). The block is valid DTS because the overlay may repeat `&label { };` and `/ { };`; an `#include` in the result stays inside the block (cpp accepts it there). **Replace** is the explicit alternative: tick **Replace the existing … instead of appending** (`id=port-apply-replace-<kind>`); the fold-out *Replace instead* (`id=port-apply-diff-replace-<kind>`) shows that diff.
    - **identical** (grey): the existing file already has this content; nothing is written.
    - **SKIP (COMMENTS ONLY)**: the port result holds only comments, e.g. a `.conf` with no Kconfig lines; it is not written.
 2. **Write files** writes the files that are not skipped, and shows the result. The next step is the hint `west build -b <target board> <app>` (or **New build…** for a new build folder).
@@ -506,10 +506,15 @@ a plain `west build -b <board> <app>` uses the draft without extra options. This
 which writes `dt_explorer.overlay`/`.conf` that you must hand to west yourself. The file name follows Zephyr's rule
 (the short name `<board>` for a single-SoC board, else `<board>_<soc>…`), the same as in the port dialog.
 
-The button first shows a plan, per file `NEW`, `EXISTS`, `IDENTICAL` or a note that the `.conf` is empty. Only new files
-are written. If the app already has the file (apps usually have their own `boards/<board>.overlay`), you see a diff
-existing file -> draft and nothing changes unless you tick **Replace the existing …**; replacing drops everything the
-draft does not contain. **Write files** (`id=draft-apply-confirm`) then writes; the result lines end with the west
+The button first shows a plan, per file `NEW`, `EXISTS`, `IDENTICAL` or a note that the `.conf` is empty. A missing file
+is created. If the app already has the file (apps usually have their own `boards/<board>.overlay`), the default is
+**append**: the app's content stays and the draft is added as a block `/* dt_explorer draft begin <date> */ … /* dt_explorer end */`.
+The diff of the file after the append is shown first (`id=draft-apply-diff-<kind>`); applying again replaces only that block
+(your edits outside it survive), and a block that is already up to date is skipped. In the `.conf` the lines are appended once:
+lines the file already has are left out, with a note. **Replace** is the explicit alternative: the fold-out *Replace instead*
+(`id=draft-apply-diff-replace-<kind>`) shows the diff existing file -> draft, and the box **Replace the existing … instead of
+appending** (`id=draft-apply-replace-<kind>`) makes **Write files** overwrite the file, dropping everything the draft does not
+contain. **Write files** (`id=draft-apply-confirm`) then writes; the result lines end with the west
 command for the next build. `src/` and other files are never touched.
 
 The Draft tab opens by itself after Save. Use `tab=draft` in a link to open it directly.

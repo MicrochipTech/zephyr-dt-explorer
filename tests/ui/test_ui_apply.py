@@ -32,7 +32,7 @@ def leer(lab1_leer_copy, monkeypatch):
     return app
 
 
-def test_apply_existing_own_overlay_shows_diff_and_refuses(leer, ui_run):
+def test_apply_existing_own_overlay_appends_by_default(leer, ui_run):
     app = leer
     own = app / "boards" / "same54_xpro.overlay"
     before = own.read_text(encoding="utf-8")
@@ -42,15 +42,38 @@ def test_apply_existing_own_overlay_shows_diff_and_refuses(leer, ui_run):
             await _make_draft(user)
             click(user, "draft-apply")
             plan = page_text(user, "draft-apply-box")
-            assert "EXISTS: " in plan and "same54_xpro.overlay" in plan
+            assert "EXISTS: " in plan and "same54_xpro.overlay" in plan and "Default: APPEND" in plan
             assert by_id(user, "draft-apply-diff-overlay") and by_id(user, "draft-apply-replace-overlay")
-            assert "-> draft" in plan
-            click(user, "draft-apply-confirm")                       # box not ticked: overlay is refused
+            assert by_id(user, "draft-apply-append-hint-overlay") and by_id(user, "draft-apply-diff-replace-overlay")
+            assert not el(user, "draft-apply-replace-overlay").value          # replace stays behind the tick
+            assert "dt_explorer draft begin" in el(user, "draft-apply-diff-overlay").content
+            click(user, "draft-apply-confirm")                       # box not ticked: the block is appended
             result = el(user, "draft-apply-result").text
-            assert "refused (exists, not overwritten)" in result and "same54_xpro.overlay" in result
+            assert "appended:" in result and "same54_xpro.overlay" in result and "overwritten" not in result
+            click(user, "draft-apply")                               # the same draft again: block up to date
+            assert "already up to date" in page_text(user, "draft-apply-overlay")
 
     ui_run(scenario)
-    assert own.read_text(encoding="utf-8") == before
+    text = own.read_text(encoding="utf-8")
+    assert text.startswith(before)                                   # the app's own content is untouched
+    assert text.count("dt_explorer draft begin") == 1 and "&sercom1 {" in text and text.rstrip().endswith("/* dt_explorer end */")
+
+
+def test_apply_replace_tick_overwrites(leer, ui_run):
+    app = leer
+    own = app / "boards" / "same54_xpro.overlay"
+
+    async def scenario():
+        async with simulated_app(app) as user:
+            await _make_draft(user)
+            click(user, "draft-apply")
+            el(user, "draft-apply-replace-overlay").value = True
+            click(user, "draft-apply-confirm")
+            assert "overwritten:" in el(user, "draft-apply-result").text
+
+    ui_run(scenario)
+    text = own.read_text(encoding="utf-8")
+    assert "dt_explorer draft begin" not in text and "&sercom1 {" in text
 
 
 def test_apply_new_file_then_second_apply_is_identical(leer, ui_run):
@@ -76,3 +99,37 @@ def test_apply_new_file_then_second_apply_is_identical(leer, ui_run):
     assert "&sercom1 {" in text and "PC22C_SERCOM1_PAD0" in text
     conf = (app / "boards" / "same54_xpro.conf").read_text(encoding="utf-8")
     assert "CONFIG_I2C=y" in conf
+
+
+def test_port_dialog_offers_the_same_append_option(lab1, lab1_e54, ui_run, tmp_path, monkeypatch):
+    r"""Port dialog "Apply to app...": an existing target-board overlay in a COPY of the lab1 app is appended to."""
+    import shutil
+    from dt_explorer.core import apply as apply_mod
+    root, build = lab1
+    app = tmp_path / "lab1_app"
+    shutil.copytree(root, app, ignore=shutil.ignore_patterns("build*"))
+    monkeypatch.setattr(apply_mod, "app_dir_of", lambda b: app)      # the real app folder is never written
+    own = app / "boards" / "sam_e54_xpro.overlay"
+    own.parent.mkdir(exist_ok=True)
+    own.write_text("/ { app_own { status = \"okay\"; }; };" + chr(10), encoding="utf-8")
+    before = own.read_text(encoding="utf-8")
+
+    async def scenario():
+        async with simulated_app(root) as user:
+            await user.open(f"/?build={BUILD}")
+            click(user, "port-open")
+            select_value(user, "port-other", str(lab1_e54))
+            click(user, "port-run")
+            await wait_until(lambda: by_id(user, "port-report"), timeout=180, what="the port report")
+            click(user, "port-apply")
+            box = page_text(user, "port-apply-box")
+            assert "EXISTS: " in box and "sam_e54_xpro.overlay" in box and "Default: APPEND" in box
+            assert by_id(user, "port-apply-diff-overlay") and by_id(user, "port-apply-replace-overlay")
+            assert by_id(user, "port-apply-diff-replace-overlay")
+            assert not el(user, "port-apply-replace-overlay").value
+            click(user, "port-apply-go")
+            assert "appended:" in el(user, "port-apply-result").text
+
+    ui_run(scenario)
+    text = own.read_text(encoding="utf-8")
+    assert text.startswith(before) and "dt_explorer port begin" in text and text.count("dt_explorer end") == 1

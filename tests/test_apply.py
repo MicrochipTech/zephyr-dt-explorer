@@ -150,3 +150,102 @@ def test_draft_plan_existing_own_overlay_is_refused_with_draft_diff(tmp_path, mo
 def test_draft_plan_multi_soc_uses_long_name(tmp_path, monkeypatch):
     _own_board(monkeypatch, "alpha/soc/cpu0", False)
     assert ap.draft_plan(tmp_path / "b", OVL, CONF, app_dir=tmp_path).stem == "alpha_soc_cpu0"
+
+
+# ---- append mode (P8.13b): marked block in the app's own file ------------------------------------
+OWN = "/ {\n\tmy_led: my_led@1 { status = \"okay\"; };\n};\n"
+DRAFT = "&sercom1 {\n\tstatus = \"okay\";\n};\n"
+DRAFT2 = "&sercom1 {\n\tstatus = \"okay\";\n\tclock-frequency = <400000>;\n};\n"
+BEGIN = "/* dt_explorer draft begin 2026-10-15 */\n"
+END = "/* dt_explorer end */\n"
+
+
+def _app_with(tmp_path, overlay=OWN, conf=None):
+    (tmp_path / "boards").mkdir(exist_ok=True)
+    (tmp_path / "boards" / "same54_xpro.overlay").write_text(overlay)
+    if conf is not None:
+        (tmp_path / "boards" / "same54_xpro.conf").write_text(conf)
+    return tmp_path
+
+
+def test_append_keeps_existing_and_adds_marked_block(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    _app_with(tmp_path)
+    plan = ap.draft_plan(tmp_path / "b", DRAFT, "", app_dir=tmp_path, today="2026-10-15")
+    fp = plan.file("overlay")
+    assert fp.merged == OWN + "\n" + BEGIN + DRAFT + END
+    assert "+/* dt_explorer draft begin 2026-10-15 */" in fp.append_diff
+    assert "-" + OWN.splitlines()[0] not in fp.append_diff
+    res = ap.apply(plan, append={"overlay"})
+    assert res.appended == [tmp_path / "boards" / "same54_xpro.overlay"] and not res.overwritten
+    assert (tmp_path / "boards" / "same54_xpro.overlay").read_text() == OWN + "\n" + BEGIN + DRAFT + END
+
+
+def test_append_not_chosen_still_refuses(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    _app_with(tmp_path)
+    res = ap.apply(ap.draft_plan(tmp_path / "b", DRAFT, "", app_dir=tmp_path))
+    assert len(res.refused) == 1 and not res.appended
+
+
+def test_reapply_replaces_only_the_block(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    f = _app_with(tmp_path) / "boards" / "same54_xpro.overlay"
+    ap.apply(ap.draft_plan(tmp_path / "b", DRAFT, "", app_dir=tmp_path, today="2026-10-15"), append={"overlay"})
+    first = f.read_text()
+    again = ap.draft_plan(tmp_path / "b", DRAFT, "", app_dir=tmp_path, today="2026-10-15")
+    assert again.file("overlay").append_diff == ""                       # same draft, same day: nothing to do
+    assert f in ap.apply(again, append={"overlay"}).skipped and f.read_text() == first
+    ap.apply(ap.draft_plan(tmp_path / "b", DRAFT2, "", app_dir=tmp_path, today="2026-10-16"), append={"overlay"})
+    second = f.read_text()
+    assert second == OWN + "\n" + BEGIN.replace("15", "16") + DRAFT2 + END      # one block, the app's part intact
+    assert second.count("dt_explorer end") == 1 and second.startswith(OWN)
+
+
+def test_text_after_the_block_survives_replacement():
+    tail = "\n&uart0 { status = \"okay\"; };\n"
+    merged, _ = ap.merge_block("overlay", OWN + "\n" + BEGIN + DRAFT + END + tail, DRAFT2, today="2026-10-15")
+    assert merged == OWN + "\n" + BEGIN + DRAFT2 + END + tail
+
+
+def test_append_without_trailing_newline_and_empty_file():
+    assert ap.merge_block("overlay", "&a { };", DRAFT, today="D")[0] == \
+        "&a { };\n\n/* dt_explorer draft begin D */\n" + DRAFT + END
+    assert ap.merge_block("overlay", "", DRAFT, today="D")[0] == "/* dt_explorer draft begin D */\n" + DRAFT + END
+
+
+def test_conf_append_once_skips_duplicates(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    _app_with(tmp_path, conf="CONFIG_GPIO=y\nCONFIG_I2C=y\n")
+    conf = "# Kconfig lines for x\nCONFIG_I2C=y\nCONFIG_I2C_SAM0=y\n"
+    plan = ap.draft_plan(tmp_path / "b", DRAFT, conf, app_dir=tmp_path, today="2026-10-15")
+    assert "left out" in plan.file("conf").append_note
+    ap.apply(plan, append={"overlay", "conf"})
+    text = (tmp_path / "boards" / "same54_xpro.conf").read_text()
+    assert text == ("CONFIG_GPIO=y\nCONFIG_I2C=y\n\n# dt_explorer draft begin 2026-10-15\n"
+                    "# Kconfig lines for x\nCONFIG_I2C_SAM0=y\n# dt_explorer end\n")
+    assert text.count("CONFIG_I2C=y") == 1
+    again = ap.draft_plan(tmp_path / "b", DRAFT, conf, app_dir=tmp_path, today="2026-10-15")
+    assert again.file("conf").merged == text and not again.file("conf").append_diff
+
+
+def test_conf_all_duplicates_adds_no_block(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    _app_with(tmp_path, conf="CONFIG_I2C=y\n")
+    plan = ap.draft_plan(tmp_path / "b", DRAFT, "# c\nCONFIG_I2C=y\n", app_dir=tmp_path)
+    assert plan.file("conf").merged == "CONFIG_I2C=y\n" and plan.file("conf").append_diff == ""
+
+
+def test_replace_wins_over_append(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    f = _app_with(tmp_path) / "boards" / "same54_xpro.overlay"
+    res = ap.apply(ap.draft_plan(tmp_path / "b", DRAFT, "", app_dir=tmp_path),
+                   overwrite={"overlay"}, append={"overlay"})
+    assert res.overwritten == [f] and f.read_text() == DRAFT
+
+
+def test_port_plan_uses_port_marker(tmp_path):
+    (tmp_path / "boards").mkdir()
+    (tmp_path / "boards" / "b.overlay").write_text(OWN)
+    plan = ap.plan_apply(tmp_path, "b", DRAFT, "", today="D")
+    assert "/* dt_explorer port begin D */" in plan.file("overlay").merged

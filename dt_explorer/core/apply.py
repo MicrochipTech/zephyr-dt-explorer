@@ -31,6 +31,7 @@ from __future__ import annotations
 import difflib
 import logging
 import re
+from datetime import date
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -53,8 +54,11 @@ class FilePlan:
     exists: bool = False
     identical: bool = False         # exists with the same content: nothing to do
     comment_only: bool = False      # the new content has no statements: not written
-    diff: str = ""                  # unified diff existing -> new (only when it exists and differs)
+    diff: str = ""                  # unified diff existing -> new (only when it exists and differs): "replace"
     note: str = ""
+    merged: str = ""                # the existing content plus the marked block ("append"), only when it exists
+    append_diff: str = ""           # unified diff existing -> merged (empty when nothing would change)
+    append_note: str = ""           # e.g. conf lines skipped as duplicates
 
     @property
     def action(self) -> str:
@@ -79,12 +83,14 @@ class ApplyPlan:
 @dataclass
 class ApplyResult:
     written: list[Path] = field(default_factory=list)
+    appended: list[Path] = field(default_factory=list)      # existing file, marked block added or replaced
     overwritten: list[Path] = field(default_factory=list)
     refused: list[Path] = field(default_factory=list)       # exist, not named in `overwrite`
     skipped: list[Path] = field(default_factory=list)       # comments only or identical
 
     def lines(self) -> list[str]:
         out = [f"written:     {p}" for p in self.written]
+        out += [f"appended:    {p}" for p in self.appended]
         out += [f"overwritten: {p}" for p in self.overwritten]
         out += [f"refused (exists, not overwritten): {p}" for p in self.refused]
         out += [f"skipped:     {p}" for p in self.skipped]
@@ -162,10 +168,76 @@ def _norm(text: str) -> str:
     return (text or "").replace("\r\n", "\n")
 
 
+# ---- append mode: a marked block inside the app's own file ------------------------------------------
+END_MARK = "dt_explorer end"
+_OVL_BLOCK = re.compile(r"/\* dt_explorer [^\n]*? begin [^\n]*? \*/\n.*?/\* " + END_MARK + r" \*/\n?", re.S)
+_CONF_BLOCK = re.compile(r"# dt_explorer [^\n]*? begin [^\n]*?\n.*?# " + END_MARK + r"\n?", re.S)
+
+
+def _marks(kind: str, source: str, today: str) -> tuple[str, str]:
+    if kind == "overlay":
+        return f"/* dt_explorer {source} begin {today} */\n", f"/* {END_MARK} */\n"
+    return f"# dt_explorer {source} begin {today}\n", f"# {END_MARK}\n"
+
+
+def _statement_lines(text: str) -> list[str]:
+    return [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+
+
+def merge_block(kind: str, existing: str, new: str, *, source: str = "draft",
+                today: str | None = None) -> tuple[str, str]:
+    """``(merged text, note)``: `existing` with `new` as one marked block.
+
+    A block from an earlier run (same markers, any source/date) is replaced in place, everything else in
+    `existing` stays byte for byte. Otherwise the block is appended at the end. For a conf the lines that the
+    rest of the file already has are left out (duplicates); no statement left means no block (an old block is
+    dropped, the rest stays). `today` is for tests.
+    """
+    today = today or date.today().isoformat()
+    existing, new = _norm(existing), _norm(new)
+    rx = _OVL_BLOCK if kind == "overlay" else _CONF_BLOCK
+    m = rx.search(existing)
+    outside = existing[:m.start()] + existing[m.end():] if m else existing
+    note = ""
+    body = new.strip("\n")
+    if kind == "conf":
+        have = set(_statement_lines(outside))
+        keep, skipped = [], 0
+        for ln in body.splitlines():
+            s = ln.strip()
+            if s and not s.startswith("#") and s in have:
+                skipped += 1
+                continue
+            keep.append(ln)
+        body = "\n".join(keep).strip("\n")
+        if skipped:
+            note = f"{skipped} line(s) already in the file were left out"
+        if not _statement_lines(body):
+            body = ""
+    elif is_comment_only(body):
+        body = ""
+    if not body:
+        return outside, note
+    begin, end = _marks(kind, source, today)
+    block = begin + body + "\n" + end
+    if m:
+        return existing[:m.start()] + block + existing[m.end():], note
+    if not existing.strip():
+        return block, note
+    sep = "" if existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
+    return existing + sep + block, note
+
+
 # ---- plan and apply ------------------------------------------------------------------------------
+def _udiff(old: str, new: str, a: str, b: str) -> str:
+    d = "".join(difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
+                                     fromfile=a, tofile=b))
+    return d if not d or d.endswith("\n") else d + "\n"
+
+
 def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, *,
                single_soc: bool = True, source_board: str | None = None,
-               new_label: str = "port result") -> ApplyPlan:
+               new_label: str = "port result", today: str | None = None) -> ApplyPlan:
     """What ``apply`` would do. Reads the app folder, writes nothing. `new_label` names the new content in
     the diff header (the Draft tab passes ``"draft"``)."""
     app = Path(app_dir)
@@ -195,6 +267,11 @@ def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, 
         if fp.exists:
             old = _norm(fp.path.read_text(encoding="utf-8", errors="replace"))
             new = _norm(text)
+            if not fp.comment_only:
+                fp.merged, fp.append_note = merge_block(kind, old, text, source=new_label.split()[0], today=today)
+                if fp.merged != old:
+                    fp.append_diff = _udiff(old, fp.merged, f"{fp.path} (existing)",
+                                            f"{fp.path.name} (existing + {new_label} block)")
             fp.identical = old == new
             if not fp.identical:
                 fp.diff = "".join(difflib.unified_diff(
@@ -208,10 +285,13 @@ def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, 
     return plan
 
 
-def apply(plan: ApplyPlan, overwrite: set | None = None) -> ApplyResult:
+def apply(plan: ApplyPlan, overwrite: set | None = None, append: set | None = None) -> ApplyResult:
     """Write the new files of `plan`. A file that exists is replaced only when its path (or its
-    kind, ``"overlay"`` / ``"conf"``) is in `overwrite`. Comment-only content is never written."""
+    kind, ``"overlay"`` / ``"conf"``) is in `overwrite`; when it is in `append` instead, the existing content
+    is kept and the marked block is added or replaced (``FilePlan.merged``). Comment-only content is never
+    written. `overwrite` wins over `append`."""
     ow = {str(x) for x in (overwrite or ())}
+    ap_ = {str(x) for x in (append or ())}
     res = ApplyResult()
     boards = (plan.app_dir / "boards").resolve()
     for fp in plan.files:
@@ -221,6 +301,15 @@ def apply(plan: ApplyPlan, overwrite: set | None = None) -> ApplyResult:
             continue
         if fp.path.resolve().parent != boards:                  # defensive: only <app>/boards/<file>
             raise ApplyError(f"refusing to write outside {boards}: {fp.path}")
+        if fp.exists and not ({str(fp.path), fp.kind} & ow) and ({str(fp.path), fp.kind} & ap_):
+            if fp.merged == _norm(fp.path.read_text(encoding="utf-8", errors="replace")):
+                log.info("apply: skip %s (block already up to date)", fp.path)
+                res.skipped.append(fp.path)
+                continue
+            log.info("apply: append block to %s (%d diff lines)", fp.path, len(fp.append_diff.splitlines()))
+            fp.path.write_text(fp.merged, encoding="utf-8", newline="\n")
+            res.appended.append(fp.path)
+            continue
         if fp.exists and not ({str(fp.path), fp.kind} & ow):
             log.warning("apply: refused to overwrite %s (exists, overwrite not confirmed)", fp.path)
             res.refused.append(fp.path)
@@ -240,12 +329,21 @@ def plan_lines(plan: ApplyPlan) -> list[str]:
         out.append(f"  {fp.action:22s} {fp.path}")
         if fp.note:
             out.append(f"      note: {fp.note}")
+        if fp.append_note:
+            out.append(f"      note: {fp.append_note}")
+        if fp.append_diff:
+            out.append("      append (default):")
+            out += ["      " + ln for ln in fp.append_diff.rstrip("\n").splitlines()]
+        elif fp.exists and fp.merged and not fp.comment_only:
+            out.append("      append: block already up to date")
         if fp.diff:
+            out.append("      replace (explicit tick):")
             out += ["      " + ln for ln in fp.diff.rstrip("\n").splitlines()]
     return out
 
 
-def draft_plan(build_dir: Path | str, overlay: str, conf: str, *, app_dir: Path | str | None = None) -> ApplyPlan:
+def draft_plan(build_dir: Path | str, overlay: str, conf: str, *, app_dir: Path | str | None = None,
+               today: str | None = None) -> ApplyPlan:
     """Plan for writing a draft as the board files of the build's OWN board (Draft tab "Apply to app").
 
     The app is the build's ``APPLICATION_SOURCE_DIR`` unless `app_dir` is given (tests apply to a copy).
@@ -253,4 +351,4 @@ def draft_plan(build_dir: Path | str, overlay: str, conf: str, *, app_dir: Path 
     """
     board, single = target_of(build_dir)
     app = Path(app_dir) if app_dir is not None else app_dir_of(build_dir)
-    return plan_apply(app, board, overlay, conf, single_soc=single, new_label="draft")
+    return plan_apply(app, board, overlay, conf, single_soc=single, new_label="draft", today=today)

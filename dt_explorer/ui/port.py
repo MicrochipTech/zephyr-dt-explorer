@@ -3,8 +3,8 @@
 The pipeline lives in ``core/port_report.py``; this module is the glue. It runs the pipeline in a worker
 thread (progress lines go through a queue into a log), shows the target overlay, the .conf lines and the
 report sections, and can run 'Verify with west' on the TARGET build. 'Apply to app' writes the result as
-``<app>/boards/<target board>.overlay`` / ``.conf`` (``core/apply.py``): new files only; an existing file is
-shown as a diff and replaced only when the user ticks it.
+``<app>/boards/<target board>.overlay`` / ``.conf`` (``core/apply.py``): a missing file is created; an existing
+one is kept and gets a marked block appended (diff shown first); it is replaced only when the user ticks it.
 """
 from __future__ import annotations
 
@@ -278,7 +278,7 @@ def _render_apply(source: Path, target: Path, result: PortResult) -> None:
     with ui.row().classes("items-center gap-2"):
         ui.label("Apply to the app").classes("font-bold")
         abtn = ui.button("Apply to app…", icon="save").props("flat dense no-caps id=port-apply")             .props('title="write boards/<target board>.overlay and .conf into the app of the source build; '
-                   'new files only, an existing file is shown as a diff"')
+                   'a new file is created, an existing one gets a marked block appended"')
     box = ui.column().classes("w-full gap-2").props("id=port-apply-box")
 
     def show_plan() -> None:
@@ -305,10 +305,27 @@ def _render_apply(source: Path, target: Path, result: PortResult) -> None:
                         ui.label(fp.note).classes("text-xs text-orange-4")
                     if fp.identical:
                         ui.label("The existing file already has this content.").classes("text-xs text-grey-5")
+                    if fp.exists and fp.merged and not fp.comment_only and not fp.identical:
+                        if fp.append_note:
+                            ui.label(fp.append_note).classes("text-xs text-grey-5")
+                        if fp.append_diff:
+                            ui.label("Default: APPEND. The existing file stays as it is; the port result goes into a "
+                                     "block marked dt_explorer ... begin / end (applying again replaces only that "
+                                     "block). Diff of the file after the append:").classes("text-xs text-green-4") \
+                                .props(f"id=port-apply-append-hint-{fp.kind}")
+                            ui.code(fp.append_diff, language="diff").classes("w-full text-xs") \
+                                .props(f"id=port-apply-diff-{fp.kind}")
+                        else:
+                            ui.label("The marked block in the file is already up to date; appending changes nothing.") \
+                                .classes("text-xs text-grey-5")
                     if fp.diff:
-                        ui.label("Diff: existing file -> port result. Nothing is written unless you tick the box.")                             .classes("text-xs text-grey-5")
-                        ui.code(fp.diff, language="diff").classes("w-full text-xs").props(f"id=port-apply-diff-{fp.kind}")
-                        checks[fp.kind] = ui.checkbox(f"Replace the existing {fp.path.name}")                             .props(f"dense id=port-apply-replace-{fp.kind}")
+                        with ui.expansion("Replace instead: diff existing file -> port result (drops whatever the "
+                                          "port result does not contain)").classes("text-xs text-orange-4") \
+                                .props(f"id=port-apply-replace-box-{fp.kind}"):
+                            ui.code(fp.diff, language="diff").classes("w-full text-xs") \
+                                .props(f"id=port-apply-diff-replace-{fp.kind}")
+                        checks[fp.kind] = ui.checkbox(f"Replace the existing {fp.path.name} instead of appending") \
+                            .props(f"dense id=port-apply-replace-{fp.kind}")
             writable = [f for f in plan.files if not (f.comment_only or f.identical)]
             res_label = ui.label().classes("text-sm font-mono").props("id=port-apply-result")
             res_label.style("white-space: pre-wrap")
@@ -322,23 +339,24 @@ def _render_apply(source: Path, target: Path, result: PortResult) -> None:
 
             def do_write() -> None:
                 ow = {k for k, c in checks.items() if c.value}
+                app_ = {f.kind for f in plan.files if f.exists and f.kind not in ow}   # default: append
                 try:
-                    res = apply_mod.apply(plan, overwrite=ow)
+                    res = apply_mod.apply(plan, overwrite=ow, append=app_)
                 except (apply_mod.ApplyError, OSError) as exc:
                     res_label.text = f"Write failed: {exc}"
                     res_label.classes(replace="text-sm font-mono text-red-4")
                     res_label.set_visibility(True)
                     return
                 lines = res.lines()
-                if res.written or res.overwritten:
+                if res.written or res.overwritten or res.appended:
                     lines.append(f"Next: west build -b {plan.board_target} {plan.app_dir}"
                                  f"   (or use \"New build…\" for the target board)")
                 res_label.text = chr(10).join(lines)
-                res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten
+                res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten or res.appended
                                                                   else "text-orange-4"))
                 res_label.set_visibility(True)
                 go.set_enabled(False)
-                ui.notify("Board files written." if res.written or res.overwritten else "Nothing was written.")
+                ui.notify("Board files written." if res.written or res.overwritten or res.appended else "Nothing was written.")
 
             go.on_click(do_write)
 
