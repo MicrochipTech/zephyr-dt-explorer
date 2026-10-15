@@ -230,6 +230,8 @@ def _prepare(rtos4_ws, rtos4_build, rel):
     build = rtos4_build(rel)
     model = BuildModel(build)
     draft, report = lift_build(model, read_build_info(build))
+    # this test compares the SERCOM nodes; other recipes (GMAC) are covered in test_gmac_recipe.py
+    draft.nodes = [n for n in draft.nodes if n.cls in ('uart', 'i2c', 'spi')]
     device = MicrochipAtdfProvider().load(ATDF)
     ctx = report.render_context(device)
     return build, model, draft, report, ctx

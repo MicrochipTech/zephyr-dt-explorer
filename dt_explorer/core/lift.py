@@ -340,10 +340,10 @@ def lift_build(build: Path | str | BuildModel, info: BuildInfo | None = None) ->
                    if _kind(v) not in PLATFORM_ORIGINS}
         values: dict = {}
         for name in written:
-            if name in _STRUCTURAL or name.startswith("pinctrl-"):
+            if name in _STRUCTURAL or name == "phandle" or name.startswith("pinctrl-"):
                 continue
             prop = node.props.get(name)
-            v = _value(prop) if prop is not None else _raw_value(node, name)
+            v = _child_value(prop, node, name)      # phandles become Ref, as for child nodes
             if v is None:
                 what = f"property type {prop.type!r}" if prop is not None else "a property undeclared in the binding"
                 report.not_representable.append(NotRepresentable(
