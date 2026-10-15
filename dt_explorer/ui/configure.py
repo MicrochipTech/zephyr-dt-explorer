@@ -14,6 +14,7 @@ their roles from the device model, pad names are opaque text.
 """
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,7 @@ from ..core import plugins
 from ..core.buildinfo import read_build_info
 from ..core.draft import (CLASS_BASES, BindingIndex, Draft, DraftNode, Use, detect_class, load_draft,
                           save_draft)
+from ..core.lift import lift_build
 from ..core.kconfig_suggest import KconfigSuggestion, suggest_kconfig
 from ..core.render import RenderContext, render_overlay
 from ..core.validate import Finding, validate
@@ -221,6 +223,7 @@ class ConfigSession:
         self.draft = load_draft(model.app_dir, model.build) or Draft(build=model.build.name)
         self.findings: list[Finding] | None = None
         self.checked_overlay: str | None = None
+        self._lifted: Draft | None = None
 
     # -- node lookup
     def node_for_label(self, label: str):
@@ -236,12 +239,29 @@ class ConfigSession:
     def draft_node(self, label: str) -> DraftNode | None:
         return next((n for n in self.draft.nodes if n.label == label), None)
 
+    # -- enabled nodes: lift (P5.3) the node as it is built now
+    def lifted_node(self, label: str) -> DraftNode | None:
+        """The enabled node `label` as a draft node (class, pads, neutral props, use), or None.
+
+        The whole build is lifted once (``lift_build``) and kept; the node is picked by label.
+        """
+        if self._lifted is None:
+            self._lifted, _report = lift_build(self.model, self.info)
+        return next((n for n in self._lifted.nodes if n.label == label), None)
+
+    def is_enabled(self, label: str) -> bool:
+        node = self.node_for_label(label)
+        return node is not None and node.status == "okay"
+
     # -- who uses a pad
-    def used_by(self) -> dict[str, list[str]]:
+    def used_by(self, skip_path: str | None = None) -> dict[str, list[str]]:
+        """pad -> users in the build. `skip_path` leaves out one node (the one being edited)."""
         out: dict[str, list[str]] = {}
         for pad, uses in self.usage.uses.items():
             names = []
             for u in uses:
+                if skip_path is not None and u.node == skip_path:
+                    continue
                 n = self.model.by_path.get(u.node)
                 names.append(f"{n.labels[0] if n and n.labels else u.node} ({u.function})")
             out[pad] = list(dict.fromkeys(names))
@@ -271,16 +291,28 @@ class ConfigSession:
 
     # -- render, Kconfig, check
     def render_context(self) -> RenderContext:
+        # enabled nodes already carry their compatible: the overlay does not repeat it
+        existing = {n.labels[0]: n.compats[0] for n in self.model.edt.nodes
+                    if n.status == "okay" and n.labels and n.compats}
         pin_node = next((n for n in self.model.edt.nodes
                          if any(plugins.get_formatter(c) for c in n.compats)), None)
         return RenderContext(
             device=self.device, pinctrl_compatible=next(
                 (c for c in (pin_node.compats if pin_node else []) if plugins.get_formatter(c)), None),
             pinctrl_label=(pin_node.labels[0] if pin_node and pin_node.labels else "pinctrl"),
-            workspace=self.info.workspace, soc=self.info.soc, bindings=self.index)
+            workspace=self.info.workspace, soc=self.info.soc, bindings=self.index,
+            existing_compatibles=existing)
 
     def overlay(self) -> str:
-        return render_overlay(self.draft, self.render_context()) if self.draft.nodes else ""
+        if not self.draft.nodes:
+            return ""
+        text = render_overlay(self.draft, self.render_context())
+        # An enabled node already has a pinctrl group of that name from the board; the same name would merge
+        # the new pinmux into the old group. The group of an edited node gets a name of its own.
+        for n in self.draft.nodes:
+            if n.label and n.pins and self.is_enabled(n.label):
+                text = rename_group(text, f"{n.label}_{n.cls}_default", edit_group_name(n))
+        return text
 
     def kconfig(self) -> list[KconfigSuggestion]:
         compats = list(dict.fromkeys(n.compatible for n in self.draft.nodes if n.compatible))
@@ -318,16 +350,41 @@ def can_configure(session: ConfigSession, node) -> bool:
     return node.status == "disabled" and bool(session.options_for(node))
 
 
+def can_edit_pins(session: ConfigSession, node) -> bool:
+    """An enabled node that a recipe covers and that the lift (P5.3) can turn into a draft node."""
+    if node.status != "okay" or not node.labels or not session.options_for(node):
+        return False
+    return session.lifted_node(node.labels[0]) is not None
+
+
+def edit_group_name(node: DraftNode) -> str:
+    """Name of the pinctrl group of an edited (already enabled) node: not the board's group."""
+    return f"{node.label}_{node.cls}_edit"
+
+
+def rename_group(text: str, old: str, new: str) -> str:
+    """Rename a pinctrl group label in overlay text (definition and reference), whole words only."""
+    return re.sub(rf"(?<![\w-]){re.escape(old)}(?![\w-])", new, text)
+
+
 # ---- the dialog ---------------------------------------------------------------------------------
-def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode], None]) -> None:
-    """Open the configurator for a (disabled) node; `on_saved(draft_node)` runs after Save."""
+def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode], None],
+                   edit: bool = False) -> None:
+    """Open the configurator for a node; `on_saved(draft_node)` runs after Save.
+
+    A disabled node starts empty (or from its draft). With ``edit=True`` the node is enabled: the dialog
+    starts from the node as it is built now (lifted, P5.3), unless the draft already holds a change of it.
+    """
     from nicegui import ui
 
+    edit = edit or node.status == "okay"            # the pencil of an edited node in the Draft tab
     inst = session.instance_of(node)
     options = session.options_for(node)
     label = node.labels[0] if node.labels else node.name
     existing = session.draft_node(label)
-    used = session.used_by()
+    if existing is None and edit:
+        existing = session.lifted_node(label)
+    used = session.used_by(skip_path=node.path if edit else None)
     for pad, names in session.draft_pads(skip_label=label).items():
         used.setdefault(pad, []).extend(names)
     st = {"opt": next((o for o in options if existing and o.cls == existing.cls), options[0]),
@@ -336,7 +393,7 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
     prop_inputs: dict[str, tuple[PropSpec, object]] = {}
 
     with ui.dialog() as dlg, ui.card().style("min-width: 640px; max-width: 760px").props("id=cfg-dialog"):
-        ui.label(f"Configure &{label}").classes("text-lg font-bold")
+        ui.label(f"{'Edit pins of' if edit else 'Configure'} &{label}").classes("text-lg font-bold")
         ui.label(f"{node.path}  -  instance {inst.name}").classes("text-xs text-grey-5 font-mono")
         cls_toggle = ui.toggle({o.cls: o.cls.upper() for o in options}, value=st["opt"].cls) \
             .props("id=cfg-class")
@@ -346,10 +403,10 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
         ui.label("Properties").classes("font-bold")
         props_box = ui.column().classes("w-full gap-1")
         ui.label("Use").classes("font-bold")
-        chosen_in = ui.select([], multiple=True, new_value_mode="add-unique", label="chosen (e.g. zephyr,console)",
+        chosen_in = ui.select(list(existing.use.chosen) if existing else [], multiple=True, new_value_mode="add-unique", label="chosen (e.g. zephyr,console)",
                               value=list(existing.use.chosen) if existing else []) \
             .props("dense outlined use-chips use-input").classes("w-full")
-        alias_in = ui.select([], multiple=True, new_value_mode="add-unique", label="aliases (e.g. my-i2c)",
+        alias_in = ui.select(list(existing.use.aliases) if existing else [], multiple=True, new_value_mode="add-unique", label="aliases (e.g. my-i2c)",
                              value=list(existing.use.aliases) if existing else []) \
             .props("dense outlined use-chips use-input").classes("w-full")
         with ui.row().classes("w-full justify-end"):

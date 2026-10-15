@@ -536,6 +536,8 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
             ui.label(why).classes("text-sm")
             if n.status == "disabled" and configure.can_configure(configure.session_for(m), n):
                 ui.button("Configure…", icon="tune", on_click=lambda _e, node=n: start_configure(node))                     .props("no-caps outline dense id=cfg-open")
+            elif n.status == "okay" and configure.can_edit_pins(configure.session_for(m), n):
+                ui.button("Edit pins…", icon="edit", on_click=lambda _e, node=n: start_configure(node))                     .props("no-caps outline dense id=cfg-edit")
             for d in m.drivers_for(n):
                 built = "compiled" if d in m.compiled else "not compiled"
                 txt = d.read_text(encoding="utf-8", errors="ignore").splitlines()

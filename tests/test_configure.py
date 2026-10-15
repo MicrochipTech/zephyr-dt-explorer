@@ -249,3 +249,87 @@ def test_mark_draft_colours_only_pad_rows():
     assert out["3"]["state"] == "other"                              # power pins are never claimed
     assert out["2"]["users"][0]["path"] == "/a" and out["2"]["users"][-1]["path"] == "draft"
     assert rows["1"]["state"] == "free"                              # input not modified
+
+
+# ---- P5.7: Edit pins for enabled nodes -----------------------------------------------------------
+def test_rename_group_whole_words_only():
+    text = ("&pinctrl {\n\tsercom2_uart_default: sercom2_uart_default {\n\t};\n};\n"
+            "&sercom2 { pinctrl-0 = <&sercom2_uart_default>; };\n"
+            "&x { pinctrl-0 = <&sercom2_uart_default_2>; };\n")
+    out = C.rename_group(text, "sercom2_uart_default", "sercom2_uart_edit")
+    assert out.count("sercom2_uart_edit") == 3
+    assert "sercom2_uart_default_2" in out                       # a longer name is left alone
+    assert "sercom2_uart_default:" not in out and "&sercom2_uart_default>" not in out
+
+
+def test_edit_group_name_differs_from_board_group():
+    n = C.DraftNode(cls="uart", label="sercom2")
+    assert C.edit_group_name(n) == "sercom2_uart_edit"
+    assert C.edit_group_name(n) != f"{n.label}_{n.cls}_default"
+
+
+@pytest.fixture
+def lab1_session(rtos4_ws, rtos4_build):
+    """ConfigSession of lab1 with an empty draft (never reads or writes the app's real draft file)."""
+    from dt_explorer.app import load_plugins
+    from dt_explorer.core.build import BuildModel
+    from dt_explorer.core.draft import Draft
+    load_plugins()
+    model = BuildModel(rtos4_build("apps/lab1/build_same54_xpro"))
+    s = C.ConfigSession(model)
+    s.draft = Draft(build=model.build.name)
+    return s
+
+
+def _edit_console(s, tx, rx):
+    n = s.node_for_label("sercom2")
+    inst = s.instance_of(n)
+    o = next(x for x in s.options_for(n) if x.cls == "uart")
+    lifted = s.lifted_node("sercom2")
+    new = C.build_node(option=o, instance=inst, label="sercom2", pins={"TX": tx, "RX": rx},
+                       roles_order=C.option_roles(o, inst), props=dict(lifted.props),
+                       chosen=lifted.use.chosen, aliases=lifted.use.aliases)
+    s.upsert(new)
+    return n, inst, o, new
+
+
+def test_enabled_node_can_be_edited_and_is_lifted(lab1_session):
+    s = lab1_session
+    n = s.node_for_label("sercom2")
+    assert C.can_edit_pins(s, n) and not C.can_configure(s, n)
+    lifted = s.lifted_node("sercom2")
+    assert lifted.cls == "uart" and lifted.pins == {"TX": "PB25", "RX": "PB24"}
+    assert lifted.props["current-speed"] == 115200
+    assert "zephyr,console" in lifted.use.chosen
+    assert s.lifted_node("nothing") is None
+    disabled = next(x for x in s.model.edt.nodes if "sercom1" in x.labels)
+    assert not C.can_edit_pins(s, disabled) and C.can_configure(s, disabled)
+
+
+def test_own_pads_are_not_reported_as_taken_while_editing(lab1_session):
+    s = lab1_session
+    n = s.node_for_label("sercom2")
+    assert any("sercom2" in u for u in s.used_by().get("PB24", []))
+    assert not s.used_by(skip_path=n.path).get("PB24")
+
+
+def test_edit_overlay_uses_a_new_group_and_recomputes_derived_props(lab1_session):
+    s = lab1_session
+    _edit_console(s, "PA09", "PA08")
+    text = s.overlay()
+    assert "sercom2_uart_edit: sercom2_uart_edit {" in text
+    assert "pinctrl-0 = <&sercom2_uart_edit>;" in text
+    assert "sercom2_uart_default" not in text                    # the board's group is not touched
+    assert "PA9D_SERCOM2_PAD0" in text and "PA8D_SERCOM2_PAD1" in text
+    assert "compatible" not in text                              # the node already has it
+    assert "rxpo = <1>;" in text and "txpo = <0>;" in text
+    assert "zephyr,console = &sercom2;" in text
+    _edit_console(s, "PA09", "PA10")                             # RX on PAD2: derived rxpo changes
+    assert "rxpo = <2>;" in s.overlay()
+
+
+def test_edit_overlay_checks_without_errors(lab1_session):
+    s = lab1_session
+    _edit_console(s, "PA09", "PA08")
+    findings = s.check()
+    assert not [f for f in findings if f.severity == "error"]
