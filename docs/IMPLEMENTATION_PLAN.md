@@ -547,6 +547,13 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
+- Kconfig view, device-centred (from side session dt-explorer-c7, user-approved 2026-10-15; not a menuconfig
+  clone): (1) node details get a Kconfig section with the symbols tied to the node's compatible
+  (`core/kconfig_suggest.py`) and their current value from `zephyr/.config`; (2) "why is this off?" for the
+  orange dot: the dependency chain (e.g. I2C_SAM0=n because I2C=n), from the same depends-on walk; (3) value origin
+  per symbol (prj.conf, boards/<board>.conf, board _defconfig, -DCONFIG_… on the CMake line, default); (4) writes
+  only for device-related symbols via `core/apply.py` (P5.6) into prj.conf or boards/<board>.conf, never into
+  build/zephyr/.config, diff when the file exists; (5) a button running `west build -t guiconfig` for everything else.
 - Formatters: `decode(int)` for packed pinmux values, so `core/pins.py` no longer re-reads macro names from source lines (found at P1.6).
 
 - Importer: Arduino Uno R3 and mikroBUS headers (label-keyed pins, merge the four Arduino headers into one connector); found at P7.3.
