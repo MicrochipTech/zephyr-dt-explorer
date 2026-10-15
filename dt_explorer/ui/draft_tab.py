@@ -5,8 +5,11 @@ the result of the fast check. The check takes seconds, so it runs in a worker th
 """
 from __future__ import annotations
 
+import queue
+
 from nicegui import run, ui
 
+from ..core import verify as verify_mod
 from ..core.render import RenderError
 
 SEVERITY_STYLE = {"error": ("error", "red-5"), "warning": ("warning", "orange-5"),
@@ -114,8 +117,109 @@ def render_draft_tab(container, session, edit, changed) -> None:
         btn.on_click(run_check)
         ui.timer(0.05, run_check, once=True)
 
+        _render_verify(session, text, "\n".join(lines) + "\n" if lines else "")
+
 
 def _remove(session, label: str, changed) -> None:
     session.remove(label)
     session.save()
     changed()
+
+
+def _render_verify(session, overlay_text: str, conf_text: str) -> None:
+    """'Verify with west' (Zephyr's own configure step, streamed) and 'Write to app'."""
+    build, app = session.model.build, session.model.app_dir
+    ui.separator()
+    with ui.row().classes("items-center gap-2"):
+        ui.label("Authoritative check").classes("font-bold")
+        vbtn = ui.button("Verify with west", icon="verified").props("flat dense no-caps id=draft-verify") \
+            .props('title="west build --cmake-only into a scratch folder with the overlay and the Kconfig lines (about 15-45 s). Your build folder is not touched."')
+        vspin = ui.spinner(size="sm").props("id=draft-verify-spinner")
+        vspin.set_visibility(False)
+        vstatus = ui.label().classes("text-sm").props("id=draft-verify-status")
+    vlog = ui.log(max_lines=3000).classes("w-full h-48 font-mono text-xs").style("background:#0d1117") \
+        .props("id=draft-verify-log")
+    vlog.set_visibility(False)
+    verr = ui.label().classes("w-full text-xs font-mono p-2").props("id=draft-verify-errors")         .style("white-space: pre-wrap; word-break: break-all; background:#0d1117")
+    verr.set_visibility(False)
+
+    def finish(run_, plan_) -> None:
+        res = verify_mod.result_of(run_, plan_)
+        vspin.set_visibility(False)
+        vbtn.set_enabled(True)
+        if res.ok:
+            vstatus.text = f"Zephyr accepts the draft (west rc 0, {res.duration:.0f} s)"
+            vstatus.classes(replace="text-sm text-green-4")
+            shown = res.warnings
+        else:
+            vstatus.text = f"Zephyr rejects the draft (west rc {res.returncode}, {res.duration:.0f} s)"
+            vstatus.classes(replace="text-sm text-red-4")
+            shown = res.errors
+        verr.text = "\n".join(shown)
+        verr.set_visibility(bool(shown))
+
+    async def run_verify() -> None:
+        vbtn.set_enabled(False)
+        vspin.set_visibility(True)
+        vstatus.text = "west is configuring …"
+        vstatus.classes(replace="text-sm text-grey-5")
+        vlog.clear()
+        vlog.set_visibility(True)
+        verr.set_visibility(False)
+        q: queue.SimpleQueue = queue.SimpleQueue()
+        try:
+            run_, plan_ = await run.io_bound(verify_mod.start, build, overlay_text, conf_text, q.put)
+        except verify_mod.VerifyError as exc:
+            vspin.set_visibility(False)
+            vbtn.set_enabled(True)
+            vstatus.text = f"Cannot verify: {exc}"
+            vstatus.classes(replace="text-sm text-red-4")
+            return
+
+        def drain() -> None:
+            for _ in range(200):
+                try:
+                    vlog.push(q.get_nowait())
+                except queue.Empty:
+                    break
+            if not run_.running and q.empty():
+                timer.cancel()
+                finish(run_, plan_)
+
+        timer = ui.timer(0.2, drain)
+
+    vbtn.on_click(run_verify)
+
+    with ui.row().classes("items-center gap-2"):
+        ui.label("Write to app").classes("font-bold")
+        wbtn = ui.button("Write to app", icon="save").props("flat dense no-caps id=draft-write")
+        wstatus = ui.label().classes("text-xs text-grey-5").props("id=draft-write-status")
+    ui.label(f"Writes {verify_mod.OVERLAY_NAME} and {verify_mod.CONF_NAME} into the app folder ({app}). "
+             "Zephyr only reads them if the app's CMakeLists.txt or your west command refers to them, "
+             f"e.g. west build -- -DEXTRA_DTC_OVERLAY_FILE={verify_mod.OVERLAY_NAME} "
+             f"-DEXTRA_CONF_FILE={verify_mod.CONF_NAME}").classes("text-xs text-grey-5")
+
+    def do_write(dlg) -> None:
+        dlg.close()
+        try:
+            paths = verify_mod.write_to_app(app, overlay_text, conf_text)
+        except OSError as exc:
+            wstatus.text = f"Write failed: {exc}"
+            return
+        wstatus.text = "Wrote " + ", ".join(p.name for p in paths)
+        ui.notify("Wrote " + ", ".join(str(p) for p in paths))
+
+    def ask_write() -> None:
+        old = verify_mod.existing_files(app)
+        with ui.dialog() as dlg, ui.card():
+            ui.label("Write the draft into the app folder?").classes("font-bold")
+            ui.label(str(app)).classes("text-xs font-mono")
+            ui.label(f"{verify_mod.OVERLAY_NAME}, {verify_mod.CONF_NAME}").classes("text-xs font-mono")
+            if old:
+                ui.label("Overwrites: " + ", ".join(p.name for p in old)).classes("text-xs text-orange-5")
+            with ui.row():
+                ui.button("Cancel", on_click=dlg.close).props("flat no-caps id=draft-write-cancel")
+                ui.button("Write", on_click=lambda: do_write(dlg)).props("no-caps id=draft-write-confirm")
+        dlg.open()
+
+    wbtn.on_click(ask_write)
