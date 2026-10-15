@@ -1,6 +1,7 @@
 # Binding translation: old SAM0 driver family (atmel,sam0-*) -> Microchip g1 family.
 # Format: see the module docstring of dt_explorer/core/translate.py.
-# Basis: docs/research/binding_pairs.md (P5.0). Checked against Zephyr v4.3.0.
+# Basis: docs/research/binding_pairs.md (P5.0, P5.2b). UART, GPIO, pinctrl, clocks checked against Zephyr v4.3.0;
+# I2C and SPI against Zephyr main (4.5.0-rc1), which is the first with those target bindings.
 #
 # Pin macro renames are a value map (table pin_renames), not a hook: it is plain data, and a
 # community translation for another pair can use the same mechanism without Python.
@@ -269,13 +270,45 @@ translations:
     target_only:
       clock-external: no source counterpart, no default
       run-in-standby-en: no source counterpart, target default 1
-  # ---- SERCOM I2C and SPI: no target binding in Zephyr v4.3.0 (P5.0 finding 1) ----------------
+  # ---- SERCOM I2C and SPI -----------------------------------------------------------------------
+  # The g1 I2C/SPI bindings exist from Zephyr 4.5 on (P5.2b, checked against zephyr-main 4.5.0-rc1), not in
+  # v4.3.0 (P5.0 finding 1). Each source therefore has two entries: the real translation, and a no_target
+  # entry that a consumer picks when the target workspace has no binding for the real target compatible
+  # (registry key (source, None)). The capability test is "binding for <target> exists in the target workspace".
+  - source: atmel,sam0-i2c
+    target: microchip,sercom-g1-i2c
+    use: [base, pinctrl_device, sercom_clocks]
+    note: >
+      Same pad-free I2C block on both sides: clock-frequency, sq-size and cq-size come from i2c-controller.yaml
+      and keep their meaning. dmas/dma-names keep both cells (channel, trigger source); the g1 driver uses
+      them only with CONFIG_I2C_MCHP_DMA_DRIVEN. Child nodes (for example an eeprom) are not part of the
+      translation and are reported by the caller.
+    keep: [reg, interrupts, dmas, dma-names, clock-frequency, sq-size, cq-size]
+    target_only:
+      run-in-standby-en: no source counterpart, target default 1
+      zephyr,transfer-timeout-ms: i2c-controller.yaml property added after v4.3.0, no source counterpart
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
   - source: atmel,sam0-i2c
     no_target: >-
-      microchip,sercom-g1-i2c has no binding or driver in Zephyr v4.3.0; recheck against a current Zephyr
+      no microchip,sercom-g1-i2c binding or driver in Zephyr v4.3.0 (present from 4.5 on); use a newer target workspace
+  - source: atmel,sam0-spi
+    target: microchip,sercom-g1-spi
+    use: [base, pinctrl_device, sercom_clocks]
+    note: >
+      dipo/dopo are the CTRLA.DIPO/DOPO register fields on both sides (both drivers write them unchanged),
+      so they keep name, type and value. cs-gpios and overrun-character come from spi-controller.yaml.
+      The target binding does not require interrupts; they are kept because the driver connects every
+      entry of the node. dmas/dma-names as for I2C.
+    keep: [reg, interrupts, dmas, dma-names, clock-frequency, cs-gpios, overrun-character, dipo, dopo]
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
   - source: atmel,sam0-spi
     no_target: >-
-      no microchip,sercom-g1-spi binding or driver in Zephyr v4.3.0; recheck against a current Zephyr
+      no microchip,sercom-g1-spi binding or driver in Zephyr v4.3.0 (present from 4.5 on); use a newer target workspace
   # ---- SERCOM parent node ----------------------------------------------------------------
   - source: atmel,sam0-sercom
     target: microchip,sercom-g1

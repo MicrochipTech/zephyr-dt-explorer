@@ -135,103 +135,105 @@ Source properties: **45** (own + inherited, incl. child-binding levels). Table r
 | `txpo` | int | yes | `g1-uart: txpo` | int | yes | keep | Same enum for SAMD5/E5. Old binding lists more SoC variants; new lists only SAMD5/E5. Both boards set txpo = <0>. |
 | `collision-detection` | boolean | no | `g1-uart: collision-detection` | boolean | no | keep | Old driver reads it (uart_sam0.c:1268). The g1 driver does not read it (no match in uart_mchp_sercom_g1.c). |
 
-### 1.2 SERCOM I2C: atmel,sam0-i2c -> (no target binding in v4.3.0)
+### 1.2 SERCOM I2C: atmel,sam0-i2c -> microchip,sercom-g1-i2c
 
 Source: `i2c/atmel,sam0-i2c.yaml` (include chain: i2c-controller.yaml, pinctrl-device.yaml, atmel,assigned-clocks.yaml).
+Target: `i2c/microchip,sercom-g1-i2c.yaml` (Zephyr main, 4.5.0-rc1; no binding in v4.3.0, P5.2b).
 
 Source properties: **39** (own + inherited, incl. child-binding levels). Table rows: **39**.
 
 | source property | type | required | target property | type | required | mapping | note |
 |---|---|---|---|---|---|---|---|
-| `wakeup-source (inh: base/pm.yaml)` | boolean | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `zephyr,pm-device-runtime-auto (inh: base/pm.yaml)` | boolean | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `zephyr,disabling-power-states (inh: base/pm.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `status (inh: base/base.yaml)` | string | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `compatible (inh: base/base.yaml)` | string-array | yes | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `reg` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. SoC node sercom7 uses compatible microchip,sercom-g1-i2c (samd5xe5x_p.dtsi:33) with no YAML and no driver. |
-| `reg-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupts` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
-| `interrupts-extended (inh: base/base.yaml)` | compound | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupt-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupt-parent (inh: base/base.yaml)` | phandle | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `label (inh: base/base.yaml)` | string | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `clocks` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. Old format: <&gclk ID>, <&mclk OFFSET BIT>. |
-| `clock-names` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. Old driver reads gclk and mclk names (i2c_sam0.c:825, 827). |
-| `#address-cells (inh: i2c/i2c-controller.yaml)` | - | yes | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `#size-cells (inh: i2c/i2c-controller.yaml)` | - | yes | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `dmas` | - | no | — (no target binding in v4.3.0) | — | — | open | Target binding missing. Old driver reads TX/RX DMA (i2c_sam0.c:781-784). |
-| `dma-names` | - | no | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
-| `io-channels (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `io-channel-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `mboxes (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `mbox-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `power-domains (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `power-domain-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `#power-domain-cells (inh: base/base.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `hwlocks (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `hwlock-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `zephyr,deferred-init (inh: base/base.yaml)` | boolean | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `clock-frequency (inh: i2c/i2c-controller.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `sq-size (inh: i2c/i2c-controller.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `cq-size (inh: i2c/i2c-controller.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-0 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-1 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-2 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-3 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-4 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-names (inh: pinctrl/pinctrl-device.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `atmel,assigned-clocks` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. Old: consumer sets generator source. |
-| `atmel,assigned-clock-names` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
+| `wakeup-source (inh: base/pm.yaml)` | boolean | no | `g1-i2c: wakeup-source` | boolean | no | keep | Inherited from base/pm.yaml; same name and type exist on the target side. |
+| `zephyr,pm-device-runtime-auto (inh: base/pm.yaml)` | boolean | no | `g1-i2c: zephyr,pm-device-runtime-auto` | boolean | no | keep | Inherited from base/pm.yaml; same name and type exist on the target side. |
+| `zephyr,disabling-power-states (inh: base/pm.yaml)` | phandles | no | `g1-i2c: zephyr,disabling-power-states` | phandles | no | keep | Inherited from base/pm.yaml; same name and type exist on the target side. |
+| `status (inh: base/base.yaml)` | string | no | `g1-i2c: status` | string | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `compatible (inh: base/base.yaml)` | string-array | yes | `g1-i2c: compatible` | string-array | yes | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `reg` | - | yes | `g1-i2c: reg` | - | yes | keep | Same register block base per SERCOM instance. Size differs in the SoC dtsi (0x40 old, 0x29 pic32cx_sg). A SoC value, not a binding issue. |
+| `reg-names (inh: base/base.yaml)` | string-array | no | `g1-i2c: reg-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `interrupts` | - | yes | `g1-i2c: interrupts` | - | yes | keep | Required on both. SAME54 and pic32cx_sg41 give the same four IRQ entries per SERCOM (SERCOM4 62..65, SERCOM7 74..77), so the values carry over (checked P5.2b). |
+| `interrupts-extended (inh: base/base.yaml)` | compound | no | `g1-i2c: interrupts-extended` | compound | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `interrupt-names (inh: base/base.yaml)` | string-array | no | `g1-i2c: interrupt-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `interrupt-parent (inh: base/base.yaml)` | phandle | no | `g1-i2c: interrupt-parent` | phandle | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `label (inh: base/base.yaml)` | string | no | `g1-i2c: label` | string | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `clocks` | - | yes | `g1-i2c: clocks` | - | yes | derive | Old: <&gclk ID>, <&mclk OFFSET BIT> (1 + 2 cells). New: <&mclkperiph SUBSYS>, <&gclkperiph SUBSYS> (1 + 1 cells), order reversed. Hook clocks_to_periph; the pic32cx_sg41 SoC dtsi already holds the same values for sercom4 and sercom7 (test_translate.py, P5.2b). |
+| `clock-names` | - | yes | `g1-i2c: clock-names` | - | yes | derive | Old GCLK, MCLK; new mclk, gclk. Both drivers read them by name through the clock controller (DT_INST_CLOCKS_CELL_BY_NAME(n, mclk/gclk, subsystem) in the g1 driver). Produced together with clocks. |
+| `#address-cells (inh: i2c/i2c-controller.yaml)` | - | yes | `g1-i2c: #address-cells` | - | yes | keep | Required on both (bus controller). Inherited from the controller YAML. |
+| `#size-cells (inh: i2c/i2c-controller.yaml)` | - | yes | `g1-i2c: #size-cells` | - | yes | keep | Required on both (bus controller). Inherited from the controller YAML. |
+| `dmas` | - | no | `g1-i2c: dmas` | - | no | keep | Optional. Same two cells on both sides (channel, trigger source; dmac cell names are identical). The g1 I2C driver uses them (CONFIG_I2C_MCHP_DMA_DRIVEN), so no warning like on UART. |
+| `dma-names` | - | no | `g1-i2c: dma-names` | - | no | keep | Optional. Same two cells on both sides (channel, trigger source; dmac cell names are identical). The g1 I2C driver uses them (CONFIG_I2C_MCHP_DMA_DRIVEN), so no warning like on UART. |
+| `io-channels (inh: base/base.yaml)` | phandle-array | no | `g1-i2c: io-channels` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `io-channel-names (inh: base/base.yaml)` | string-array | no | `g1-i2c: io-channel-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `mboxes (inh: base/base.yaml)` | phandle-array | no | `g1-i2c: mboxes` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `mbox-names (inh: base/base.yaml)` | string-array | no | `g1-i2c: mbox-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `power-domains (inh: base/base.yaml)` | phandle-array | no | `g1-i2c: power-domains` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `power-domain-names (inh: base/base.yaml)` | string-array | no | `g1-i2c: power-domain-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `#power-domain-cells (inh: base/base.yaml)` | int | no | `g1-i2c: #power-domain-cells` | int | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `hwlocks (inh: base/base.yaml)` | phandle-array | no | `g1-i2c: hwlocks` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `hwlock-names (inh: base/base.yaml)` | string-array | no | `g1-i2c: hwlock-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `zephyr,deferred-init (inh: base/base.yaml)` | boolean | no | `g1-i2c: zephyr,deferred-init` | boolean | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `clock-frequency (inh: i2c/i2c-controller.yaml)` | int | no | `g1-i2c: clock-frequency` | int | no | keep | Bus bitrate (I2C) / maximum SPI clock. Same meaning on both sides. |
+| `sq-size (inh: i2c/i2c-controller.yaml)` | int | no | `g1-i2c: sq-size` | int | no | keep | Inherited from i2c/i2c-controller.yaml; same name and type exist on the target side. |
+| `cq-size (inh: i2c/i2c-controller.yaml)` | int | no | `g1-i2c: cq-size` | int | no | keep | Inherited from i2c/i2c-controller.yaml; same name and type exist on the target side. |
+| `pinctrl-0 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-i2c: pinctrl-0` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-1 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-i2c: pinctrl-1` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-2 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-i2c: pinctrl-2` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-3 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-i2c: pinctrl-3` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-4 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-i2c: pinctrl-4` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-names (inh: pinctrl/pinctrl-device.yaml)` | string-array | no | `g1-i2c: pinctrl-names` | string-array | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `atmel,assigned-clocks` | - | yes | — (no counterpart) | — | — | derive | Old SoC sets <&gclk 0> on the node. The equivalent is gclkperiph-src = "gclkN" plus gclkperiph-en = 1 on the SERCOM child of &clock/gclkperiph. The translation emits it as a report line, not as a property. |
+| `atmel,assigned-clock-names` | - | yes | — (no counterpart) | — | — | drop | Names the entry above. Dropped, because gclkperiph-src on the consumer's clock child replaces it. |
 
-### 1.3 SERCOM SPI: atmel,sam0-spi -> (no target binding in v4.3.0)
+### 1.3 SERCOM SPI: atmel,sam0-spi -> microchip,sercom-g1-spi
 
 Source: `spi/atmel,sam0-spi.yaml` (include chain: spi-controller.yaml, pinctrl-device.yaml, atmel,assigned-clocks.yaml).
+Target: `spi/microchip,sercom-g1-spi.yaml` (Zephyr main, 4.5.0-rc1; no binding in v4.3.0, P5.2b).
 
 Source properties: **41** (own + inherited, incl. child-binding levels). Table rows: **41**.
 
 | source property | type | required | target property | type | required | mapping | note |
 |---|---|---|---|---|---|---|---|
-| `wakeup-source (inh: base/pm.yaml)` | boolean | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `zephyr,pm-device-runtime-auto (inh: base/pm.yaml)` | boolean | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `zephyr,disabling-power-states (inh: base/pm.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `status (inh: base/base.yaml)` | string | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `compatible (inh: base/base.yaml)` | string-array | yes | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `reg` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing (no microchip,sercom-g1-spi binding or driver). |
-| `reg-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupts (inh: base/base.yaml)` | array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupts-extended (inh: base/base.yaml)` | compound | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupt-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `interrupt-parent (inh: base/base.yaml)` | phandle | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `label (inh: base/base.yaml)` | string | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `clocks` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
-| `clock-names` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. Old driver reads gclk and mclk names (spi_sam0.c:750-764). |
-| `#address-cells (inh: spi/spi-controller.yaml)` | - | yes | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `#size-cells (inh: spi/spi-controller.yaml)` | - | yes | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `dmas` | - | no | — (no target binding in v4.3.0) | — | — | open | Target binding missing. Old driver reads TX/RX DMA (spi_sam0.c:729-733). |
-| `dma-names` | - | no | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
-| `io-channels (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `io-channel-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `mboxes (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `mbox-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `power-domains (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `power-domain-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `#power-domain-cells (inh: base/base.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `hwlocks (inh: base/base.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `hwlock-names (inh: base/base.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `zephyr,deferred-init (inh: base/base.yaml)` | boolean | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `clock-frequency (inh: spi/spi-controller.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `cs-gpios (inh: spi/spi-controller.yaml)` | phandle-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `overrun-character (inh: spi/spi-controller.yaml)` | int | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-0 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-1 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-2 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-3 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-4 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `pinctrl-names (inh: pinctrl/pinctrl-device.yaml)` | string-array | no | — (no target binding in v4.3.0) | — | — | open | No target binding exists in the v4.3.0 workspace (no microchip,sercom-g1-i2c binding or driver). Open. |
-| `atmel,assigned-clocks` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
-| `atmel,assigned-clock-names` | - | yes | — (no target binding in v4.3.0) | — | — | open | Target binding missing. |
-| `dipo` | int | yes | — (no target binding in v4.3.0) | — | — | open | Data In Pinout. Board same54_xpro sets 3 (PB29 / SERCOM4_PAD3). The E54 board sets no SPI. Target missing. |
-| `dopo` | int | yes | — (no target binding in v4.3.0) | — | — | open | Data Out Pinout. Board same54_xpro sets 0. The E54 board sets no SPI. Target missing. |
+| `wakeup-source (inh: base/pm.yaml)` | boolean | no | `g1-spi: wakeup-source` | boolean | no | keep | Inherited from base/pm.yaml; same name and type exist on the target side. |
+| `zephyr,pm-device-runtime-auto (inh: base/pm.yaml)` | boolean | no | `g1-spi: zephyr,pm-device-runtime-auto` | boolean | no | keep | Inherited from base/pm.yaml; same name and type exist on the target side. |
+| `zephyr,disabling-power-states (inh: base/pm.yaml)` | phandles | no | `g1-spi: zephyr,disabling-power-states` | phandles | no | keep | Inherited from base/pm.yaml; same name and type exist on the target side. |
+| `status (inh: base/base.yaml)` | string | no | `g1-spi: status` | string | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `compatible (inh: base/base.yaml)` | string-array | yes | `g1-spi: compatible` | string-array | yes | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `reg` | - | yes | `g1-spi: reg` | - | yes | keep | Same register block base per SERCOM instance. Size differs in the SoC dtsi (0x40 old, 0x29 pic32cx_sg). A SoC value, not a binding issue. |
+| `reg-names (inh: base/base.yaml)` | string-array | no | `g1-spi: reg-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `interrupts (inh: base/base.yaml)` | array | no | `g1-spi: interrupts` | array | no | keep | Optional on both (base.yaml). The g1 SPI driver connects every IRQ of the node, so the entries are kept. |
+| `interrupts-extended (inh: base/base.yaml)` | compound | no | `g1-spi: interrupts-extended` | compound | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `interrupt-names (inh: base/base.yaml)` | string-array | no | `g1-spi: interrupt-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `interrupt-parent (inh: base/base.yaml)` | phandle | no | `g1-spi: interrupt-parent` | phandle | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `label (inh: base/base.yaml)` | string | no | `g1-spi: label` | string | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `clocks` | - | yes | `g1-spi: clocks` | - | yes | derive | Old: <&gclk ID>, <&mclk OFFSET BIT> (1 + 2 cells). New: <&mclkperiph SUBSYS>, <&gclkperiph SUBSYS> (1 + 1 cells), order reversed. Hook clocks_to_periph; the pic32cx_sg41 SoC dtsi already holds the same values for sercom4 and sercom7 (test_translate.py, P5.2b). |
+| `clock-names` | - | yes | `g1-spi: clock-names` | - | yes | derive | Old GCLK, MCLK; new mclk, gclk. Both drivers read them by name through the clock controller (DT_INST_CLOCKS_CELL_BY_NAME(n, mclk/gclk, subsystem) in the g1 driver). Produced together with clocks. |
+| `#address-cells (inh: spi/spi-controller.yaml)` | - | yes | `g1-spi: #address-cells` | - | yes | keep | Required on both (bus controller). Inherited from the controller YAML. |
+| `#size-cells (inh: spi/spi-controller.yaml)` | - | yes | `g1-spi: #size-cells` | - | yes | keep | Required on both (bus controller). Inherited from the controller YAML. |
+| `dmas` | - | no | `g1-spi: dmas` | - | no | keep | Optional. Same two cells on both sides (channel, trigger source; dmac cell names are identical). The g1 SPI driver uses them (MCHP_DT_INST_DMA_* in spi_mchp_sercom_g1.c), so no warning like on UART. |
+| `dma-names` | - | no | `g1-spi: dma-names` | - | no | keep | Optional. Same two cells on both sides (channel, trigger source; dmac cell names are identical). The g1 SPI driver uses them (MCHP_DT_INST_DMA_* in spi_mchp_sercom_g1.c), so no warning like on UART. |
+| `io-channels (inh: base/base.yaml)` | phandle-array | no | `g1-spi: io-channels` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `io-channel-names (inh: base/base.yaml)` | string-array | no | `g1-spi: io-channel-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `mboxes (inh: base/base.yaml)` | phandle-array | no | `g1-spi: mboxes` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `mbox-names (inh: base/base.yaml)` | string-array | no | `g1-spi: mbox-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `power-domains (inh: base/base.yaml)` | phandle-array | no | `g1-spi: power-domains` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `power-domain-names (inh: base/base.yaml)` | string-array | no | `g1-spi: power-domain-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `#power-domain-cells (inh: base/base.yaml)` | int | no | `g1-spi: #power-domain-cells` | int | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `hwlocks (inh: base/base.yaml)` | phandle-array | no | `g1-spi: hwlocks` | phandle-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `hwlock-names (inh: base/base.yaml)` | string-array | no | `g1-spi: hwlock-names` | string-array | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `zephyr,deferred-init (inh: base/base.yaml)` | boolean | no | `g1-spi: zephyr,deferred-init` | boolean | no | keep | Inherited from base/base.yaml; same name and type exist on the target side. |
+| `clock-frequency (inh: spi/spi-controller.yaml)` | int | no | `g1-spi: clock-frequency` | int | no | keep | Bus bitrate (I2C) / maximum SPI clock. Same meaning on both sides. |
+| `cs-gpios (inh: spi/spi-controller.yaml)` | phandle-array | no | `g1-spi: cs-gpios` | phandle-array | no | keep | Chip selects. The gpio controller label (portX) and the 2-cell specifier are the same on both sides; the target port node must be enabled. |
+| `overrun-character (inh: spi/spi-controller.yaml)` | int | no | `g1-spi: overrun-character` | int | no | keep | Inherited from spi/spi-controller.yaml; same name and type exist on the target side. |
+| `pinctrl-0 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-spi: pinctrl-0` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-1 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-spi: pinctrl-1` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-2 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-spi: pinctrl-2` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-3 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-spi: pinctrl-3` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-4 (inh: pinctrl/pinctrl-device.yaml)` | phandles | no | `g1-spi: pinctrl-4` | phandles | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `pinctrl-names (inh: pinctrl/pinctrl-device.yaml)` | string-array | no | `g1-spi: pinctrl-names` | string-array | no | keep | Inherited from pinctrl/pinctrl-device.yaml; same name and type exist on the target side. |
+| `atmel,assigned-clocks` | - | yes | — (no counterpart) | — | — | derive | Old SoC sets <&gclk 0> on the node. The equivalent is gclkperiph-src = "gclkN" plus gclkperiph-en = 1 on the SERCOM child of &clock/gclkperiph. The translation emits it as a report line, not as a property. |
+| `atmel,assigned-clock-names` | - | yes | — (no counterpart) | — | — | drop | Names the entry above. Dropped, because gclkperiph-src on the consumer's clock child replaces it. |
+| `dipo` | int | yes | `g1-spi: dipo` | int | yes | keep | Data In Pinout (CTRLA.DIPO). Same name, type and required on both; both drivers pass the value unchanged to SERCOM_SPI_CTRLA_DIPO (spi_sam0.c:739, spi_mchp_sercom_g1.c:1090). Board same54_xpro sets 3. No derivation needed. |
+| `dopo` | int | yes | `g1-spi: dopo` | int | yes | keep | Data Out Pinout (CTRLA.DOPO). Same as dipo. Board same54_xpro sets 0. |
 
 ### 1.4 SERCOM parent node: atmel,sam0-sercom -> microchip,sercom-g1
 
@@ -529,6 +531,28 @@ Target properties with no source row in the tables above: **2**.
 |---|---|---|---|---|---|---|
 | `g1-uart` | `clock-external` | boolean | no | — | no counterpart | New only. Boolean: external clock instead of the internal one. Not set by either board. Old driver has no such option. |
 | `g1-uart` | `run-in-standby-en` | int | no | — | no counterpart | New only. int enum 0/1, default 1. Not set by the E54 board, so the default applies. Old has no counterpart. |
+
+### 1.T target-only: SERCOM I2C (g1-i2c)
+
+Target properties with no source row in the table above: **5**.
+
+| target binding | target property | type | required | source | mapping | note |
+|---|---|---|---|---|---|---|
+| `g1-i2c` | `ranges` | compound | no | — | no counterpart | New only. base.yaml property added after v4.3.0; the old base.yaml has no such property. Not set by the boards. |
+| `g1-i2c` | `dma-coherent` | boolean | no | — | no counterpart | New only. base.yaml property added after v4.3.0. Not set by the boards. |
+| `g1-i2c` | `dma-ranges` | compound | no | — | no counterpart | New only. base.yaml property added after v4.3.0. Not set by the boards. |
+| `g1-i2c` | `zephyr,transfer-timeout-ms` | int | no | — | no counterpart | New only. i2c-controller.yaml property added after v4.3.0 (transfer timeout). Not set by the boards. |
+| `g1-i2c` | `run-in-standby-en` | int | no | — | no counterpart | New only. int enum 0/1, default 1. Neither source board has a counterpart, so the target default applies. |
+
+### 1.T target-only: SERCOM SPI (g1-spi)
+
+Target properties with no source row in the table above: **3**.
+
+| target binding | target property | type | required | source | mapping | note |
+|---|---|---|---|---|---|---|
+| `g1-spi` | `ranges` | compound | no | — | no counterpart | New only. base.yaml property added after v4.3.0; the old base.yaml has no such property. Not set by the boards. |
+| `g1-spi` | `dma-coherent` | boolean | no | — | no counterpart | New only. base.yaml property added after v4.3.0. Not set by the boards. |
+| `g1-spi` | `dma-ranges` | compound | no | — | no counterpart | New only. base.yaml property added after v4.3.0. Not set by the boards. |
 
 ### 1.T target-only: SERCOM parent (g1-sercom)
 
@@ -889,6 +913,7 @@ Target properties with no source row in the tables above: **327**.
 ## 7. Open points and gaps (input for P5.2 and later)
 
 - **I2C and SPI have no target** in v4.3.0 (tables 1.2, 1.3). Check the new Zephyr main workspace (`C:\Masters\zephyr-main`, planned for P6.1) or record a decision.
+  **Update P5.2b:** `C:\Masters\zephyr-main` (4.5.0-rc1) has `microchip,sercom-g1-i2c` and `-spi`. Tables 1.2 and 1.3 now map every source property against those bindings (I2C 39 rows, SPI 41 rows; target-only tables 1.T for g1-i2c and g1-spi). All properties are `keep` except `clocks`/`clock-names`/`atmel,assigned-clocks` (derive, as for UART) and `atmel,assigned-clock-names` (drop). `dipo`/`dopo` have the same names on both sides, so no pad derivation is needed. v4.3.0 stays `no_target`.
 - **Clock derive rules** (all need the header `mchp_sam_d5x_e5x_clock.h`): GCLK id -> `CLOCK_MCHP_GCLKPERIPH_ID_*` (GCLK 23 is SERCOM2_CORE: `MCHP_CLOCK_DERIVE_ID(6, 0x3f, 0x3f, 23, 30)`), MCLK (OFFSET, BIT) -> `CLOCK_MCHP_MCLKPERIPH_ID_*` (`0x14` is APBA, `0x18` is APBB; bit 9 on APBB is SERCOM2; the derive macro encodes bus index and bit). The bus index mapping rests on two examples and must be checked against all four buses. Generator index `N` -> `CLOCK_MCHP_GCLKGEN_ID_GENn`.
 - **RTC source 4 vs 5** (finding 5): carry the value unchanged (4 = xosc1k), but confirm on the SAME5x datasheet and correct the old binding comment if needed. Out of the card's scope: the RTC binding itself (`atmel,sam0-rtc`).
 - **Pin macro renames**: 92 old-only names need a rename map for pinmux transforms (P5.2). The 4 new SERCOM7 pads (PA30, PA31, PB30, PB31) only matter for SERCOM7 (I2C, open).
