@@ -424,6 +424,36 @@ node as it is built.
   `<label>_<class>_edit` (for example `sercom2_uart_edit`), so the board's own group is not changed.
 - **Cancel** closes the dialog and changes nothing.
 
+### 10.2 Generic form (nodes without a recipe)
+
+![Generic form for tc0](evidence/img/P8.5_generic_form_tc0.png)
+
+When no recipe covers the `compatible` of a disabled node but the build has its binding, **Configure…**
+still appears and opens a form generated from the binding. The example is `&tc0`
+(`atmel,sam0-tc32`).
+
+1. **Pads (optional)**: one pad list per signal role of the node's peripheral, taken from the device
+   data. It appears only when the binding takes `pinctrl-0` and the device data knows the peripheral.
+   A pad that carries several signals of the peripheral is reported under *To fix* because the overlay
+   cannot choose between them without a recipe.
+2. **Properties**: one field per scalar property of the binding chain (`int`, `string`, `boolean`),
+   with its enum as a list, the description and `[required|optional, type, default]` below it. A
+   required property is marked `*`. A value that the SoC or board file already sets is filled in; only
+   changes appear in the overlay.
+3. **To fix** at the top lists every problem (required field empty, text that is not a number, value not
+   in the enum, a boolean the board sets that cannot be switched off by an overlay). While it is not
+   empty, **Save** is off, and the field is outlined in red.
+4. A grey line names the properties the form cannot edit (clocks, interrupts, ...). They stay as the
+   board file has them.
+5. **Use** and **Save** work as in section 10. The draft node has the class `generic`; its pinctrl
+   group is named `<label>_generic_default`.
+
+![Required property left empty](evidence/img/P8.5_generic_form_required.png)
+
+The second picture is `&adc1` with the required `prescaler` emptied.
+
+A node that is already enabled and has no recipe (for example `wdog`) has no button in the node view.
+
 ---
 
 ## 11. Left panel — tab **Draft**

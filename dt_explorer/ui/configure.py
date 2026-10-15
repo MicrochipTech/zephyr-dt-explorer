@@ -352,7 +352,13 @@ def draft_count(model) -> int:
 
 
 def can_configure(session: ConfigSession, node) -> bool:
-    return node.status == "disabled" and bool(session.options_for(node))
+    """A disabled node that a recipe covers, or (P8.5) one without a recipe but with a binding (generic form)."""
+    if node.status != "disabled":
+        return False
+    if session.options_for(node):
+        return True
+    from .generic_form import generic_available
+    return generic_available(session, node)
 
 
 def can_edit_pins(session: ConfigSession, node) -> bool:
@@ -385,6 +391,10 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
     edit = edit or node.status == "okay"            # the pencil of an edited node in the Draft tab
     inst = session.instance_of(node)
     options = session.options_for(node)
+    if not options:                                 # no recipe: the form comes from the binding (P8.5)
+        from .generic_form import open_generic
+        open_generic(session, node, on_saved)
+        return
     label = node.labels[0] if node.labels else node.name
     existing = session.draft_node(label)
     if existing is None and edit:
