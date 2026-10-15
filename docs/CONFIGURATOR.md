@@ -859,8 +859,8 @@ is changed.
 7. **Graphical board configurator** for SAME54 Xplained Pro and PIC32CX SG41/SG61 Curiosity Ultra:
    netlist importer, board YAML, board view, connector hints in the porting report. Needs the
    boards' design files.
-8. **Child nodes, generic form, more peripherals. Done 2026-10-15** (cards P8.1 to P8.19c; P8.18 had no
-   evidence file when this was written). What it delivered, with the evidence:
+8. **Child nodes, generic form, more peripherals. Done 2026-10-15** (cards P8.1 to P8.20). What it delivered,
+   with the evidence:
    - Log tab and log file: [P8.1](evidence/P8.1.md); simulated UI tests: [P8.2](evidence/P8.2.md).
    - Translations for TC/TCC PWM, ADC, DAC, GMAC/MDIO, RTC, WDT, DMAC, TRNG: [P8.3](evidence/P8.3.md),
      [P8.10](evidence/P8.10.md); consumer cells, untranslatable SoC nodes, child `rename:`/`default:`:
@@ -878,6 +878,9 @@ is changed.
      Changes tab: [P8.15](evidence/P8.15.md).
    - End-to-end test on an SG41 blinky copy, findings and fixes: [P8.19](evidence/P8.19.md),
      [P8.19b](evidence/P8.19b.md), [P8.19c](evidence/P8.19c.md) (PASS without hand corrections).
+   - Zephyr samples `blinky_pwm`, `adc_dt`, `bme280` configured on SAME54 and ported to SG41, all six builds
+     link: [P8.18](evidence/P8.18.md); fixes incl. the port scope decision (app configuration only by default):
+     [P8.18b](evidence/P8.18b.md). Not tested on hardware.
    - Docs: [P8.20](evidence/P8.20.md).
 
    Still in the backlog (plan section 10): marking draft nodes that equal the board, moving the analog and
