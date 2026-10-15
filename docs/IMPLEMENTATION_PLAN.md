@@ -589,7 +589,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.2 | done | 7820b42 |
 | P8.3 | done | 75e8539 |
 | P8.4 | done | 5973097 |
-| P8.5 | open | |
+| P8.5 | done | 31faf5d → master |
 | P8.6 | open | |
 | P8.7 | open | |
 | P8.8 | open | |
@@ -854,4 +854,5 @@ surprising, and anything you were unsure about.
 | P8.2 | [P8.2.md](evidence/P8.2.md) | 11 simulated UI tests (`-m ui`, 59 s: deep links incl. pins/package/board/draft/log, Configure I2C save on a lab1_leer copy, Edit pins prefill/cancel, Port report without Apply) + 4 Playwright smoke tests (`-m smoke`, 109 s, screenshots in %TEMP%\dtx_ui_shots; Verify marked `slow`); clean skips without env; drafts redirected. Full suite 441 passed (338 passed / 103 skipped without env). Follow-up: many UI elements lack ids (Cancel, draft-row buttons, header buttons, tabs, enum/switch props, port-other on the native input) → later UI cards add ids to what they touch |
 | P8.13 | [P8.13.md](evidence/P8.13.md) | Draft tab "Apply to app…" (ids draft-apply*) writes `boards/same54_xpro.overlay`/`.conf` for the build's own board; lab1 copy: existing overlay → exists + diff, refused without tick, conf new; lab1_leer copy (own overlay removed): new files, full build rc 0 with "Found devicetree overlay", sercom1 okay, CONFIG_I2C_SAM0=y; real apps unchanged. **Gap:** apps usually have their own board overlay, so Apply can only replace it → card P8.13b (append mode). 446 passed |
 | P8.4 | [P8.4.md](evidence/P8.4.md) | `DraftChild` (name, unit, compatible, labels, props, children) under `DraftNode.children`; draft JSON v2 (v1 loads); lab1 `eeprom@5e`, lab3 `mytemp@4f`/`eeprom@5e` lift + render back, edtlib compare 4/4 (non-vacuous); lab3 → main sam_e54_xpro: `mytemp0` inside `&sercom3`, `my_http0` ref resolves, verify rc 0; 8-port matrix + lab1 → e54 unchanged statuses, rc 0; translations accept optional `children:` rules. 461 passed. CONFIGURATOR "Child nodes follow later" → P8.20 |
+| P8.5 | [P8.5.md](evidence/P8.5.md) | generic form (ids gen-prop-*, gen-role-*, gen-save) for recipe-less nodes: scalar props with enum/default/required/description, SoC values prefilled, optional pads; lab1_leer copy: wdog + tc0 (`atmel,sam0-tc32`, prescaler 64) + tc2 with PA00 render, validate no errors, Verify rc 0, Kconfig WATCHDOG/WDT_SAM0/COUNTER/COUNTER_SAM0_TC32; required-empty flagged (unit + UI test). 459 passed. Builder: "Configure…" also for enabled recipe-less nodes (`can_configure_generic`, id cfg-open-generic). Note: Playwright smoke tests run in a child process (session event loop) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

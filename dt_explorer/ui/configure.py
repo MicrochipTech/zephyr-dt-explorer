@@ -361,6 +361,14 @@ def can_configure(session: ConfigSession, node) -> bool:
     return generic_available(session, node)
 
 
+def can_configure_generic(session: ConfigSession, node) -> bool:
+    """An enabled node without a recipe but with a binding: the generic form edits its properties."""
+    if node.status != "okay" or session.options_for(node):
+        return False
+    from .generic_form import generic_available
+    return generic_available(session, node)
+
+
 def can_edit_pins(session: ConfigSession, node) -> bool:
     """An enabled node that a recipe covers and that the lift (P5.3) can turn into a draft node."""
     if node.status != "okay" or not node.labels or not session.options_for(node):
