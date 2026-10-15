@@ -95,3 +95,12 @@ The Kconfig view (7f94422 entry) may stay in the backlog.
     - a few real-browser smoke tests with Playwright (Configure → Check → Verify, Port to board,
       board view), each saving a screenshot; skip without Chrome/Playwright or the DTX_* workspaces;
     - exploratory testing (Claude drives the tool, judges screenshots + Log tab) stays manual.
+
+## Found at P6.2b (builder)
+
+16. Port report section 3 evaluates `DT_ALIAS`/`DT_NODELABEL` references against the target
+    before the generated overlay is applied, so it says "missing, add the alias" for an alias the
+    same overlay already adds (lab3 `DT_ALIAS(sercom3)`). Evaluate after the overlay.
+17. App API drift between Zephyr versions (lab3: HTTP server `http_data_status` →
+    `http_transaction_status`) is outside the devicetree; the port report could at least warn when
+    source and target Zephyr versions differ by a minor release.
