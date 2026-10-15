@@ -579,13 +579,14 @@ exception of P5.5.
 
 Input: [research/phase8_input.md](research/phase8_input.md) (items 1–17). Rules as for all cards. **New for
 phase 8:** every card that changes the UI also updates README.md and `docs/GUI.md` in its own scope (CLAUDE.md rule)
-and, from P8.2 on, adds a simulated UI test for its new UI. Briefs for UI cards tell the agent to redirect drafts
+and, from P8.2 on, adds a simulated UI test for its new UI and gives the elements it adds or touches stable ids
+(P8.2 found many missing). Briefs for UI cards tell the agent to redirect drafts
 and writes to copies under %TEMP% and never to `taskkill /IM`.
 
 | ID | Status | Commit |
 |---|---|---|
 | P8.1 | done | ca96f9b |
-| P8.2 | open | |
+| P8.2 | done | 7820b42 |
 | P8.3 | done | 75e8539 |
 | P8.4 | open | |
 | P8.5 | open | |
@@ -837,4 +838,5 @@ surprising, and anything you were unsure about.
 | P8.16 | [P8.16.md](evidence/P8.16.md) | section 3 judged after the overlay: lab3 `DT_ALIAS(sercom3)` no longer missing (main sam_e54_xpro, SG41); version note "source Zephyr 4.3.0, target 4.5.0-rc1: app APIs may have changed" (absent within one workspace). Merged after P8.1 without conflicts; builder re-run 39 passed |
 | P8.3 | [P8.3.md](evidence/P8.3.md) | recipes: TC/TCC PWM (one module; `#pwm-cells` 2→3, consumers need a third cell), ADC (input from pad, prescaler required on g1, children), DAC (small), GMAC+MDIO+PHY (each RMII signal has exactly one pad; MDC/MDIO 4 pairs; SG41: PC22/PC23 because PB14/15 are TC5 PWM); generic: TC/TCC counter, RTC (compatible selector), WDT, DMAC, TRNG; EIC check rule only; untranslatable: CAN, USB device (no node/driver on main). Fixed-label drivers (rtc, dac, clock) → labels must not change. Enumerator extended for child-bindings from includes (binding_pairs table 1.5 misses 6 gpio-hog rows → backlog) |
 | P8.17 | [P8.17.md](evidence/P8.17.md) | remap path works (synthetic SG41 YAML with EXT1 on free SERCOM3 pads: lab1 `&sercom4` → `[remapped]` to `&sercom3`, dipo/dopo recomputed, DT_NODELABEL consequence noted, verify rc 0); on the real CUlt boards nothing qualifies (EXT1 SCK has no pad, SERCOM0/6 busy, sercom2 pads not on a connector) → still `conflict`, only suggestions sharpened (busy instances no longer offered); 8-port matrix + lab1 → sam_e54_xpro overlays identical to before, all verify rc 0. 426 passed. Builder: port dialog status line counts remapped nodes |
+| P8.2 | [P8.2.md](evidence/P8.2.md) | 11 simulated UI tests (`-m ui`, 59 s: deep links incl. pins/package/board/draft/log, Configure I2C save on a lab1_leer copy, Edit pins prefill/cancel, Port report without Apply) + 4 Playwright smoke tests (`-m smoke`, 109 s, screenshots in %TEMP%\dtx_ui_shots; Verify marked `slow`); clean skips without env; drafts redirected. Full suite 441 passed (338 passed / 103 skipped without env). Follow-up: many UI elements lack ids (Cancel, draft-row buttons, header buttons, tabs, enum/switch props, port-other on the native input) → later UI cards add ids to what they touch |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
