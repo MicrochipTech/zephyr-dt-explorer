@@ -1,0 +1,21 @@
+#ifndef DTX_${ID}_H_
+#define DTX_${ID}_H_
+
+/* gpio-leds child at DT_NODELABEL($label) */
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/** 0 when the GPIO is ready, otherwise -ENODEV. Configures the pin as output (off). */
+int dtx_${id}_init(void);
+
+/** Switch the LED on (true) or off (false). Returns 0 or a negative errno. */
+int dtx_${id}_set(bool on);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* DTX_${ID}_H_ */

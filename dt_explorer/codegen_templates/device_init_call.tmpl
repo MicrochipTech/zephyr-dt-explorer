@@ -1,0 +1,4 @@
+	if (dtx_${id}_init() != 0) {
+		printk("dtx_devices: ${id} is not ready\n");
+		rc = -ENODEV;
+	}

@@ -1,0 +1,20 @@
+#include <zephyr/drivers/gpio.h>
+#include "dtx_${id}.h"
+
+#define DTX_${ID}_NODE DT_NODELABEL($label)
+BUILD_ASSERT(DT_NODE_HAS_STATUS(DTX_${ID}_NODE, okay), "node $label is not enabled");
+
+static const struct gpio_dt_spec dtx_${id}_spec = GPIO_DT_SPEC_GET(DTX_${ID}_NODE, gpios);
+
+int dtx_${id}_init(void)
+{
+	if (!gpio_is_ready_dt(&dtx_${id}_spec)) {
+		return -ENODEV;
+	}
+	return gpio_pin_configure_dt(&dtx_${id}_spec, GPIO_OUTPUT_INACTIVE);
+}
+
+int dtx_${id}_set(bool on)
+{
+	return gpio_pin_set_dt(&dtx_${id}_spec, on ? 1 : 0);
+}

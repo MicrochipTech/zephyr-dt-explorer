@@ -1,0 +1,30 @@
+#include "dtx_${id}.h"
+
+#define DTX_${ID}_NODE DT_NODELABEL($label)
+BUILD_ASSERT(DT_NODE_HAS_STATUS(DTX_${ID}_NODE, okay), "node $label is not enabled");
+
+const struct device *dtx_${id}_get(void)
+{
+	return DEVICE_DT_GET(DTX_${ID}_NODE);
+}
+
+int dtx_${id}_init(void)
+{
+	return device_is_ready(dtx_${id}_get()) ? 0 : -ENODEV;
+}
+
+int dtx_${id}_read(struct dtx_${id}_data *out)
+{
+	const struct device *dev = dtx_${id}_get();
+	int rc;
+
+	if (!device_is_ready(dev)) {
+		return -ENODEV;
+	}
+	rc = sensor_sample_fetch(dev);
+	if (rc != 0) {
+		return rc;
+	}
+$gets
+	return 0;
+}

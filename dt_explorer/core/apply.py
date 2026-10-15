@@ -352,3 +352,35 @@ def draft_plan(build_dir: Path | str, overlay: str, conf: str, *, app_dir: Path 
     board, single = target_of(build_dir)
     app = Path(app_dir) if app_dir is not None else app_dir_of(build_dir)
     return plan_apply(app, board, overlay, conf, single_soc=single, new_label="draft", today=today)
+
+
+# ---- prj.conf for the generated device module (P8.14) -------------------------------------------------
+def plan_prj_conf(app_dir: Path | str, conf_text: str, *, source: str = "codegen",
+                  today: str | None = None) -> FilePlan:
+    """Plan for adding `conf_text` to ``<app>/prj.conf`` as one marked block (append mode only).
+
+    The returned ``FilePlan`` has kind ``"conf"``; ``merged`` is the new file content, ``append_diff`` the diff
+    (empty when nothing changes, e.g. every line is already in the file). Writes nothing.
+    """
+    app = Path(app_dir)
+    if not app.is_dir():
+        raise ApplyError(f"app folder not found: {app}")
+    path = app / "prj.conf"
+    fp = FilePlan("conf", path, conf_text or "", exists=path.is_file())
+    fp.comment_only = is_comment_only(conf_text or "")
+    old = _norm(path.read_text(encoding="utf-8", errors="replace")) if fp.exists else ""
+    if not fp.comment_only:
+        fp.merged, fp.append_note = merge_block("conf", old, conf_text, source=source, today=today)
+        if fp.merged != old:
+            fp.append_diff = _udiff(old, fp.merged, f"{path.name} (existing)", f"{path.name} (+ {source} block)")
+    return fp
+
+
+def apply_prj_conf(fp: FilePlan) -> str:
+    """Write the merged ``prj.conf`` of :func:`plan_prj_conf`; returns one report line."""
+    if fp.comment_only or not fp.append_diff:
+        return f"skipped:     {fp.path} (nothing to add)"
+    existed = fp.path.is_file()
+    fp.path.write_text(fp.merged, encoding="utf-8", newline="\n")
+    log.info("apply: prj.conf block written to %s", fp.path)
+    return f"{'appended' if existed else 'written'}:    {fp.path}"

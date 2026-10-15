@@ -1,0 +1,14 @@
+#include "dtx_${id}.h"
+
+#define DTX_${ID}_NODE DT_NODELABEL($label)
+BUILD_ASSERT(DT_NODE_HAS_STATUS(DTX_${ID}_NODE, okay), "node $label is not enabled");
+
+const struct device *dtx_${id}_get(void)
+{
+	return DEVICE_DT_GET(DTX_${ID}_NODE);
+}
+
+int dtx_${id}_init(void)
+{
+	return device_is_ready(dtx_${id}_get()) ? 0 : -ENODEV;
+}

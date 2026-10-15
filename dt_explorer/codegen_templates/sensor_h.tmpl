@@ -1,0 +1,28 @@
+#ifndef DTX_${ID}_H_
+#define DTX_${ID}_H_
+
+/* $compatible at DT_NODELABEL($label). Channels: $channel_names */
+#include <zephyr/device.h>
+#include <zephyr/drivers/sensor.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct dtx_${id}_data {
+$fields};
+
+/** The device behind the node. */
+const struct device *dtx_${id}_get(void);
+
+/** 0 when device_is_ready(), otherwise -ENODEV. */
+int dtx_${id}_init(void);
+
+/** sensor_sample_fetch() and sensor_channel_get() for each channel above. Returns 0 or a negative errno. */
+int dtx_${id}_read(struct dtx_${id}_data *out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* DTX_${ID}_H_ */

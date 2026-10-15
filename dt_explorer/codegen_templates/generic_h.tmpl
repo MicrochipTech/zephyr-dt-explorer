@@ -1,0 +1,21 @@
+#ifndef DTX_${ID}_H_
+#define DTX_${ID}_H_
+
+/* $compatible at DT_NODELABEL($label) */
+#include <zephyr/device.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/** The device behind the node. */
+const struct device *dtx_${id}_get(void);
+
+/** 0 when device_is_ready(), otherwise -ENODEV. */
+int dtx_${id}_init(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* DTX_${ID}_H_ */

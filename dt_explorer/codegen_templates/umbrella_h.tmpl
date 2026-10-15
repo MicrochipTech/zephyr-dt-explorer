@@ -1,0 +1,20 @@
+#ifndef DTX_DEVICES_H_
+#define DTX_DEVICES_H_
+
+/* Umbrella header of the generated device module: include this one file from the application. */
+$includes
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Check device_is_ready() for every device of the module.
+ * Returns 0 when all are ready, otherwise -ENODEV (the devices that are not ready are logged by name).
+ */
+int dtx_devices_init(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* DTX_DEVICES_H_ */
