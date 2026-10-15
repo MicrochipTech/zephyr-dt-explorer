@@ -152,7 +152,7 @@ def test_add_spi_device_with_cs_and_int_gpio(lab1_leer_copy, ui_run):
     ui_run(scenario)
     stored = json.loads((app / ".dt_explorer" / f"{BUILD}.draft.json").read_text(encoding="utf-8"))
     node = stored["nodes"][0]
-    assert node["props"]["cs-gpios"] == [[{"label": "portb"}, 24, 0]]       # node properties are written by asdict()
+    assert node["props"]["cs-gpios"] == [[{"ref": "portb"}, 24, 0]]         # Ref encoded like in child nodes (d1401ae)
     from dt_explorer.core.draft import load_draft
     from dt_explorer.core.translate import Ref
     from dt_explorer.ui.configure import revive_refs

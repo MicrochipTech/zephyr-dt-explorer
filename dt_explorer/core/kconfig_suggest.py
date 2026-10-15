@@ -118,11 +118,18 @@ def _kconfig_env(build: Path) -> tuple[dict[str, str], Path]:
 def _patched(env: dict[str, str], paths: list[str]):
     old_env = {k: os.environ.get(k) for k in env}
     old_path = list(sys.path)
+    # Zephyr's Kconfig functions import the workspace's devicetree package; a copy from another
+    # workspace already in sys.modules would be used instead (unpickling then fails), so set it aside
+    dt_names = [k for k in sys.modules if k == "devicetree" or k.startswith("devicetree.")]
+    saved_dt = {k: sys.modules.pop(k) for k in dt_names}
     os.environ.update(env)
     sys.path[:0] = paths
     try:
         yield
     finally:
+        for k in [k for k in sys.modules if k == "devicetree" or k.startswith("devicetree.")]:
+            del sys.modules[k]
+        sys.modules.update(saved_dt)
         for k, v in old_env.items():
             if v is None:
                 os.environ.pop(k, None)

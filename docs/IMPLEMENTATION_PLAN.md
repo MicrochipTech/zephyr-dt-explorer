@@ -591,7 +591,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.4 | done | 5973097 |
 | P8.5 | done | 31faf5d → master |
 | P8.6 | done | a8a99af → master |
-| P8.7 | open | |
+| P8.7 | done | 5a881e4 → master |
 | P8.8 | open | |
 | P8.9 | done | 63540ae |
 | P8.10 | open | |
@@ -599,7 +599,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.12 | done | 2396f4b → master |
 | P8.13 | done | 50d1ad1 → master |
 | P8.13b | done | 231c846 → master |
-| P8.14 | open | |
+| P8.14 | done | b515d4a |
 | P8.15 | done | 9e4a5d5 → master |
 | P8.16 | done | a09a65a → master |
 | P8.17 | done | 051c73d → master |
@@ -859,4 +859,6 @@ surprising, and anything you were unsure about.
 | P8.9 | [P8.9.md](evidence/P8.9.md) | GMAC recipe (old `atmel,sam0-gmac`/`atmel,sam-mdio`, g1 `microchip,gmac-g1-eth`/`-mdio`): two draft nodes (MAC with `phy-handle`, MDIO with `ethernet-phy@0` child); main SG41: 8 RMII pads automatic (PA12–15, PA17–19, PC20), MDC/MDIO PC22/PC23 chosen (PB14/15 used by TC5 PWM), render + validate + Verify rc 0; Kconfig NETWORKING, NET_L2_ETHERNET, ETH_DRIVER + g1 driver/MDIO symbols (prompted only); lab1 lift → render compare 2/2. Agent stopped once (§4: lift could not hold node-level phandles; test_lift fixture lacks GMAC) → builder widened the scope to core/lift.py + tests/test_lift.py. 521 passed |
 | P8.15 | [P8.15.md](evidence/P8.15.md) | Changes tab (tab=changes): git status --porcelain of the app folder, diffs in the source viewer (untracked as whole-file added), `dtx` badge on tool-written files, Refresh on demand with time/branch/HEAD; no repo / no git → message; read-only git commands only (spy test). The RTOS4 apps are not in a git repo. 514 passed |
 | P8.6 | [P8.6.md](evidence/P8.6.md) | "Add child device…" for I2C/SPI: compatibles by `on-bus` (bus-aware binding lookup for bme280 -i2c/-spi), address/CS index, generic props, GPIO pads (int/reset/cs-gpios); board children shown read-only; Kconfig incl. child drivers (CONFIG_BME280). lab1_leer copy: SERCOM1 I2C + bme280@76 and SERCOM5 SPI + bmi160@0 with cs-gpios → validate clean, Verify rc 0; checks `bus_address_duplicate`, `spi_cs_missing`, pinctrl+GPIO on one pad → errors, each shown to disappear when fixed. 507 passed. Builder fix: `Draft.to_dict/from_dict` encode node-level `Ref` values (asdict() stored them as {"label": …}) |
+| P8.7 | [P8.7.md](evidence/P8.7.md) | "Board nodes…" (header, id board-nodes-open): one draft node `&{/}` with `user_leds` (gpio-leds), `user_keys` (gpio-keys), `user_pwm_leds` (pwm-leds), aliases and chosen (path strings); pad derived from controller+pin, so the existing conflict check covers it (LED on PC18 → pin_conflict); lab1_leer copy: validate clean, Verify rc 0. Limits: GPIO flags as integers; Port does not carry the board node. Merged after P8.14 with 4 hand-resolved conflicts (README, GUI.md 10.3/10.4, draft_tab imports, page imports) |
+| P8.14 | [P8.14.md](evidence/P8.14.md) | "Generate code": `dtx_devices/` (CMakeLists, include/dtx_devices.h with dtx_devices_init(), dtx_bme280_76.h/.c with read/get/init; channels from the driver's channel_get incl. header-defined DT_DRV_COMPAT fallback), header + checksum per file; CMakeLists `add_subdirectory(dtx_devices)` only after diff + confirm; prj.conf block (`plan/apply_prj_conf`); lab1_leer copy with a test main.c links, `west build -p always` too; hand-edited file → nothing written, diff shown; src/ untouched. Builder fixes for the 3 red tests: stale `{"label"}` assertion in test_ui_child; `kconfig_suggest` sets other workspaces' `devicetree` modules aside while loading Kconfig (order-dependent `_LocalProps`). Full suite 591 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
