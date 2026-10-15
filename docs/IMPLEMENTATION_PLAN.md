@@ -381,11 +381,12 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.0 | done | 8b37419 → master |
 | P5.1 | done | 11a02eb → master |
 | P5.2 | done | adf5271 → master |
+| P5.2b | running | |
 | P5.3 | done | cb820bd → master |
 | P5.4 | done | edbbc04 |
 | P5.4b | done | 0d1cdb6 |
 | P5.4c | done | b16e35b → master |
-| P5.6 | open | |
+| P5.6 | running | |
 | P5.7 | done | fcea955 → master |
 | P5.5 | open | |
 
@@ -408,6 +409,15 @@ Status values: `open`, `running`, `done`, `blocked`.
   an unlisted property is reported, never dropped.
 - Accept: translating the `same54_xpro` SERCOM2 node gives a node that edtlib accepts against the
   `microchip,sercom-g1-uart` binding.
+
+**P5.2b I2C/SPI translations against Zephyr main.**
+- Dep: P5.2, P6.1. Scope: `dt_explorer/translations/atmel_sam0_to_mchp_g1.yaml` (+ `.py` hooks),
+  `docs/research/binding_pairs.md` (I2C/SPI sections only), `tests/test_translate.py`.
+- Do: `zephyr-main` has `microchip,sercom-g1-i2c` and `-spi` (missing in v4.3.0, see P5.0). Add property tables
+  for both (same method as P5.0), replace the `no_target` entries by real translations; keep a report line when the
+  target workspace lacks the binding (v4.3.0).
+- Accept: the lab1 sercom4 SPI and sercom7 I2C nodes translate and load in edtlib against the main bindings with the
+  main SoC dtsi of pic32cx_sg41; against v4.3.0 they still report `no_target`; suite green.
 
 **P5.3 Lift a whole build into a draft.**
 - Dep: P5.2, P3.2. Scope: `dt_explorer/core/lift.py`.
@@ -481,7 +491,7 @@ Status values: `open`, `running`, `done`, `blocked`.
   goldens unchanged.
 
 **P6.2 Acceptance: RTOS4 labs to `pic32cx_sg41_cult` and `pic32cx_sg61_cult`.**
-- Dep: P6.1. Scope: `docs/evidence/P6.2.md`.
+- Dep: P6.1, P5.4b, P5.2b. Scope: `docs/evidence/P6.2.md`.
 - Accept: lab0–lab3 verify for both boards; the SG61 report lists exactly the uses of PB26–PB29 /
   PC04 in the source (none expected for the labs; check with a synthetic draft that uses EXT1 SPI).
 
@@ -493,7 +503,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P7.2 | done | 1d23b26 → master |
 | P7.3 | done | 7d3f349 → master |
 | P7.3b | done | cb702b2 → master |
-| P7.4 | open | |
+| P7.4 | running | |
 
 **P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
 - Dep: P1.2. Scope: `dt_explorer/core/board.py` (neutral `BoardNetlist`),
