@@ -586,7 +586,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 |---|---|---|
 | P8.1 | done | ca96f9b |
 | P8.2 | open | |
-| P8.3 | open | |
+| P8.3 | done | 75e8539 |
 | P8.4 | open | |
 | P8.5 | open | |
 | P8.6 | open | |
@@ -757,6 +757,7 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
+- binding_pairs.md table 1.5 (GPIO) misses 6 `gpio-hog` child rows (P5.0 enumerator ignored child-bindings from includes; found at P8.3).
 - Generated device module "Generate code" (from side session dt-explorer-c7, user-approved 2026-10-15; builds on child
   nodes and the Apply path from P5.6; consider for phase 8): `<app>/dtx_devices/` with CMakeLists.txt
   (target_sources/target_include_directories), `include/dtx_devices.h` (umbrella, `dtx_devices_init()` with
@@ -834,4 +835,5 @@ surprising, and anything you were unsure about.
 | P8.12 | [P8.12.md](evidence/P8.12.md) | SG41/SG61 CUlt YAMLs +277 lines each (only additions): `mikroBUS` J900/J901 (MOSI PB24, MISO PC25, RX PC13, TX PC12, SCL PD08, SDA PD09 = EXT1/EXT2 pads; SCK no pad, NetJ900_4) and `Arduino` J500/J501/J504/J503 (A0–A5, D0–D15; AREF/RESET gaps); SAME54 Xpro has neither; board view renders both, EXT SVG identical. **Note:** Arduino marked `reviewed: builder` on a mechanical-layer "Arduino" text plus agreeing header texts (no silkscreen text) — looser than HC-6's silkscreen wording; tighten if wanted. 398 passed |
 | P8.1 | [P8.1.md](evidence/P8.1.md) | `%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log` + Log tab (tab=log) with Copy/level filter/DEBUG switch, `--debug`; header (commit, Python, NiceGUI, Zephyr, board, SoC, ATDF + schema, plugins); loading counts/timings, nm/west calls with rc and duration, writes, tracebacks; `state()` reasons at DEBUG via a thin wrapper (`_state()` unchanged, identical results tested). 15 tests, 396 passed |
 | P8.16 | [P8.16.md](evidence/P8.16.md) | section 3 judged after the overlay: lab3 `DT_ALIAS(sercom3)` no longer missing (main sam_e54_xpro, SG41); version note "source Zephyr 4.3.0, target 4.5.0-rc1: app APIs may have changed" (absent within one workspace). Merged after P8.1 without conflicts; builder re-run 39 passed |
+| P8.3 | [P8.3.md](evidence/P8.3.md) | recipes: TC/TCC PWM (one module; `#pwm-cells` 2→3, consumers need a third cell), ADC (input from pad, prescaler required on g1, children), DAC (small), GMAC+MDIO+PHY (each RMII signal has exactly one pad; MDC/MDIO 4 pairs; SG41: PC22/PC23 because PB14/15 are TC5 PWM); generic: TC/TCC counter, RTC (compatible selector), WDT, DMAC, TRNG; EIC check rule only; untranslatable: CAN, USB device (no node/driver on main). Fixed-label drivers (rtc, dac, clock) → labels must not change. Enumerator extended for child-bindings from includes (binding_pairs table 1.5 misses 6 gpio-hog rows → backlog) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
