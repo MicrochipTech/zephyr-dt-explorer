@@ -606,8 +606,8 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.17 | done | 051c73d → master |
 | P8.18 | open | |
 | P8.19 | done (findings) | 73cfcbd |
-| P8.19b | running | |
-| P8.19c | open | |
+| P8.19b | done | b090b47 → master |
+| P8.19c | running | |
 | P8.20 | open | |
 
 **P8.1 Log tab and log file.** (input 14)
@@ -897,4 +897,5 @@ surprising, and anything you were unsure about.
 | P8.11 | [P8.11.md](evidence/P8.11.md) | rules: `analog_digital_pad` (ADC channel input pad used digitally, warning), `adc_channel_duplicate` (error), `pwm_channel_duplicate` (error, e.g. second user of tcc0 channel 2 next to the board's pwm_led_0), `interrupt_line_shared` (interrupt GPIOs on one EXTINT line, warning); each positive/corrected and broken once (tests fail). One existing test's pad moved PB15 → PB12 because the new warning is intended (builder accepted). Classification tables with ATDF group names live in validate.py → backlog (move to the provider). 641 passed |
 | P8.19 | [P8.19.md](evidence/P8.19.md) | SG41 blinky copy (git baseline) + UART SERCOM7 (PC12/PC13) + bme280@76 on the board's I2C SERCOM6 (mikroBUS SDA/SCL) + GMAC/PHY (already on the board); Apply, Generate code, CMakeLists confirm, prj.conf via browser; final build links (devices 49/118/89–92, dtx functions in nm), Changes tab 17 files (16 dtx-badged). **Needed 2 hand corrections** → tool bugs: Kconfig walk follows negated deps (`CONFIG_NET_TEST=y` disables Ethernet); UART without `current-speed` fails in C; second Apply of a new file duplicates the draft (no markers on first write); plus re-emitted board I2C node with EEPROMs, codegen modules for board children (EEPROM as sensor), Apply hint lacks `-p always` → fix card P8.19b, re-run P8.19c |
 | P8.10 | [P8.10.md](evidence/P8.10.md) | 11 new translation entries (TC counter/PWM, TCC PWM, ADC, DAC, GMAC, MDIO, RTC, WDT, DMAC, TRNG; counts = table rows) loaded in main's edtlib against pic32cx_sg41; CAN/USB/GMAC wrapper `no_target`; negative tests (`#pwm-cells` 2, no prescaler, no refsel) fail in edtlib; lab1 → SG41: adc0 identical, tcc0/gmac/mdio emitted (were no_translation), verify rc 0; fixed unquoted base-group names split at commas. Gaps → card P8.10b: consumer `pwms` cells, uncovered SoC nodes not looked up (usb0), child rename, defaults for missing props. 668 passed |
+| P8.19b | [P8.19b.md](evidence/P8.19b.md) | six fixes, each with a test that fails without it: Kconfig walk skips negated deps (no CONFIG_NET_TEST for ethernet-phy); UART `current-speed` default 115200 via recipe `default_props` (field required); first Apply of a new file writes the marked block (Draft tab and port flow); Apply result says `west build -p always`; edited enabled bus node renders only the difference (SG41 `&sercom6 { bme280_76 … }`); codegen skips board children, sensor class only with a sensor-API driver. 7 existing apply tests now expect marked blocks; full suite 690 passed + 2 re-run (one intended assertion change, one Playwright timeout under load) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
