@@ -84,3 +84,14 @@ The Kconfig view (7f94422 entry) may stay in the backlog.
       every write (file, new vs diff, confirmed or not); errors with full traceback;
     - levels: INFO default, DEBUG via a switch in the tab or `--debug`;
     - docs note: the log contains local paths including the user name.
+
+## Addendum 2026-10-15 (user request via dt-explorer-c7): UI tests, early phase 8 card (right after the Log tab)
+
+15. Every later phase 8 card covers its new UI with a test:
+    - simulated UI tests with `nicegui.testing` (User fixture, NiceGUI 3.17): pytest, no browser;
+      deep links (e.g. `/?build=_soltest/apps/lab1_leer/build_same54_xpro&node=/soc/sercom@40003400`),
+      Configure… → I2C → pads → Save → Draft tab count and snippet; Edit pins; Port to board…
+      (report sections, no Apply); Pins/Package/Board tabs; copies under %TEMP% for anything that saves;
+    - a few real-browser smoke tests with Playwright (Configure → Check → Verify, Port to board,
+      board view), each saving a screenshot; skip without Chrome/Playwright or the DTX_* workspaces;
+    - exploratory testing (Claude drives the tool, judges screenshots + Log tab) stays manual.
