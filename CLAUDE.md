@@ -15,17 +15,31 @@ comes from, which driver handles it, and whether a device ended up in the image.
 py -m pip install nicegui pyyaml                 :: dependencies
 dt_explorer.bat [folder]                         :: wrapper for: py dt_explorer.py [folder]
 py dt_explorer.py <folder> --no-browser          :: start without the folder dialog and without opening a browser
-py docs/make_screenshots.py                      :: regenerate docs/img (explorer must already be running)
+py docs/make_screenshots.py [--port N]           :: regenerate docs/img (explorer must already be running)
+py -m pip install -r requirements-dev.txt        :: test dependencies (pytest)
+py -m pytest -q -rs                              :: test suite (no linter, no build step)
+py tools/snapshot_build.py <build dir> [-o f]    :: stable JSON snapshot of today's analysis (goldens)
 ```
 
 - The server runs on `http://localhost:8765` with `reload=False`, so restart it after every code change.
 - With no folder argument, a tkinter dialog asks for one. The last folder is stored in
   `%USERPROFILE%\.dt_explorer.json`, and `DEFAULT_ROOT` is the fallback.
-- There are no tests, linter or build step. To verify a change, run the app against a real Zephyr
-  build and open a deep link. Example:
+- **Tests** read real data from environment variables and skip with a reason when one is unset:
+  `DTX_RTOS4_WS` (RTOS4 workspace, Zephyr v4.3.0, with the lab builds: goldens, providers,
+  formatters, recipes, render/validate/verify, lift, port), `DTX_MAIN_WS` (`C:\Masters\zephyr-main`,
+  Zephyr main: cross-workspace models, g1 I2C/SPI translations, PIC32CX ports) and
+  `DTX_DESIGN_FILES` (board design files: Altium reader, board import). Without them only the
+  synthetic tests run. A full run with all three takes about 5 minutes.
+- **Goldens:** `tests/golden/*.json` are snapshots of the analysis of lab0, lab1, lab3, lab1_leer and a
+  cmake-only lab1 build; `tests/test_golden.py` proves "no behaviour change" for refactorings. They
+  depend on the existing `build_same54_xpro` folders, so do not rebuild those. `DTX_GOLDEN_DIR`
+  points the test at another golden directory.
+- To check a UI change, run the app against a real Zephyr build and open a deep link. Example:
   `/?build=apps/lab1/build_same54_xpro&node=/my_led@41008000&macros=1&bprops=1`.
-  Other parameters are `tab=include`, `file=<rel path>` and `src=<rel path>&line=<n>`.
-  They are all parsed in the `page()` signature.
+  Other parameters are `tab=include|pins|package|draft|board`, `file=<rel path>` and
+  `src=<rel path>&line=<n>`. They are all parsed in the `page()` signature.
+- Scripts outside the app must call `dt_explorer.app.load_plugins()` first; otherwise the plugin
+  registry is empty and lift/port silently find nothing.
 - `docs/make_screenshots.py` uses headless Chrome and hardcoded RTOS4 lab builds (`apps/lab0..lab3`,
   `_soltest/apps/lab1_leer`) under the workspace. If you add or rename a GUI element documented in
   `docs/GUI.md`, update `SHOTS`/`CROPS` there.
