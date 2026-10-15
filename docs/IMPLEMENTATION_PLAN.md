@@ -537,6 +537,7 @@ exception of P5.5.
 | P7.3 | done | 7d3f349 → master |
 | P7.3b | done | cb702b2 → master |
 | P7.4 | done | ccb9d19 → master |
+| P7.5 | running | |
 
 **P7.1 Altium reader and `BoardNetlist`.** PS with phases 2–6.
 - Dep: P1.2. Scope: `dt_explorer/core/board.py` (neutral `BoardNetlist`),
@@ -565,6 +566,12 @@ exception of P5.5.
   `dt_explorer/ui/page.py` (tab only).
 - Accept: report line of the form "EXT1 pin 16 (MOSI): PB27 on SAME54 Xpro → PB24 on SG41 CUlt"
   for a synthetic draft using EXT1 SPI; screenshot of both board views.
+
+**P7.5 Docs for board view, Apply to app, conflicts.** *light*
+- Dep: P7.4, P5.6, P6.3. Scope: `README.md`, `docs/GUI.md`, `docs/make_screenshots.py`, `docs/img/*.png`.
+- Accept: README rows and GUI.md sections for the Board tab, "Apply to app…" in the port dialog, report section 7
+  (connector roles) and `conflict` lines with suggestions; element grep in both files; screenshots (Apply/verify shots
+  reused from evidence, nothing that writes into apps\ or runs west).
 
 ## 9. Brief template
 
