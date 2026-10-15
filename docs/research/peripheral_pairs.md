@@ -1159,3 +1159,38 @@ Verified against the side session's statement: CAN and USB have no node in `pic3
 - Kconfig dependencies were read from the `depends on`/`config` lines, not evaluated with `kconfiglib`.
 - The `ethernet-phy` binding is generic; whether a given PHY needs a vendor driver (not the case for the KSZ8091RNA boards) was not examined.
 - Other chips of the families (SAM D51, E51/E53) were not looked at beyond the common dtsi.
+
+## 10. Results of P8.10 (translations)
+
+Implemented in `dt_explorer/translations/atmel_sam0_to_mchp_g1.yaml` and `.py`; evidence and complete outputs in `docs/evidence/P8.10.md`. Every entry accounts for every property of its source binding (rules, groups, properties taken over by a derive); the property counts equal the table rows of section 6 (`tests/test_translate.py::test_p810_*`). Each translated lab1 node loads in Zephyr main's edtlib against the `pic32cx_sg41` SoC dtsi.
+
+| Pair (table) | Source props = rows | Target props = mapped + target-only | Hooks and special rules | lab1 node tested |
+|---|---|---|---|---|
+| TC counter 6.1 | 37 | 40 = 35 + 5 | `tc_counter_clocks`: periph clocks, 32-bit pairing (`client_mclk`, `max-bit-width` 32) | `tc0` (disabled in lab1, enabled in the test) |
+| TC PWM 6.2 | 40 | 41 = 38 + 3 | `tc_pwm_clocks` (pairs only for `counter-size` 32), `pwm_cells`, `counter-size` to `max-bit-width` | `tc0` turned into a TC PWM |
+| TCC PWM 6.3 | 40 | 41 = 38 + 3 | `pwm_cells`, rename, periph clocks | `tcc0` |
+| ADC 6.5 | 51 | 55 = 49 + 6 | `adc_prescaler`, `calib-offset` dropped, children rule for `channel@N` | `adc0` + two synthetic channels |
+| DAC 6.6 | 43 | 51 = 39 + 12 | `dac_reference` (`refsel`, cells), child rules (`sampling-ratio`, `refresh-period` x30, `rate`) | `dac0` + `channel_0/1` of the board file |
+| GMAC 6.8 | 44 | 46 = 41 + 5 | `gmac_mac_address` (report line), five drops | `gmac` |
+| MDIO 6.9 | 36 | 39 = 35 + 4 | child rule for `ethernet-phy` (pass-through, `fixed-link` dropped) | `mdio` + `phy` |
+| RTC 6.12 | 42 | 41 = 37 + 4 (counter variant 42) | `rtc_clocks`, `rtc_source` (report), `rtc_counter_mode`; second entry for `microchip,rtc-g1-counter` | `rtc` (both entries) |
+| WDT 6.13 | 28 | 36 = 27 + 9 | clocks dropped | `wdog` (addressed as `wdt`) |
+| DMAC 6.14 | 35 | 39 = 35 + 4 | clocks dropped | `dmac` |
+| TRNG 6.15 | 28 | 32 = 28 + 4 | clocks dropped | `trng` |
+| CAN 6.16, USB 6.17, GMAC wrapper 6.10 | 47, 39, 28 | none | `no_target` entries with the reason | listed in the port report (see below) |
+
+Deviations from the mapping columns of section 6 (decided at implementation):
+
+1. **Old-style `clocks`/`clock-names` on WDT, DMAC, TRNG, GMAC, MDIO are dropped with a reason, not kept.** The tables say `keep` because the name and type match, but the old SoC nodes carry no clock rules and an old `<&gclk N>, <&mclk OFF BIT>` entry copied unchanged would be wrong on g1. The target SoC dtsi supplies the clocks.
+2. `calib-offset` (ADC) and `differential-mode` (DAC) are dropped with a reason (the table says `derive`): the first lives in `calib-mapping` of the SoC dtsi, the second is the Kconfig symbol `DAC_MCHP_G1_DIFFERENTIAL`.
+3. **GMAC `mac-eeprom` is a report line**, not a translation: the nvmem cell lives inside the EEPROM node, a different node. The line gives the two statements to add. Both g1 boards already have them.
+4. `#pwm-cells` 2 to 3 is translated on the controller; **the consumers' `pwms` cells are not rewritten** (engine limit, see below). A report line says so.
+5. DAC children: the properties are translated; the node names (`channel_0` to `channel@0`) and `reg` are not (the engine cannot rename a child or add `reg`). `dac_reference` writes `#address-cells = <1>; #size-cells = <0>` on the DAC node and reports the rename.
+6. The ADC `prescaler` is kept when the source node has it. A source node without it (lab1's `adc0`: the old SoC dtsi sets it, the board does not) yields no `prescaler`; the entry lists it under `target_only` as a reminder, so every port report carries the line.
+
+Findings from the work:
+
+- **Bug in the existing `base` group (fixed here):** `zephyr,deferred-init, ..., zephyr,pm-device-runtime-auto, zephyr,disabling-power-states` stood unquoted in a YAML flow list and was split at the comma into `zephyr`, `deferred-init`, ... (six bogus names), so these three base properties were never kept. They are quoted now (`test_base_group_properties_with_a_comma_are_whole_names`).
+- `TC0/TC1`, `TCC0/TCC1`, `TC2/TC3` ... share one GCLK channel; the clock hook now picks the GCLK entry that belongs to the same peripheral as the MCLK entry (`_gclk_choice`), which also makes the `assigned-clocks` report line name the right child.
+- The engine renders a `uint8-array` (`local-mac-address`) as cells, which is 4 bytes per element; the tests drop it from the source node. No effect on the port, which only passes board-written properties.
+- Engine limits met (not changed, outside the card): consumers' `pwms` rewrite; rename of a child node and `reg` from its name; a default for a property that the source node does not have (ADC `prescaler`); the port report lists a node as untranslatable only when a recipe covers it (draft node): lab1's enabled `usb0` has `soc` origin and no recipe, so it appears nowhere in the report although `atmel,sam0-usb` has a `no_target` entry.

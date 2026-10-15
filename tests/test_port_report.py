@@ -727,3 +727,71 @@ def test_app_overlay_child_of_a_ported_bus_is_written_once(world):
     assert res.overlay.count("sens@4f") == 1                               # no second copy from the carry path
     assert [c.desc for c in res.report.carried].count("sens0: sens@4f") == 1
     assert not any(n.desc == "sens0: sens@4f" for n in res.report.not_carried)
+
+
+# ---- P8.10: the new peripheral translations in the port ------------------------------------------------------
+def test_can_and_usb_are_untranslatable_in_the_port_when_they_are_in_the_draft(world):
+    """CAN and USB have no_target entries (peripheral_pairs.md 6.16, 6.17): a draft node of either kind is reported
+    as no_target with the reason, nothing is emitted for it, its pads are named, and the Kconfig table says so."""
+    import dt_explorer.translations as builtin
+    builtin.register_all()
+    for label, compat, addr in (("usb0", "atmel,sam0-usb", 0x41000000), ("can0", "atmel,sam0-can", 0x42000000)):
+        sn = _node(f"/s/{label}", label, [compat], addr=addr)
+        world.src.edt.nodes.append(sn)
+        world.src.edt.label2node[label] = sn
+        world.src.by_path[sn.path] = sn
+        tn = _node(f"/t/{label}", label, ["beta,generic"], status="disabled", addr=addr)
+        world.tgt.edt.nodes.append(tn)
+        world.tgt.edt.label2node[label] = tn
+        world.tgt.by_path[tn.path] = tn
+        world.draft.nodes.append(DraftNode("x", [], {}, Use(), None, {"DM": "P1", "DP": "P2"}, {}, compat, label))
+        world.lift.covered.append(CoveredNode(sn.path, label, compat, "x", "acme_recipe", {}, []))
+    res = pr.port_build(world.src, world.tgt, check=False)
+    by = {n.label: n for n in res.report.nodes}
+    assert by["usb0"].status == "no_target" and by["can0"].status == "no_target"
+    assert any("udphs" in x or "UDPHS" in x for x in by["usb0"].lines) and any("can_sam0.c" in x for x in by["can0"].lines)
+    assert any("pins stay to be handled by hand: DM P1, DP P2" in x for x in by["usb0"].notes)
+    assert "&usb0" not in res.overlay and "&can0" not in res.overlay
+    text = "\n".join(res.report.lines())
+    assert "&usb0  atmel,sam0-usb -> -  [no_target]" in text and "&can0  atmel,sam0-can -> -  [no_target]" in text
+    rows = {r.source_compatible: r for r in res.report.kconfig}
+    assert rows["atmel,sam0-usb"].target_compatible is None and rows["atmel,sam0-can"].target_compatible is None
+
+
+def test_lab1_to_sg41_new_pairs_are_translated_in_the_real_port(rtos4_ws, main_ws, capsys):
+    """lab1 (SAME54 Xplained, RTOS4 v4.3.0) -> the P6.2 target build for pic32cx_sg41_cult (Zephyr main): ADC, TCC PWM, GMAC
+    and MDIO were 'no_translation' before P8.10. Needs the target build of P6.2 under %TEMP%."""
+    import tempfile
+    import dt_explorer.app as app
+    src = rtos4_ws / "apps" / "lab1" / "build_same54_xpro"
+    tgt = Path(tempfile.gettempdir()) / "dtx_p62_lab1_pic32cx_sg41_cult"
+    for b in (src, tgt):
+        if not (b / "zephyr" / "edt.pickle").is_file():
+            pytest.skip(f"no build at {b} (zephyr/edt.pickle missing)")
+    app.load_plugins()
+    res = pr.port_build(src, tgt, check=False)
+    by = {n.label: n for n in res.report.nodes}
+    for label, compat, target in (("adc0", "atmel,sam0-adc", "microchip,adc-g1"),
+                                  ("tcc0", "atmel,sam0-tcc-pwm", "microchip,tcc-g1-pwm"),
+                                  ("gmac", "atmel,sam0-gmac", "microchip,gmac-g1-eth"),
+                                  ("mdio", "atmel,sam-mdio", "microchip,gmac-g1-mdio")):
+        n = by[label]
+        assert n.source_compatible == compat and n.target_compatible == target
+        assert n.status in ("emitted", "identical", "conflict"), (label, n.status)
+        assert n.lines or n.notes, label                                   # every outcome comes with its reasons
+    assert by["adc0"].status == "identical" and any("prescaler" in x for x in by["adc0"].lines)
+    assert by["tcc0"].status == "emitted" and by["tcc0"].emitted == ["#pwm-cells"]
+    assert by["tcc0"].translated["#pwm-cells"] == 3 and "#pwm-cells = <3>;" in res.overlay
+    assert any("third cell" in x for x in by["tcc0"].lines)                # the consumers' pwms are reported, not rewritten
+    assert by["gmac"].emitted == ["phy-handle"] and "phy-handle = <&phy>;" in res.overlay
+    assert any(x.startswith("mac-eeprom") and "nvmem-cells" in x for x in by["gmac"].lines)
+    assert any("ethernet-phy@0" in x for x in by["mdio"].notes)            # the PHY child is the target board's own
+    rows = {r.source_compatible: r.target_compatible for r in res.report.kconfig}
+    assert rows["atmel,sam0-adc"] == "microchip,adc-g1" and rows["atmel,sam-mdio"] == "microchip,gmac-g1-mdio"
+    assert "CONFIG_ADC_MCHP_G1=y" in res.conf and "CONFIG_ETH_MCHP_GMAC_G1=y" in res.conf
+    with capsys.disabled():
+        print("\n".join(res.report.lines()).encode("ascii", "replace").decode())   # arrows: the console may be cp1252
+        print("=== overlay ===")
+        print(res.overlay)
+        print("=== conf ===")
+        print(res.conf)

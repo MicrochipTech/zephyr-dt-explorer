@@ -13,7 +13,7 @@ hooks: atmel_sam0_to_mchp_g1.py
 
 tables:
   # labels of the target clock controller and its children in the target SoC .dtsi
-  labels: {controller: clock, mclk: mclkperiph, gclk: gclkperiph}
+  labels: {controller: clock, mclk: mclkperiph, gclk: gclkperiph, rtc: rtcclock}
   # MCLK mask register offset -> bus index of MCHP_CLOCK_DERIVE_ID (0 AHB, 1..4 APBA..APBD).
   # 0x14..0x20 verified against both SoC .dtsi files; 0x10 (AHB) is from the datasheet only.
   mclk_bus: {0x10: 0, 0x14: 1, 0x18: 2, 0x1C: 3, 0x20: 4}
@@ -184,6 +184,10 @@ tables:
     "4:9": [CLOCK_MCHP_MCLKPERIPH_ID_APBD_DAC, 541228870]
     "4:10": [CLOCK_MCHP_MCLKPERIPH_ID_APBD_I2S, 541245255]
     "4:11": [CLOCK_MCHP_MCLKPERIPH_ID_APBD_PCC, 541261640]
+  # P8.10: value maps of the DAC (peripheral_pairs.md section 6.6)
+  dac_refsel: {vrefau: vref_au, vddana: vdd_ana, vrefab: vref_ab, intref: int_ref}
+  dac_osr: {OSR_1: 1, OSR_2: 2, OSR_4: 4, OSR_8: 8, OSR_16: 16, OSR_32: 32}
+  dac_rate: {CC100K: 100, CC1M: 500, CC12M: 1000}   # kS/s; GCLK_DAC <= 1.2 / 6 / 12 MHz in the old description
   gclk_periph:   # gclk channel -> [[macro, id], ...]
     "3": [[CLOCK_MCHP_GCLKPERIPH_ID_SDHC0_SLOW, 469746432], [CLOCK_MCHP_GCLKPERIPH_ID_SDHC1_SLOW, 469746433], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM0_SLOW, 469746434], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM1_SLOW, 469746435], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM2_SLOW, 469746436], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM3_SLOW, 469746437], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM4_SLOW, 469746438], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM5_SLOW, 469746439], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM6_SLOW, 469746440], [CLOCK_MCHP_GCLKPERIPH_ID_SERCOM7_SLOW, 469746441]]
     "4": [[CLOCK_MCHP_GCLKPERIPH_ID_EIC, 469746698]]
@@ -237,16 +241,18 @@ groups:
     keep: [status, reg-names, interrupts-extended, interrupt-names, interrupt-parent, label,
            "#address-cells", "#size-cells", io-channels, io-channel-names, mboxes, mbox-names,
            power-domains, power-domain-names, "#power-domain-cells", hwlocks, hwlock-names,
-           zephyr,deferred-init, wakeup-source, zephyr,pm-device-runtime-auto,
-           zephyr,disabling-power-states]
+           "zephyr,deferred-init", wakeup-source, "zephyr,pm-device-runtime-auto",
+           "zephyr,disabling-power-states"]
   pinctrl_device:
     keep: [pinctrl-0, pinctrl-1, pinctrl-2, pinctrl-3, pinctrl-4, pinctrl-names]
   # SERCOM clock rules: both nodes (parent and UART) use the same clock notation
-  sercom_clocks:
+  sercom_clocks: &periph_clocks
     properties:
       clocks: {derive: {hook: clocks_to_periph, consumes: [clock-names]}}
       atmel,assigned-clocks: {derive: {hook: assigned_clock_to_gclkperiph}}
       atmel,assigned-clock-names: {drop: "names the generator entry, which moves to gclkperiph-src on the clock controller"}
+  # the same notation on every peripheral with a GCLK channel and an MCLK mask bit (P8.10)
+  periph_clocks: *periph_clocks
   # clock controller nodes of the old family: one node per block; the new family has one controller
   clock_block:
     properties:
@@ -353,3 +359,256 @@ translations:
     properties:
       "#clock-cells": {drop: "the old block feeds the RTC directly; the target rtc node has its own clock cells"}
       "#atmel,assigned-clock-cells": {drop: "rtc-src comes from the RTC consumer's atmel,assigned-clocks (<&osc32kctrl N>); the value N carries over unchanged (4 = XOSC1K, 5 = XOSC32K)"}
+
+  # =============================================================================================
+  # P8.10: further peripherals (docs/research/peripheral_pairs.md, section 6; results at the end of that file).
+  # Targets exist on Zephyr main only (v4.3.0 has just tcc-g1-pwm), so a consumer picks them by the capability test
+  # as for I2C/SPI.
+  # Every entry accounts for every property of its source binding (tests/test_translate.py checks that).
+  # Clock rules: the SoC dtsi of the target already carries clocks, so a node written by a board needs none.
+  # =============================================================================================
+  # ---- TC counter ------------------------------------------------------------------------------
+  - source: atmel,sam0-tc32
+    target: microchip,tc-g1-counter
+    use: [base, pinctrl_device]
+    note: >
+      The old tc32 is a 32-bit counter, which on g1 means two paired TC instances: the even one gets
+      max-bit-width 32 and a third clock entry client_mclk for the odd partner. The partner is then used up.
+      Label and node names stay (tc0..tc6); the SoC of pic32cx_sg has tc0..tc5 only.
+    keep: [reg, interrupts, dmas, dma-names, prescaler]
+    properties:
+      clocks: {derive: {hook: tc_counter_clocks, consumes: [clock-names]}}
+      atmel,assigned-clocks: {derive: {hook: assigned_clock_to_gclkperiph}}
+      atmel,assigned-clock-names: {drop: "names the generator entry, which moves to gclkperiph-src on the clock controller"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      channels: required, SoC value 2; no source counterpart
+      max-bit-width: required, SoC value 16; the translation writes 32 (paired instance)
+  # ---- TC PWM ------------------------------------------------------------------------------------
+  - source: atmel,sam0-tc-pwm
+    target: microchip,tc-g1-pwm
+    use: [base, pinctrl_device]
+    note: >
+      #pwm-cells grows from 2 to 3 (flags). counter-size is max-bit-width; a 32-bit TC also needs the partner
+      clock client_mclk. channels and max-bit-width come from the SoC node when the board did not write them.
+    keep: [reg, interrupts, dmas, dma-names, channels, prescaler]
+    properties:
+      clocks: {derive: {hook: tc_pwm_clocks, consumes: [clock-names]}}
+      atmel,assigned-clocks: {derive: {hook: assigned_clock_to_gclkperiph}}
+      atmel,assigned-clock-names: {drop: "names the generator entry, which moves to gclkperiph-src on the clock controller"}
+      counter-size: {rename: max-bit-width}
+      "#pwm-cells": {transform: {hook: pwm_cells}}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+  # ---- TCC PWM -----------------------------------------------------------------------------------
+  - source: atmel,sam0-tcc-pwm
+    target: microchip,tcc-g1-pwm
+    use: [base, pinctrl_device, periph_clocks]
+    note: >
+      As TC PWM: #pwm-cells 2 -> 3 and counter-size -> max-bit-width. The pic32cx_sg SoC dtsi sets channels and
+      max-bit-width per TCC instance (tcc0: 6 and 24), so they are not needed from the board.
+    keep: [reg, interrupts, dmas, dma-names, channels, prescaler]
+    properties:
+      counter-size: {rename: max-bit-width}
+      "#pwm-cells": {transform: {hook: pwm_cells}}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+  # ---- ADC ---------------------------------------------------------------------------------------
+  - source: atmel,sam0-adc
+    target: microchip,adc-g1
+    use: [base, pinctrl_device, periph_clocks]
+    note: >
+      The channel@N children are identical on both sides (adc-controller.yaml); the rule below lists their
+      properties so that an unknown one is reported. prescaler is required on g1 and not set by the SoC dtsi
+      (the old SoC dtsi sets 4): it is kept when the source node has it, otherwise the board must set it.
+    keep: [reg, interrupts, dmas, dma-names, "#io-channel-cells"]
+    properties:
+      prescaler: {transform: {hook: adc_prescaler}}
+      calib-offset: {drop: "g1 has nvm-calib and calib-mapping in the SoC dtsi; the old bit offset (ADC0 0, ADC1 14) is part of that mapping"}
+    children:
+      - match: {name: channel}
+        keep: [reg, "zephyr,gain", "zephyr,reference", "zephyr,vref-mv", "zephyr,acquisition-time", "zephyr,differential",
+               "zephyr,input-positive", "zephyr,input-negative", "zephyr,resolution", "zephyr,oversampling",
+               "zephyr,current-source-pin", "zephyr,vbias-pins"]
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      num-channels: required, SoC value 23; no source counterpart
+      nvm-calib: required, SoC phandle to the software calibration area; no source counterpart
+      calib-mapping-names: SoC value; no source counterpart
+      prescaler: reminder, required on g1 and not set by the SoC dtsi; set it on the board when the source node did not carry one
+  # ---- DAC ---------------------------------------------------------------------------------------
+  - source: atmel,samd5x-dac
+    target: microchip,dac-g1
+    use: [base, pinctrl_device, periph_clocks]
+    note: >
+      The old SoC label dac0 is dac on g1 and the new driver reads the node through DT_NODELABEL(dac). The old
+      children channel_0/channel_1 (no reg) become channel@0/channel@1 with reg, and the DAC node gets
+      #address-cells 1 / #size-cells 0; the translation writes the cells and the child properties, the child node
+      names and reg are the caller's part (reported).
+    keep: [reg, interrupts, dmas, dma-names, "#io-channel-cells"]
+    properties:
+      reference: {derive: {hook: dac_reference}}
+      differential-mode: {drop: "no devicetree property on g1: differential mode is the Kconfig symbol DAC_MCHP_G1_DIFFERENTIAL"}
+    children:
+      - &dac_channel
+        match: {name: channel_0}
+        properties:
+          oversampling: {transform: {map: dac_osr}, to: sampling-ratio}
+          refresh-period: {transform: {hook: dac_refresh_us}}
+          current-control: {transform: {map: dac_rate}, to: rate}
+          run-in-standby: {drop: "the g1 driver has no run-in-standby handling for the DAC"}
+      - <<: *dac_channel
+        match: {name: channel_1}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      max-channels: default 2; the driver reads it through DT_NODELABEL(dac)
+  # ---- GMAC + MDIO + PHY ---------------------------------------------------------------------------
+  - source: atmel,sam0-gmac
+    target: microchip,gmac-g1-eth
+    use: [base, pinctrl_device]
+    note: >
+      The old wrapper node (microchip,sam-ethernet-controller, holds reg) disappears: the gmac node of the target is
+      ethernet@42000800 itself, with the mdio node as its child. Labels gmac and mdio stay. The MAC address moves
+      from the I2C EEPROM read by the driver (mac-eeprom) to an nvmem cell (reported, not translatable here).
+    keep: [reg, interrupts, dmas, dma-names, local-mac-address, "zephyr,random-mac-address", phy-handle,
+           phy-connection-type, ptp-clock, num-queues]
+    properties:
+      clocks: {drop: "the old node carries no clock rules (the driver enables the clocks itself); the target SoC node has mclk-ahb and mclk-apb"}
+      clock-names: {drop: "names the dropped clocks"}
+      max-frame-size: {drop: "the g1 driver has no such option (old default 1518)"}
+      max-speed: {drop: "the g1 driver has no such option (old default 100)"}
+      ref-clk-source: {drop: "the g1 driver does not read it"}
+      mac-eeprom: {derive: {hook: gmac_mac_address}}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      nvmem-cell-names: MAC address cell; see mac-eeprom
+      zephyr,mac-address-prefix: optional, no source counterpart
+  - source: atmel,sam-mdio
+    target: microchip,gmac-g1-mdio
+    use: [base, pinctrl_device]
+    note: >
+      Same node name and label. The ethernet-phy child passes through (its rule below only checks the property
+      names); phy-handle of the MAC points at it.
+    keep: [reg, interrupts, dmas, dma-names, suppress-preamble, clock-frequency]
+    properties:
+      clocks: {drop: "the clocks sit on the GMAC node on g1"}
+      clock-names: {drop: "names the dropped clocks"}
+    children:
+      - match: {compatible: ethernet-phy}
+        use: [base]
+        keep: [interrupts, clocks, clock-names, default-speeds, no-reset, reset-gpios, reset-assert-duration-us,
+               reset-deassertion-timeout-ms]
+        properties:
+          fixed-link: {drop: "moved to ethernet-phy-fixed-link.yaml on main (separate compatible)"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+  - source: microchip,sam-ethernet-controller
+    no_target: the wrapper has no counterpart; its reg moves to the gmac node (gmac-g1-eth is ethernet@42000800 itself)
+  # ---- RTC ---------------------------------------------------------------------------------------
+  - source: atmel,sam0-rtc
+    target: microchip,rtc-g1
+    use: [base, pinctrl_device]
+    note: >
+      counter-mode "clock" is rtc-g1; count-32/count-16 select microchip,rtc-g1-counter (next entry). The clock
+      source atmel,assigned-clocks = <&osc32kctrl N> becomes rtc-src on the rtcclock node (reported). The label rtc
+      must stay (the driver uses DT_NODELABEL(rtc)). systimer has no counterpart (no g1 RTC system timer).
+    keep: [reg, interrupts, dmas, dma-names, alarms-count, cal-constant, prescaler]
+    properties:
+      clocks: {derive: {hook: rtc_clocks, consumes: [clock-names]}}
+      atmel,assigned-clocks: {derive: {hook: rtc_source}}
+      atmel,assigned-clock-names: {drop: "names the assigned clock"}
+      counter-mode: {derive: {hook: rtc_counter_mode}}
+      systimer: {drop: "the RTC as system timer (SAM0_RTC_TIMER) has no counterpart on g1; use another system timer"}
+      event-control-msk: {drop: "the g1 driver has no event output mask"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      clock-frequency: optional (rtc.yaml), no source counterpart
+  - source: atmel,sam0-rtc
+    target: microchip,rtc-g1-counter
+    use: [base, pinctrl_device]
+    note: Variant for counter-mode count-32 / count-16 (adds max-bit-width); otherwise as the rtc-g1 entry.
+    keep: [reg, interrupts, dmas, dma-names, alarms-count, cal-constant, prescaler]
+    properties:
+      clocks: {derive: {hook: rtc_clocks, consumes: [clock-names]}}
+      atmel,assigned-clocks: {derive: {hook: rtc_source}}
+      atmel,assigned-clock-names: {drop: "names the assigned clock"}
+      counter-mode: {derive: {hook: rtc_counter_mode_counter}}
+      systimer: {drop: "the RTC as system timer (SAM0_RTC_TIMER) has no counterpart on g1; use another system timer"}
+      event-control-msk: {drop: "the g1 driver has no event output mask"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      clock-frequency: optional (rtc.yaml), no source counterpart
+  # ---- WDT ---------------------------------------------------------------------------------------
+  - source: atmel,sam0-watchdog
+    target: microchip,wdt-g1
+    use: [base]
+    note: The old label wdog is wdt on g1 (the port report matches the node by register address).
+    keep: [reg, interrupts, dmas, dma-names]
+    properties:
+      clocks: {drop: "the old node carries no clock rules; the target SoC node has the mclk clock"}
+      clock-names: {drop: "names the dropped clocks"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      max-installable-timeout-count: required, SoC value 1
+      max-timeout-window: required, SoC value 0x4000
+      max-timeout-window-mode: required, SoC value 0x8000
+      min-window-limit: required, SoC value 8
+      run-in-standby: optional, no source counterpart
+  # ---- DMAC --------------------------------------------------------------------------------------
+  - source: atmel,sam0-dmac
+    target: microchip,dmac-g1-dma
+    use: [base]
+    note: "#dma-cells is 2 (channel, trigger source) on both sides, so the dmas of the consumers carry over."
+    keep: [reg, interrupts, dmas, dma-names, "#dma-cells", dma-channel-mask, dma-channels, dma-requests,
+           dma-buf-addr-alignment, dma-buf-size-alignment, dma-copy-alignment]
+    properties:
+      clocks: {drop: "the old node carries no clock rules; the target SoC node has the mclk clock"}
+      clock-names: {drop: "names the dropped clocks"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-alignment: SoC value 16
+  # ---- TRNG --------------------------------------------------------------------------------------
+  - source: atmel,sam-trng
+    target: microchip,trng-g1-entropy
+    use: [base]
+    note: The node must be enabled on the target (status okay); zephyr,entropy = &trng is a chosen, not a property.
+    keep: [reg, interrupts, dmas, dma-names]
+    properties:
+      clocks: {drop: "the old node carries no clock rules; the target SoC node has the mclk clock"}
+      clock-names: {drop: "names the dropped clocks"}
+    target_only:
+      ranges: base.yaml property added after v4.3.0, no source counterpart
+      dma-coherent: base.yaml property added after v4.3.0, no source counterpart
+      dma-ranges: base.yaml property added after v4.3.0, no source counterpart
+      run-in-standby-en: optional, no source counterpart
+  # ---- untranslatable: no node, binding or driver on the new side (peripheral_pairs.md 6.16, 6.17) ----
+  - source: atmel,sam0-can
+    no_target: >-
+      no CAN node, binding or driver for the SAM E5x/PIC32CX SG SoCs on Zephyr main (can_sam0.c writes the old GCLK/MCLK
+      registers directly); the ATDF has the pads (CAN0 PA22-PA25 function I, CAN1 PB12-PB15 function H)
+  - source: atmel,sam0-usb
+    no_target: >-
+      no USB device node, binding or driver for this IP on Zephyr main (microchip,udphs-g1-udc is the SAMA5/7 UDPHS);
+      the ATDF has DM/DP on PA24/PA25 (function H), which overlap CAN0
