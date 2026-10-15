@@ -68,3 +68,19 @@ The Kconfig view (7f94422 entry) may stay in the backlog.
       of the last read and branch / HEAD short hash;
     - app not in a git repo or git not on PATH: the tab says so, nothing else breaks;
     - git calls in core (e.g. `core/git_status.py`, no NiceGUI), UI in its own module.
+
+## Addendum 2026-10-15 (user request via dt-explorer-c7): "Log" tab + log file, one of the FIRST phase 8 cards
+
+14. Logging of what the tool does, sees and decides, readable by a Claude Code session:
+    - Python `logging` in core (no NiceGUI); the UI only attaches a handler for the tab; works
+      with `--no-browser`;
+    - log file `%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log`, rotating (last few runs); the tab
+      shows the same content live with "Copy", level filter and a ring buffer (~5000 lines);
+    - context header at the start of each run and of every copied block: tool commit, Python and
+      NiceGUI version, Zephyr version and workspace, build folder, board, SoC, ATDF file and
+      version, loaded plugins;
+    - content: loading (files, counts, timings); decisions with reasons, especially `state()` per
+      node; external calls (west, nm, cmake, git: command, exit code, duration, stderr tail);
+      every write (file, new vs diff, confirmed or not); errors with full traceback;
+    - levels: INFO default, DEBUG via a switch in the tab or `--debug`;
+    - docs note: the log contains local paths including the user name.
