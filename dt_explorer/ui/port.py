@@ -142,7 +142,9 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
         st["result"], st["target"] = result, tgt
         errs = sum(1 for f in (result.report.findings or []) if f.severity == "error")
         nconf = sum(1 for n in result.report.nodes if n.status == "conflict")
+        nremap = sum(1 for n in result.report.nodes if n.status == "remapped")
         status.text = (f"done: {len(result.draft.nodes)} node(s) carried over, "
+                       + (f"{nremap} node(s) remapped to another instance (see section 1), " if nremap else "")
                        + (f"{nconf} node(s) in conflict with the target board (not emitted, see section 1), " if nconf else "")
                        + f"{len(result.report.label_refs)} node reference(s) to fix, "
                        f"{len(result.report.pin_issues)} pin issue(s); fast check: "

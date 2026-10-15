@@ -600,7 +600,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.14 | open | |
 | P8.15 | open | |
 | P8.16 | done | a09a65a → master |
-| P8.17 | open | |
+| P8.17 | done | 051c73d → master |
 | P8.18 | open | |
 | P8.19 | open | |
 | P8.20 | open | |
@@ -836,4 +836,5 @@ surprising, and anything you were unsure about.
 | P8.1 | [P8.1.md](evidence/P8.1.md) | `%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log` + Log tab (tab=log) with Copy/level filter/DEBUG switch, `--debug`; header (commit, Python, NiceGUI, Zephyr, board, SoC, ATDF + schema, plugins); loading counts/timings, nm/west calls with rc and duration, writes, tracebacks; `state()` reasons at DEBUG via a thin wrapper (`_state()` unchanged, identical results tested). 15 tests, 396 passed |
 | P8.16 | [P8.16.md](evidence/P8.16.md) | section 3 judged after the overlay: lab3 `DT_ALIAS(sercom3)` no longer missing (main sam_e54_xpro, SG41); version note "source Zephyr 4.3.0, target 4.5.0-rc1: app APIs may have changed" (absent within one workspace). Merged after P8.1 without conflicts; builder re-run 39 passed |
 | P8.3 | [P8.3.md](evidence/P8.3.md) | recipes: TC/TCC PWM (one module; `#pwm-cells` 2→3, consumers need a third cell), ADC (input from pad, prescaler required on g1, children), DAC (small), GMAC+MDIO+PHY (each RMII signal has exactly one pad; MDC/MDIO 4 pairs; SG41: PC22/PC23 because PB14/15 are TC5 PWM); generic: TC/TCC counter, RTC (compatible selector), WDT, DMAC, TRNG; EIC check rule only; untranslatable: CAN, USB device (no node/driver on main). Fixed-label drivers (rtc, dac, clock) → labels must not change. Enumerator extended for child-bindings from includes (binding_pairs table 1.5 misses 6 gpio-hog rows → backlog) |
+| P8.17 | [P8.17.md](evidence/P8.17.md) | remap path works (synthetic SG41 YAML with EXT1 on free SERCOM3 pads: lab1 `&sercom4` → `[remapped]` to `&sercom3`, dipo/dopo recomputed, DT_NODELABEL consequence noted, verify rc 0); on the real CUlt boards nothing qualifies (EXT1 SCK has no pad, SERCOM0/6 busy, sercom2 pads not on a connector) → still `conflict`, only suggestions sharpened (busy instances no longer offered); 8-port matrix + lab1 → sam_e54_xpro overlays identical to before, all verify rc 0. 426 passed. Builder: port dialog status line counts remapped nodes |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
