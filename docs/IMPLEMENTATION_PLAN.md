@@ -399,7 +399,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.4c | done | b16e35b → master |
 | P5.6 | done | 9998b9e |
 | P5.7 | done | fcea955 → master |
-| P5.5 | open | |
+| P5.5 | done (lab3 exception) | 71c17c8 |
 
 **P5.0 Research: binding pairs `atmel,sam0-*` ↔ `microchip,*-g1`.** *light* (read-only research).
 - Dep: –. PS with everything. Scope: `docs/research/binding_pairs.md` only.
@@ -524,7 +524,9 @@ Status values: `open`, `running`, `done`, `blocked`.
 - Accept: the eight P6.2 ports produce overlays that Zephyr accepts (verify rc 0) with every skipped node listed as
   `conflict` with its reason; lab1 → sam_e54_xpro unchanged; suite green.
 
-**P6.2b Acceptance re-run after P6.3.** Scope: `docs/evidence/P6.2b.md`. Same matrix as P6.2.
+**P6.2b Acceptance re-run after P6.3.** Scope: `docs/evidence/P6.2b.md`. Same matrix as P6.2, plus lab3 →
+`sam_e54_xpro` in `zephyr-main` (which has the g1 I2C driver) with apply to a copy and a full build: closes the lab3
+exception of P5.5.
 
 ### Phase 7: board view (branch, parallel after P1.2)
 
@@ -657,4 +659,5 @@ surprising, and anything you were unsure about.
 | P7.4 | [P7.4.md](evidence/P7.4.md) | Board tab (tab=board) with EXT headers coloured by use; report section 7 on lab1 → main sg41: "EXT1 pin 16 (MOSI): PB27 on same54_xpro → PB24 on pic32cx_sg41_cult", EXT1 pin 18 SCK not available (NetJ602_18), EXT3 has no counterpart; optional board `title:` in the loader (YAMLs have none yet). Agent found `port_build` to SG41 failing in the g1 formatter (`find_header` knew only SAME5x paths) → builder fix: header found by file name below hal_microchip dt-bindings; lab1 → sg41 now ports SPI/I2C, fast check shows a real conflict: the SG41 board uses sercom4 as UART (`current-speed` left over when the overlay turns it into SPI) → P6.2 records it. Board tab docs → next docs card |
 | P5.6 | [P5.6.md](evidence/P5.6.md) | apply on a lab1 copy wrote `boards/sam_e54_xpro.overlay` (conf comments-only → skipped); `west build -b sam_e54_xpro` without options rc 0 (94 s), `Found devicetree overlay: …/sam_e54_xpro.overlay`, my_led `__device_dts_ord_3` in nm; second apply: identical → no-op, different → refused with diff (UI: overwrite only via checkbox); real lab1 unchanged. Naming per Zephyr extensions.cmake (short name only for single-SoC boards). Incidents: agent ran `taskkill /IM py.exe` (killed the builder preview, restarted) and amended its commit twice (history checked: linear, nothing lost) |
 | P6.2 | [P6.2.md](evidence/P6.2.md) | 8 cmake-only target builds of the unmodified labs on main: all rc 0 (≈ 83 s). Port with 354710c: SG41 verify rc 1 for all labs (board uses `&sercom4` as console UART; ported SPI leaves `current-speed`), SG61 verify rc 0 only because `&sercom4` was dropped silently (PB27 not on package). SG61 pin report: exactly PB26/PB27/PB29 for every lab (same54_xpro.dts itself enables sercom4 SPI there), SG41 none. Also: PD08/PD09 conflict with SG61 board `sercom6`; SDA/SCL swapped at the CUlt connector; lab3 `DT_ALIAS(sercom3)` missing. → fix card P6.3, re-run P6.2b |
+| P5.5 | [P5.5.md](evidence/P5.5.md) | lab0/lab1/lab2 ported + applied to copies, plain `west build -b sam_e54_xpro` links (120/105/149 s), my_led `__device_dts_ord_3` in the image; lab3 compile fails: `mytemp0`/`my_http0`/`DT_ALIAS(sercom3)` need the SERCOM I2C bus, which has no g1 driver in Zephyr v4.3.0 (predicted by report sections 3/5b) → workspace limitation, re-checked against zephyr-main in P6.2b. Real apps unchanged (fc.exe). Not tested on hardware (HC-4) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
