@@ -81,6 +81,11 @@ KCONFIG: dict[str, dict[str, str]] = {
     "microchip,sercom-g1-spi": {"CONFIG_SPI": "y"},
 }
 SAM0_COMPATIBLES = [c for c, _ in CLASSES.values()]
+# Properties the driver reads unconditionally (DT_INST_PROP without a default), so a node without them
+# compiles in dtc but fails in C. Both UART drivers (atmel,sam0-uart and microchip,sercom-g1-uart).
+DEFAULT_PROPS: dict[str, dict] = {
+    "uart": {"current-speed": 115200},
+}
 
 
 def _pad_index(value) -> int:
@@ -160,6 +165,10 @@ class AtmelSam0SercomRecipe:
         for _, roles in CLASSES.values():
             seen += [r for r in roles if r not in seen]
         return seen
+
+    def default_props(self, compatible: str) -> dict:
+        """Properties a node of `compatible` always needs, with their default (UART: ``current-speed``)."""
+        return dict(DEFAULT_PROPS.get(_class_of_compatible(compatible), {}))
 
     # ---- roles -> properties -------------------------------------------------------
     def derived_props(self, assignment: dict) -> dict:

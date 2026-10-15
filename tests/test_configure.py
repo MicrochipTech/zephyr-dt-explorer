@@ -195,6 +195,9 @@ properties:
     assert set(specs) == {"current-speed", "parity"}
     assert specs["parity"].enum == ["none", "odd"] and specs["parity"].default == "none"
     assert specs["current-speed"].description == "Baud rate"
+    # P8.19b item 2: the recipe says the driver needs current-speed -> required, pre-filled with 115200
+    assert specs["current-speed"].required and specs["current-speed"].default == 115200
+    assert not specs["parity"].required
 
 
 def test_neutral_specs_hide_rtio_queue_sizes(tmp_path):
@@ -351,3 +354,50 @@ def test_edit_overlay_checks_without_errors(lab1_session):
     _edit_console(s, "PA09", "PA08")
     findings = s.check()
     assert not [f for f in findings if f.severity == "error"]
+
+
+# ---- P8.19b item 5: the board's I2C bus with an added child (pic32cx_sg41_cult, DTX_MAIN_WS) ----------------
+@pytest.fixture
+def sg41_session(main_ws):
+    import os
+    import tempfile
+    from dt_explorer.app import load_plugins
+    from dt_explorer.core.build import BuildModel
+    from dt_explorer.core.draft import Draft
+    for cand in (os.environ.get("DTX_MAIN_BUILD"), str(Path(tempfile.gettempdir()) / "dtx_main_sg41")):
+        if cand and (Path(cand) / "zephyr" / "edt.pickle").is_file():
+            break
+    else:
+        pytest.skip("no pic32cx_sg41_cult cmake-only build (DTX_MAIN_BUILD or %TEMP%/dtx_main_sg41)")
+    load_plugins()
+    model = BuildModel(Path(cand))
+    s = C.ConfigSession(model)
+    s.draft = Draft(build=model.build.name)
+    return s
+
+
+def _sercom6_with_bme280(s):
+    import copy
+    from dt_explorer.core.draft import DraftChild
+    node = copy.deepcopy(s.lifted_node("sercom6"))
+    node.children.append(DraftChild("bme280", "76", ["bosch,bme280"], ["bme280_76"], {"reg": [0x76]}))
+    s.upsert(node)
+    return node
+
+
+def test_sg41_i2c_child_overlay_has_only_the_new_child(sg41_session):
+    s = sg41_session
+    _sercom6_with_bme280(s)
+    text = s.overlay()
+    assert text == ('&sercom6 {\n\tbme280_76: bme280@76 {\n\t\tcompatible = "bosch,bme280";\n'
+                    '\t\treg = <0x76>;\n\t};\n};\n')
+    assert "eeprom" not in text and "clock-frequency" not in text and "pinctrl" not in text
+    assert not [f for f in s.check() if f.severity == "error"]
+
+
+def test_sg41_i2c_changed_property_is_written_alone(sg41_session):
+    s = sg41_session
+    _sercom6_with_bme280(s).props["clock-frequency"] = 100000
+    text = s.overlay()
+    assert "clock-frequency = <100000>;" in text and "bme280_76: bme280@76" in text
+    assert "eeprom" not in text and "dmas" not in text and "pinctrl" not in text

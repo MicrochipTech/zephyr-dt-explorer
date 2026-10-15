@@ -69,6 +69,47 @@ def test_devices_from_draft_classes_and_notes():
     assert len(notes) == 1 and "nolabel@50 has no node label" in notes[0]
 
 
+EEPROM_DRIVER = "static const struct eeprom_driver_api api = { .read = at24_read, .write = at24_write };\n"
+SENSOR_DRIVER = "static DEVICE_API(sensor, bme_api) = { .sample_fetch = f, .channel_get = g };\n"
+
+
+def test_uses_sensor_api():
+    assert cg.uses_sensor_api([DRIVER]) and cg.uses_sensor_api([SENSOR_DRIVER])
+    assert cg.uses_sensor_api(["static const struct sensor_driver_api bme_api = {0};"])
+    assert not cg.uses_sensor_api([EEPROM_DRIVER]) and not cg.uses_sensor_api([])
+    assert not cg.uses_sensor_api(["/* mentions sensors_driver_apis only */ int x;"])
+
+
+def test_real_drivers_sensor_api(main_ws):
+    drv = main_ws / "zephyr" / "drivers"
+    bme, ee = drv / "sensor" / "bosch" / "bme280" / "bme280.c", drv / "eeprom" / "eeprom_at2x.c"
+    if not (bme.is_file() and ee.is_file()):
+        pytest.skip(f"{bme} or {ee} missing")
+    assert cg.uses_sensor_api([bme.read_text(encoding="utf-8", errors="ignore")])
+    assert not cg.uses_sensor_api([ee.read_text(encoding="utf-8", errors="ignore")])
+
+
+def test_eeprom_is_not_a_sensor_and_board_children_get_no_module():
+    """P8.19b item 6: the draft re-carries the board's EEPROMs; only the child the draft adds gets a module."""
+    bus = DraftNode(cls="i2c", instance="sercom6", label="sercom6", compatible="microchip,sercom-g1-i2c", children=[
+        DraftChild(name="eeprom", unit="56", compatible=["atmel,at24"], labels=["eeprom"],
+                   children=[DraftChild(name="nvmem-layout", compatible=["fixed-layout"], labels=["lay"])]),
+        DraftChild(name="eeprom", unit="5e", compatible=["atmel,at24"], labels=["eeprom_mac"]),
+        DraftChild(name="bme280", unit="76", compatible=["bosch,bme280"], labels=["bme280_76"]),
+        DraftChild(name="at24new", unit="50", compatible=["atmel,at24"], labels=["eeprom_new"]),
+    ])
+    drivers = {"bosch,bme280": [SENSOR_DRIVER], "atmel,at24": [EEPROM_DRIVER]}
+    board = {"sercom6": {"eeprom@56", "eeprom@5e"}}
+    devs, notes = cg.devices_from_draft(Draft(build="b", nodes=[bus]), None,
+                                        board_children=lambda lab: board.get(lab, set()),
+                                        sensor_driver=lambda c: cg.uses_sensor_api(drivers[c]))
+    assert [(d.ident, d.cls) for d in devs] == [("bme280_76", "sensor"), ("eeprom_new", "generic")]
+    assert notes == []
+    # without the board information everything is new (the old behaviour for callers that do not know the build)
+    devs, _ = cg.devices_from_draft(Draft(build="b", nodes=[bus]))
+    assert [d.ident for d in devs] == ["eeprom", "lay", "eeprom_mac", "bme280_76", "eeprom_new"]
+
+
 def test_rendered_files_have_header_and_checksum_and_api():
     devs, _ = cg.devices_from_draft(make_draft(), lambda c: ["SENSOR_CHAN_AMBIENT_TEMP", "SENSOR_CHAN_PRESS"])
     files = cg.render_files(devs)

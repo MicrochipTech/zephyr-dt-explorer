@@ -177,7 +177,8 @@ def test_edit_pins_keeps_the_boards_child(lab1_leer_copy, ui_run):
             click(user, "cfg-save")
             await wait_until(lambda: by_id(user, "draft-snippet"), timeout=15, what="the Draft tab")
             snippet = el(user, "draft-snippet").content
-            assert "bme280_76: bme280@76 {" in snippet and "eeprom@5e" in snippet
+            # P8.19b item 5: the board's eeprom@5e is not written again, only the new device
+            assert "bme280_76: bme280@76 {" in snippet and "eeprom@5e" not in snippet
 
     ui_run(scenario)
 

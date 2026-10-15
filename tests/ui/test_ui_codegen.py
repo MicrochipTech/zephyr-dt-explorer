@@ -105,6 +105,35 @@ def test_generate_code_flow(leer, ui_run):
     assert "/* my change */" in (app / "dtx_devices" / "src" / "dtx_bme280_76.c").read_text(encoding="utf-8")
 
 
+def test_eeprom_child_is_generic_not_a_sensor(leer, ui_run):
+    """P8.19b item 6: a bus device whose driver does not use the sensor API gets no sensor read function."""
+    app = leer
+
+    async def scenario():
+        async with simulated_app(app) as user:
+            await user.open(f"/?build={BUILD}&node={SERCOM1}")
+            click(user, "cfg-open")
+            select_value(user, "cfg-class", "i2c")
+            select_value(user, "cfg-role-SDA", "PC22")
+            select_value(user, "cfg-role-SCL", "PC23")
+            for compat, addr, props in (("bosch,bme280", "76", {}),
+                                        ("atmel,at24", "50", {"size": "256", "pagesize": "16", "address-width": "8", "timeout": "5"})):
+                click(user, "cfg-child-add")
+                select_value(user, "child-compatible", compat)
+                select_value(user, "child-address", addr)
+                for name, value in props.items():
+                    select_value(user, f"child-prop-{name}", value)
+                click(user, "child-save")
+            click(user, "cfg-save")
+            await wait_until(lambda: by_id(user, "draft-snippet"), timeout=15, what="the Draft tab")
+            click(user, "draft-codegen")
+            assert "sensor, bosch,bme280" in page_text(user, "codegen-device-bme280_76")
+            assert "generic, atmel,at24" in page_text(user, "codegen-device-at24_50")
+            assert not by_id(user, "codegen-chan-at24_50")                  # no channel list for a non-sensor
+
+    ui_run(scenario)
+
+
 def test_generate_code_without_devices(leer, ui_run):
     app = leer
 

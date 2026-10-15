@@ -73,10 +73,11 @@ def test_apply_replace_tick_overwrites(leer, ui_run):
 
     ui_run(scenario)
     text = own.read_text(encoding="utf-8")
-    assert "dt_explorer draft begin" not in text and "&sercom1 {" in text
+    # replaced, not appended: the app's own content is gone, the draft is one marked block (P8.19b item 3)
+    assert text.startswith("/* dt_explorer draft begin") and text.count("dt_explorer end") == 1 and "&sercom1 {" in text
 
 
-def test_apply_new_file_then_second_apply_is_identical(leer, ui_run):
+def test_apply_new_file_then_second_apply_is_up_to_date(leer, ui_run):
     app = leer
     own = app / "boards" / "same54_xpro.overlay"
     own.unlink()                                                     # an app without its own board overlay
@@ -89,10 +90,14 @@ def test_apply_new_file_then_second_apply_is_identical(leer, ui_run):
             assert "NEW: " in page_text(user, "draft-apply-overlay")
             assert not by_id(user, "draft-apply-diff-overlay")
             click(user, "draft-apply-confirm")
-            assert "written:" in el(user, "draft-apply-result").text
-            # a second apply: the file exists with the same content -> nothing to write
+            result = el(user, "draft-apply-result").text
+            assert "written:" in result
+            # P8.19b item 4: a build folder configured before the files existed needs a pristine build
+            assert "west build -p always -b" in result and "configured before these files existed" in result
+            # P8.19b item 3: the new file carries the marked block, so a second apply knows it
+            assert "dt_explorer draft begin" in own.read_text(encoding="utf-8")
             click(user, "draft-apply")
-            assert "IDENTICAL: " in page_text(user, "draft-apply-overlay")
+            assert "already up to date" in page_text(user, "draft-apply-overlay")
 
     ui_run(scenario)
     text = own.read_text(encoding="utf-8")
@@ -128,7 +133,8 @@ def test_port_dialog_offers_the_same_append_option(lab1, lab1_e54, ui_run, tmp_p
             assert by_id(user, "port-apply-diff-replace-overlay")
             assert not el(user, "port-apply-replace-overlay").value
             click(user, "port-apply-go")
-            assert "appended:" in el(user, "port-apply-result").text
+            result = el(user, "port-apply-result").text
+            assert "appended:" in result and "west build -p always -b" in result
 
     ui_run(scenario)
     text = own.read_text(encoding="utf-8")

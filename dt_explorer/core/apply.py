@@ -59,6 +59,8 @@ class FilePlan:
     merged: str = ""                # the existing content plus the marked block ("append"), only when it exists
     append_diff: str = ""           # unified diff existing -> merged (empty when nothing would change)
     append_note: str = ""           # e.g. conf lines skipped as duplicates
+    block_text: str = ""            # `text` as a marked block: what a NEW (or replaced) file gets, so that a later
+                                    # Apply replaces the block instead of appending a second copy
 
     @property
     def action(self) -> str:
@@ -237,9 +239,10 @@ def _udiff(old: str, new: str, a: str, b: str) -> str:
 
 def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, *,
                single_soc: bool = True, source_board: str | None = None,
-               new_label: str = "port result", today: str | None = None) -> ApplyPlan:
+               new_label: str = "port result", today: str | None = None, mark: bool = True) -> ApplyPlan:
     """What ``apply`` would do. Reads the app folder, writes nothing. `new_label` names the new content in
-    the diff header (the Draft tab passes ``"draft"``)."""
+    the diff header (the Draft tab passes ``"draft"``). `mark`: a NEW (or explicitly replaced) file gets the content
+    as a marked block too, so that applying a changed draft again replaces the block (default; the draft and the port flow both use it)."""
     app = Path(app_dir)
     if not app.is_dir():
         raise ApplyError(f"app folder not found: {app}")
@@ -264,6 +267,8 @@ def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, 
                 fp.path, fp.exists = cand, True
                 break
         fp.comment_only = is_comment_only(text)
+        if mark and not fp.comment_only:
+            fp.block_text = merge_block(kind, "", text, source=new_label.split()[0], today=today)[0]
         if fp.exists:
             old = _norm(fp.path.read_text(encoding="utf-8", errors="replace"))
             new = _norm(text)
@@ -317,9 +322,16 @@ def apply(plan: ApplyPlan, overwrite: set | None = None, append: set | None = No
         fp.path.parent.mkdir(parents=True, exist_ok=True)
         log.info("apply: write %s (%s, %d bytes%s)", fp.path, "overwrite, confirmed" if fp.exists else "new file",
                  len(fp.text.encode("utf-8")), f", {len(fp.diff.splitlines())} diff lines" if fp.diff else "")
-        fp.path.write_text(fp.text, encoding="utf-8", newline="\n")
+        fp.path.write_text(fp.block_text or fp.text, encoding="utf-8", newline="\n")
         (res.overwritten if fp.exists else res.written).append(fp.path)
     return res
+
+
+def next_step_lines(plan: ApplyPlan) -> list[str]:
+    """The build hint after a write. Zephyr looks the board files up when the build folder is configured, so a
+    folder configured before the files existed ignores them (``node ... is not enabled`` at build time)."""
+    return [f"Next: west build -p always -b {plan.board_target} {plan.app_dir}",
+            "      (-p always: a build folder that was configured before these files existed ignores them)"]
 
 
 def plan_lines(plan: ApplyPlan) -> list[str]:
@@ -351,7 +363,8 @@ def draft_plan(build_dir: Path | str, overlay: str, conf: str, *, app_dir: Path 
     """
     board, single = target_of(build_dir)
     app = Path(app_dir) if app_dir is not None else app_dir_of(build_dir)
-    return plan_apply(app, board, overlay, conf, single_soc=single, new_label="draft", today=today)
+    return plan_apply(app, board, overlay, conf, single_soc=single, new_label="draft", today=today,
+                      mark=True)
 
 
 # ---- prj.conf for the generated device module (P8.14) -------------------------------------------------

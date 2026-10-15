@@ -64,6 +64,9 @@ class RenderContext:
     soc: str | None = None
     existing_compatibles: dict[str, str] = field(default_factory=dict)  # label -> compatible now
     bindings: object | None = None              # draft.BindingIndex; adds `const` properties of the binding chain
+    # label -> the ENABLED node as the build has it now (lifted). A draft node that edits such a node (same class and
+    # compatible) renders only what differs: board children, board properties and an unchanged pin choice stay out.
+    board_nodes: dict[str, DraftNode] = field(default_factory=dict)
 
 
 def _formatter(ctx: RenderContext):
@@ -173,21 +176,36 @@ def render_child(child: DraftChild) -> str:
 def _with_children(text: str, children: list[DraftChild]) -> str:
     """Insert the child nodes before the closing ``};`` of a node override."""
     kids = "\n\n".join(_indent(render_child(c), 1) for c in children)
-    return text[:-2].rstrip("\n") + "\n\n" + kids + "\n};"
+    head = text[:-2].rstrip("\n")
+    return head + ("\n" if head.endswith("{") else "\n\n") + kids + "\n};"       # no blank line in an otherwise empty node
+
+
+def _baseline(node: DraftNode, label: str, ctx: RenderContext) -> DraftNode | None:
+    """The board's version of the node when the draft edits an enabled node of the same class and compatible."""
+    base = ctx.board_nodes.get(label)
+    if base is not None and base.cls == node.cls and base.compatible == node.compatible:
+        return base
+    return None
 
 
 def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, list[str], list[str]]:
     """(pinctrl group node or None, node override, chosen lines, alias lines)."""
     label = _node_label(node)
     recipe = plugins.get_recipe(node.compatible) if node.compatible else None
-    props: dict = {"status": "okay"}
-    if node.compatible and ctx.existing_compatibles.get(label) != node.compatible:
+    base = _baseline(node, label, ctx)
+    pins_changed = base is None or dict(node.pins) != dict(base.pins)
+    props: dict = {} if base is not None else {"status": "okay"}      # an enabled node needs no status again
+    if node.compatible and base is None and ctx.existing_compatibles.get(label) != node.compatible:
         props["compatible"] = node.compatible
-    props.update(const_props(node.compatible, ctx.bindings))
-    props.update(node.props)
+    if base is None:
+        props.update(const_props(node.compatible, ctx.bindings))
+    if base is None and recipe is not None and hasattr(recipe, "default_props"):
+        props.update(recipe.default_props(node.compatible))      # what the driver needs, e.g. a UART's current-speed
+    props.update(node.props if base is None else
+                 {k: v for k, v in node.props.items() if k not in base.props or base.props[k] != v})
 
     group = None
-    pairs = _signals(node, ctx) if node.pins else []
+    pairs = _signals(node, ctx) if node.pins and pins_changed else []
     sigs = [s for _, s in pairs]
     if recipe is not None and pairs:
         assignment = {role: sig.role for role, sig in pairs}
@@ -197,9 +215,14 @@ def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, l
             raise RenderError(f"{label}: {exc}") from exc
     derived = set(props)
     for k, v in node.vendor_props.items():
-        if k not in derived:
+        if k not in derived and (base is None or k not in base.vendor_props or base.vendor_props[k] != v):
             props[k] = v
-    if any(c.unit is not None for c in node.children):      # a child with a unit address needs the cells
+    children = node.children
+    if base is not None:                                    # board children that the draft keeps as they are stay out
+        board_kids = {c.node_name: c for c in base.children}
+        children = [c for c in children if board_kids.get(c.node_name) != c]
+    board_has_cells = base is not None and any(c.unit is not None for c in base.children)
+    if any(c.unit is not None for c in children) and not board_has_cells:   # a child with a unit address needs the cells
         props.setdefault("#address-cells", 1)
         props.setdefault("#size-cells", 0)
     if sigs:
@@ -209,9 +232,12 @@ def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, l
         group = f"\t{name}: {name} {{\n{body}\n\t}};"
         props["pinctrl-0"] = [[Ref(name)]]
         props["pinctrl-names"] = "default"
-    text = render_node(f"&{label}", props)
-    if node.children:
-        text = _with_children(text, node.children)
+    if base is not None and not props and not children and not sigs:
+        text = ""                                           # nothing differs from the board: no override at all
+    else:
+        text = render_node(f"&{label}", props)
+        if children:
+            text = _with_children(text, children)
     chosen = [f"{c} = &{label};" for c in node.use.chosen]
     aliases = [f"{a} = &{label};" for a in node.use.aliases]
     return group, text, chosen, aliases
@@ -228,7 +254,8 @@ def render_overlay(target: Draft | DraftNode, ctx: RenderContext) -> str:
         g, text, c, a = _render_one(n, ctx)
         if g:
             groups.append(g)
-        blocks.append(text)
+        if text:
+            blocks.append(text)
         chosen += c
         aliases += a
     parts: list[str] = []
@@ -242,4 +269,4 @@ def render_overlay(target: Draft | DraftNode, ctx: RenderContext) -> str:
         if aliases:
             top.append("\taliases {\n" + "".join(f"\t\t{a}\n" for a in aliases) + "\t};")
         parts.append("/ {\n" + "\n".join(top) + "\n};")
-    return "\n\n".join(parts) + "\n"
+    return "\n\n".join(parts) + "\n" if parts else ""

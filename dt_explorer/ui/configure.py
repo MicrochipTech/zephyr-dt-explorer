@@ -61,6 +61,7 @@ class PropSpec:
     enum: list | None = None
     default: object = None
     description: str = ""
+    required: bool = False      # the recipe says the driver needs it; `default` is pre-filled
 
 
 def find_instance(device, addresses=(), labels=()):
@@ -233,6 +234,11 @@ def neutral_specs(option: ClassOption, index: BindingIndex) -> list[PropSpec]:
                 continue
             out[name] = PropSpec(name, spec["type"], spec.get("enum"), spec.get("default"),
                                  (spec.get("description") or "").strip().split("\n")[0])
+    needed = getattr(option.recipe, "default_props", None)
+    for name, value in (needed(option.compatible) if needed else {}).items():
+        spec = out.get(name)
+        if spec is not None:
+            spec.required, spec.default = True, value
     return list(out.values())
 
 
@@ -430,8 +436,11 @@ class ConfigSession:
                     if n.status == "okay" and n.labels and n.compats}
         pin_node = next((n for n in self.model.edt.nodes
                          if any(plugins.get_formatter(c) for c in n.compats)), None)
+        # enabled nodes that the draft edits: the board's version, so that the overlay carries only the difference
+        board = {n.label: b for n in self.draft.nodes
+                 if n.label and self.is_enabled(n.label) and (b := self.lifted_node(n.label)) is not None}
         return RenderContext(
-            device=self.device, pinctrl_compatible=next(
+            board_nodes=board, device=self.device, pinctrl_compatible=next(
                 (c for c in (pin_node.compats if pin_node else []) if plugins.get_formatter(c)), None),
             pinctrl_label=(pin_node.labels[0] if pin_node and pin_node.labels else "pinctrl"),
             workspace=self.info.workspace, soc=self.info.soc, bindings=self.index,
@@ -709,7 +718,9 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
         with props_box:
             for spec in neutral_specs(opt, session.index):
                 cur = existing.props.get(spec.name) if existing and existing.cls == opt.cls else None
-                hint = spec.description + (f" (default {spec.default})" if spec.default is not None else "")
+                if cur is None and spec.required:
+                    cur = spec.default
+                hint = spec.description + (f" (default {spec.default})" if spec.default is not None else "")                     + (" - required by the driver" if spec.required else "")
                 if spec.type == "boolean":
                     w = ui.switch(spec.name, value=bool(cur)).props("dense")
                 elif spec.enum:
@@ -741,6 +752,8 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
                 return
             if v is not None and spec.type == "int" and spec.enum:
                 v = int(v)
+            if v is None and spec.required:
+                v = spec.default
             if v is not None:
                 props[name] = v
         if opt.cls == "spi" and st["cs"] and st["cs_dirty"]:

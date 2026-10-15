@@ -349,8 +349,8 @@ def _render_apply(source: Path, target: Path, result: PortResult) -> None:
                     return
                 lines = res.lines()
                 if res.written or res.overwritten or res.appended:
-                    lines.append(f"Next: west build -b {plan.board_target} {plan.app_dir}"
-                                 f"   (or use \"New build…\" for the target board)")
+                    lines += apply_mod.next_step_lines(plan)
+                    lines.append("      (or use \"New build…\" for the target board)")
                 res_label.text = chr(10).join(lines)
                 res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten or res.appended
                                                                   else "text-orange-4"))

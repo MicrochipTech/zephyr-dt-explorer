@@ -63,8 +63,15 @@ def c_ident(text: str) -> str:
     return s if s and not s[0].isdigit() else f"n{s}"
 
 
-def devices_from_draft(draft: Draft, channel_lookup=None) -> tuple[list[Device], list[str]]:
+def devices_from_draft(draft: Draft, channel_lookup=None, board_children=None,
+                       sensor_driver=None) -> tuple[list[Device], list[str]]:
     """``(devices, notes)``. `channel_lookup(compatible) -> list of SENSOR_CHAN_*` supplies the default channels.
+
+    Only devices the draft ADDS get a module: `board_children(parent label) -> set of node names` names the children
+    the build already has below that node (``eeprom@56``); those and everything below them are left out.
+    `sensor_driver(compatible) -> bool` says whether the compatible's driver uses the sensor API
+    (:func:`uses_sensor_api`); a bus child whose driver does not (an EEPROM) is a generic device. Without the
+    callables every bus child counts as new and as a sensor.
 
     Sensors: children (any depth) with a compatible of an I2C / SPI draft node. LEDs: children of a node whose
     compatible is ``gpio-leds``. Everything else with a compatible becomes a generic device. A device needs a
@@ -81,7 +88,9 @@ def devices_from_draft(draft: Draft, channel_lookup=None) -> tuple[list[Device],
         seen.add(dev.ident)
         out.append(dev)
 
-    def visit(parent_label: str, parent_cls: str, parent_compat: str, ch: DraftChild) -> None:
+    def visit(parent_label: str, parent_cls: str, parent_compat: str, ch: DraftChild, skip: set) -> None:
+        if ch.node_name in skip:                    # a child of the board: no module, nor for what sits below it
+            return
         compat = ch.compatible[0] if ch.compatible else ""
         if compat or parent_compat == "gpio-leds":
             if not ch.labels:
@@ -90,7 +99,7 @@ def devices_from_draft(draft: Draft, channel_lookup=None) -> tuple[list[Device],
                 label = ch.labels[0]
                 if parent_compat == "gpio-leds":
                     cls = "led"
-                elif compat and parent_cls in ("i2c", "spi"):
+                elif compat and parent_cls in ("i2c", "spi") and (sensor_driver is None or sensor_driver(compat)):
                     cls = "sensor"
                 else:
                     cls = "generic"
@@ -99,11 +108,12 @@ def devices_from_draft(draft: Draft, channel_lookup=None) -> tuple[list[Device],
                     dev.channels = list(channel_lookup(compat)) if channel_lookup else []
                 add(dev)
         for sub in ch.children:
-            visit(parent_label, parent_cls, compat, sub)
+            visit(parent_label, parent_cls, compat, sub, set())
 
     for node in draft.nodes:
+        board = set(board_children(node.label or "")) if board_children and node.label else set()
         for ch in node.children:
-            visit(node.label or "", node.cls, node.compatible or "", ch)
+            visit(node.label or "", node.cls, node.compatible or "", ch, board)
     return out, notes
 
 
@@ -148,6 +158,17 @@ def channels_from_driver(sources: list[str]) -> list[str]:
                 found += [f"SENSOR_CHAN_{n}" for n in names]
                 break
     return list(dict.fromkeys(found))
+
+
+_SENSOR_API = re.compile(r"\bsensor_driver_api\b|\bDEVICE_API\(\s*sensor\b")
+
+
+def uses_sensor_api(sources: list[str]) -> bool:
+    """True when a driver source defines the sensor API (``struct sensor_driver_api`` / ``DEVICE_API(sensor, ...)``).
+
+    An EEPROM, a PHY or a GPIO expander is a device on a bus, but ``sensor_sample_fetch()`` does not apply to it.
+    """
+    return any(_SENSOR_API.search(t) for t in sources)
 
 
 _HDR_COMPAT = re.compile(r"^\s*#\s*define\s+DT_DRV_COMPAT\s+(\w+)", re.M)

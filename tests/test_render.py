@@ -119,6 +119,18 @@ def test_node_without_pins_needs_no_formatter():
     assert text == '&sercom3 {\n\tstatus = "okay";\n\tcompatible = "atmel,sam0-uart";\n\tcurrent-speed = <9600>;\n};\n'
 
 
+def test_uart_without_input_carries_current_speed(device):
+    """P8.19b item 2: the driver reads current-speed unconditionally, so a UART draft always has it."""
+    for comp in ("atmel,sam0-uart", "microchip,sercom-g1-uart"):
+        n = uart_node(props={}, compatible=comp)
+        assert "current-speed = <115200>;" in render_overlay(n, ctx_for(device)), comp
+    n = uart_node(props={"current-speed": 9600})
+    text = render_overlay(n, ctx_for(device))
+    assert "current-speed = <9600>;" in text and "115200" not in text      # the user's value wins
+    i2c = DraftNode(cls="i2c", instance="SERCOM7", compatible="atmel,sam0-i2c", label="sercom7")
+    assert "current-speed" not in render_overlay(i2c, ctx_for(device))
+
+
 def test_errors(device):
     with pytest.raises(RenderError, match="not a signal of SERCOM2"):
         render_overlay(uart_node(pins={"TX": "PA00", "RX": "PB24"}), ctx_for(device))
@@ -286,6 +298,46 @@ def test_children_are_written_inside_the_node_override():
         '\teeprom: ee2: eeprom@5e {\n\t\tcompatible = "atmel,24mac402";\n\t\treg = <0x5e>;\n'
         '\t\tstatus = "okay";\n\t\tleds = <&led0 3 1>;\n\t\tref = <&a>;\n\t\tname = "x";\n\t\tflag;\n\n'
         '\t\tphy: ethernet-phy@0 {\n\t\t\tcompatible = "ethernet-phy";\n\t\t\treg = <0x0>;\n\t\t};\n\t};\n};\n')
+
+
+def _board_i2c():
+    from dt_explorer.core.draft import DraftChild
+    return DraftNode(
+        cls="i2c", instance="SERCOM7", compatible="atmel,sam0-i2c", label="sercom7", roles=["SDA", "SCL"],
+        pins={"SDA": "PD08", "SCL": "PD09"}, props={"clock-frequency": 400000},
+        vendor_props={"#address-cells": 1, "#size-cells": 0},
+        children=[DraftChild("eeprom", "56", ["atmel,at24"], ["ee"], {"reg": [0x56], "size": 256})])
+
+
+def test_edited_enabled_node_renders_only_the_difference(device):
+    """P8.19b item 5: board children, unchanged board properties and an unchanged pin choice are not re-emitted."""
+    import copy
+    from dt_explorer.core.draft import DraftChild
+    board = _board_i2c()
+    ctx = ctx_for(device, board_nodes={"sercom7": board})
+    new = copy.deepcopy(board)
+    new.children.append(DraftChild("bme280", "76", ["bosch,bme280"], ["bme280_76"], {"reg": [0x76]}))
+    assert render_overlay(new, ctx) == (
+        '&sercom7 {\n\tbme280_76: bme280@76 {\n\t\tcompatible = "bosch,bme280";\n\t\treg = <0x76>;\n\t};\n};\n')
+    new.props["clock-frequency"] = 100000                      # a changed property is written, the others stay out
+    text = render_overlay(new, ctx)
+    assert "clock-frequency = <100000>;" in text and "#address-cells" not in text and "ee:" not in text
+    assert "pinctrl" not in text and "status" not in text
+    # without the board's version the whole node is written, as before
+    full = render_overlay(new, ctx_for(device))
+    assert "ee: eeprom@56" in full and 'status = "okay"' in full and "pinctrl-0" in full
+    # a node that is not changed at all gives no override
+    assert render_overlay(copy.deepcopy(board), ctx) == ""
+
+
+def test_edited_enabled_node_with_changed_pins_rederives(device):
+    import copy
+    board = _board_i2c()
+    ctx = ctx_for(device, board_nodes={"sercom7": board})
+    new = copy.deepcopy(board)
+    new.instance, new.pins = "SERCOM2", {"SDA": "PB25", "SCL": "PB24"}
+    text = render_overlay(new, ctx)
+    assert "pinctrl-0" in text and "ee:" not in text and "clock-frequency" not in text
 
 
 def test_children_keep_the_cells_the_node_already_has():

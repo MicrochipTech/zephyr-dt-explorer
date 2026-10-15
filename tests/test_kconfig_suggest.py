@@ -69,3 +69,28 @@ def test_derived_gpio_leds_and_already_enabled(rtos4_build):
 def test_unknown_compatible(rtos4_build):
     s = suggest_kconfig("nonexistent,foo", rtos4_build(BUILD))
     assert s.source == "none" and any("not defined" in n for n in s.notes)
+
+
+# ---- P8.19b item 1: negated dependencies are not suggested ---------------------------------
+@pytest.fixture(scope="module")
+def main_sg41_kbuild(main_ws):
+    import tempfile
+    from pathlib import Path
+    for cand in (os.environ.get("DTX_MAIN_BUILD"), str(Path(tempfile.gettempdir()) / "dtx_main_sg41")):
+        if cand and (Path(cand) / "zephyr" / "edt.pickle").is_file():
+            return Path(cand)
+    pytest.skip("no pic32cx_sg41_cult cmake-only build (DTX_MAIN_BUILD or %TEMP%/dtx_main_sg41)")
+
+
+def test_ethernet_phy_does_not_suggest_negated_dependency(main_sg41_kbuild):
+    """`ETH_DRIVER` has `depends on !NET_TEST`; suggesting NET_TEST=y would switch Ethernet off."""
+    s = suggest_kconfig("ethernet-phy", main_sg41_kbuild)
+    assert s.source == "kconfiglib"
+    assert "CONFIG_NET_TEST" not in s.symbols
+    assert {"CONFIG_ETH_DRIVER", "CONFIG_NETWORKING"} <= set(s.symbols)
+
+
+def test_gmac_suggestions_still_correct(main_sg41_kbuild):
+    s = suggest_kconfig("microchip,gmac-g1-eth", main_sg41_kbuild)
+    assert "CONFIG_NET_TEST" not in s.symbols
+    assert "CONFIG_ETH_MCHP_GMAC_G1" in s.symbols or "CONFIG_ETH_DRIVER" in s.symbols

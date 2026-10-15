@@ -329,7 +329,7 @@ def _render_apply(build, overlay_text: str, conf_text: str) -> None:
                     return
                 lines = res.lines()
                 if res.written or res.overwritten or res.appended:
-                    lines.append(f"Next: west build -b {plan.board_target} {plan.app_dir}")
+                    lines += apply_mod.next_step_lines(plan)
                 res_label.text = "\n".join(lines)
                 res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten or res.appended
                                                                   else "text-orange-4"))
@@ -342,8 +342,8 @@ def _render_apply(build, overlay_text: str, conf_text: str) -> None:
     abtn.on_click(show_plan)
 
 
-def _driver_channels(session, compatible: str) -> list[str]:
-    """SENSOR_CHAN_* that the driver of `compatible` handles (heuristic on its channel_get, see core/codegen.py)."""
+def _driver_sources(session, compatible: str) -> list[str]:
+    """Texts of the driver ``.c`` files of `compatible` (found through DT_DRV_COMPAT, in a .c or a header)."""
     ident = compat_ident(compatible)
     files = set(session.model.drivers.get(ident, set()))
     if not files:                       # DT_DRV_COMPAT defined in a header next to the sources
@@ -357,7 +357,12 @@ def _driver_channels(session, compatible: str) -> list[str]:
             texts.append(f.read_text(encoding="utf-8", errors="ignore"))
         except OSError:
             continue
-    return codegen_mod.channels_from_driver(texts)
+    return texts
+
+
+def _driver_channels(session, compatible: str) -> list[str]:
+    """SENSOR_CHAN_* that the driver of `compatible` handles (heuristic on its channel_get, see core/codegen.py)."""
+    return codegen_mod.channels_from_driver(_driver_sources(session, compatible))
 
 
 def _render_codegen(session, conf_lines: list[str]) -> None:
@@ -383,7 +388,9 @@ def _render_codegen(session, conf_lines: list[str]) -> None:
             with box:
                 ui.label(f"Cannot generate: {exc}").classes("text-sm text-red-4").props("id=codegen-error")
             return
-        devices, notes = codegen_mod.devices_from_draft(session.draft, lambda c: _driver_channels(session, c))
+        devices, notes = codegen_mod.devices_from_draft(
+            session.draft, lambda c: _driver_channels(session, c), board_children=session.build_children,
+            sensor_driver=lambda c: codegen_mod.uses_sensor_api(_driver_sources(session, c)))
         for d in devices:
             if d.cls == "sensor":
                 d.channels = channels.setdefault(d.ident, d.channels)

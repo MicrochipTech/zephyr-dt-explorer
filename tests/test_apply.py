@@ -1,4 +1,6 @@
 """core/apply.py: plan and write the port result as Zephyr's board files (tmp dirs, no env vars)."""
+from datetime import date
+
 import pytest
 
 from dt_explorer.core import apply as ap
@@ -51,7 +53,22 @@ def test_plan_new_files_and_apply(tmp_path):
     assert not (tmp_path / "boards").exists()                    # planning writes nothing
     res = ap.apply(plan)
     assert [p.name for p in res.written] == ["sam_e54_xpro.overlay", "sam_e54_xpro.conf"]
-    assert (tmp_path / "boards" / "sam_e54_xpro.overlay").read_bytes() == OVL.encode()
+    # the port flow writes a NEW file as a marked block (source "port") too (P8.19b item 3)
+    assert (tmp_path / "boards" / "sam_e54_xpro.overlay").read_text() == (
+        f"/* dt_explorer port begin {date.today().isoformat()} */\n" + OVL + "/* dt_explorer end */\n")
+
+
+def test_port_new_file_then_changed_result_gives_exactly_one_block(tmp_path):
+    f = tmp_path / "boards" / "b.overlay"
+    ap.apply(ap.plan_apply(tmp_path, "b/s", OVL, CONF, today="2026-10-15"))
+    second = OVL.replace("my_led0", "my_led9")
+    plan = ap.plan_apply(tmp_path, "b/s", second, CONF, today="2026-10-16")
+    assert plan.file("overlay").action == "exists"
+    res = ap.apply(plan, append={"overlay", "conf"})
+    assert f in res.appended
+    text = f.read_text()
+    assert text.count("dt_explorer port begin") == 1 and text.count("dt_explorer end") == 1
+    assert "my_led9" in text and "my_led0" not in text
 
 
 def test_second_apply_refuses_and_shows_diff(tmp_path):
@@ -59,10 +76,10 @@ def test_second_apply_refuses_and_shows_diff(tmp_path):
     plan = ap.plan_apply(tmp_path, "b/s", OVL + "// more\n", CONF)
     ov, cf = plan.file("overlay"), plan.file("conf")
     assert ov.exists and ov.diff and "+// more" in ov.diff and ov.action == "exists"
-    assert cf.identical and cf.action == "identical"
+    assert cf.action == "exists" and cf.append_diff == ""         # the marked block in the file is up to date
     res = ap.apply(plan)
-    assert res.refused == [ov.path] and not res.written and not res.overwritten
-    assert (tmp_path / "boards" / "b.overlay").read_text() == OVL        # untouched
+    assert ov.path in res.refused and not res.written and not res.overwritten
+    assert OVL in (tmp_path / "boards" / "b.overlay").read_text() and "// more" not in (tmp_path / "boards" / "b.overlay").read_text()
 
 
 def test_overwrite_only_when_named(tmp_path):
@@ -70,7 +87,8 @@ def test_overwrite_only_when_named(tmp_path):
     plan = ap.plan_apply(tmp_path, "b", OVL, CONF)
     res = ap.apply(plan, overwrite={"overlay"})
     assert res.overwritten == [tmp_path / "boards" / "b.overlay"]
-    assert (tmp_path / "boards" / "b.overlay").read_text() == OVL
+    text = (tmp_path / "boards" / "b.overlay").read_text()
+    assert OVL in text and "&a { }" not in text and text.count("dt_explorer end") == 1
 
 
 def test_comment_only_not_written(tmp_path):
@@ -126,9 +144,32 @@ def test_draft_plan_new_files(tmp_path, monkeypatch):
     assert plan.stem == "same54_xpro"
     assert [(f.kind, f.action) for f in plan.files] == [("overlay", "new"), ("conf", "new")]
     res = ap.apply(plan)
-    assert (tmp_path / "boards" / "same54_xpro.overlay").read_text() == OVL
-    assert (tmp_path / "boards" / "same54_xpro.conf").read_text() == CONF
+    # a NEW file is written as a marked block as well (P8.19b item 3)
+    today = date.today().isoformat()
+    assert (tmp_path / "boards" / "same54_xpro.overlay").read_text() == (
+        f"/* dt_explorer draft begin {today} */\n" + OVL + "/* dt_explorer end */\n")
+    assert (tmp_path / "boards" / "same54_xpro.conf").read_text() == (
+        f"# dt_explorer draft begin {today}\n" + CONF + "# dt_explorer end\n")
     assert len(res.written) == 2
+
+
+def test_new_file_then_changed_draft_gives_exactly_one_block(tmp_path, monkeypatch):
+    """P8.19b item 3: first Apply creates the file, a second Apply of a changed draft replaces the block."""
+    _own_board(monkeypatch)
+    f = tmp_path / "boards" / "same54_xpro.overlay"
+    c = tmp_path / "boards" / "same54_xpro.conf"
+    ap.apply(ap.draft_plan(tmp_path / "b", OVL, CONF, app_dir=tmp_path, today="2026-10-15"))
+    second = OVL.replace("my_led0", "my_led9")
+    plan = ap.draft_plan(tmp_path / "b", second, CONF + "CONFIG_I2C=y\n", app_dir=tmp_path, today="2026-10-16")
+    assert plan.file("overlay").action == "exists"
+    res = ap.apply(plan, append={"overlay", "conf"})
+    assert sorted(res.appended) == sorted([f, c]) and not res.written
+    text = f.read_text()
+    assert text.count("dt_explorer draft begin") == 1 and text.count("dt_explorer end") == 1
+    assert "my_led9" in text and "my_led0" not in text
+    assert c.read_text().count("CONFIG_GPIO=y") == 1 and "CONFIG_I2C=y" in c.read_text()
+    again = ap.draft_plan(tmp_path / "b", second, CONF + "CONFIG_I2C=y\n", app_dir=tmp_path, today="2026-10-16")
+    assert again.file("overlay").append_diff == "" and again.file("conf").append_diff == ""      # nothing to do
 
 
 def test_draft_plan_existing_own_overlay_is_refused_with_draft_diff(tmp_path, monkeypatch):
@@ -144,7 +185,7 @@ def test_draft_plan_existing_own_overlay_is_refused_with_draft_diff(tmp_path, mo
     res = ap.apply(plan)
     assert res.refused == [own] and own.read_text() == OWN
     res = ap.apply(plan, overwrite={"overlay"})
-    assert res.overwritten == [own] and own.read_text() == OVL
+    assert res.overwritten == [own] and OVL in own.read_text() and own.read_text().count("dt_explorer end") == 1
 
 
 def test_draft_plan_multi_soc_uses_long_name(tmp_path, monkeypatch):
@@ -241,7 +282,7 @@ def test_replace_wins_over_append(tmp_path, monkeypatch):
     f = _app_with(tmp_path) / "boards" / "same54_xpro.overlay"
     res = ap.apply(ap.draft_plan(tmp_path / "b", DRAFT, "", app_dir=tmp_path),
                    overwrite={"overlay"}, append={"overlay"})
-    assert res.overwritten == [f] and f.read_text() == DRAFT
+    assert res.overwritten == [f] and DRAFT in f.read_text() and OWN not in f.read_text()
 
 
 def test_port_plan_uses_port_marker(tmp_path):

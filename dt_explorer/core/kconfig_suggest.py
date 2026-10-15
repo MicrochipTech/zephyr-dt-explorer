@@ -175,8 +175,18 @@ def derive(tree, compatible: str) -> tuple[dict[str, str], list[str], list[str]]
     if dt_sym is None or not dt_sym.nodes:
         return {}, [], [f"{dt_name} is not defined: no binding with this compatible"]
 
+    def positive_items(expr) -> list:
+        """Symbols of a dependency expression, skipping everything under a NOT (`depends on !X`)."""
+        if isinstance(expr, tuple):
+            if expr[0] == kl.NOT:
+                return []
+            if expr[0] in (kl.AND, kl.OR):
+                return positive_items(expr[1]) + positive_items(expr[2])
+            return []        # comparisons (=, !=, <, ...) do not make a symbol a parent to enable
+        return [expr]
+
     def dep_syms(expr) -> list:
-        return [s for s in kl.expr_items(expr) if isinstance(s, kl.Symbol) and not s.is_constant]
+        return [s for s in positive_items(expr) if isinstance(s, kl.Symbol) and not s.is_constant]
 
     drivers = [s for s in tree.unique_defined_syms
                if s is not dt_sym and dt_sym in kl.expr_items(s.direct_dep)]
