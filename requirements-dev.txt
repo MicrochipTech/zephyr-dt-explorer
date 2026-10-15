@@ -1,1 +1,3 @@
 pytest
+playwright    # smoke tests (marker smoke); needs an installed Chrome (channel "chrome")
+# nicegui is a runtime dependency; its nicegui.testing user simulation is used by tests/ui (marker ui)

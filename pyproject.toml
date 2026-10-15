@@ -1,2 +1,7 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "ui: simulated UI test (nicegui.testing user simulation, no browser)",
+    "smoke: real-browser smoke test (Playwright + Chrome, own server, saves screenshots)",
+    "slow: takes more than about 30 s",
+]

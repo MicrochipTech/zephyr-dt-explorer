@@ -21,6 +21,7 @@ py -m pytest -q -rs                              :: test suite (no linter, no bu
 py tools/snapshot_build.py <build dir> [-o f]    :: stable JSON snapshot of today's analysis (goldens)
 ```
 
+- UI tests (P8.2): `py -m pytest -q -rs -m ui tests/ui` (simulated, no browser) and `-m smoke` (Playwright + Chrome, own server on a free port, screenshots in `%TEMP%\dtx_ui_shots`); they need `DTX_RTOS4_WS` and skip without it. Find elements by `id=` (`tests/ui/ui_helpers.py`); drafts are redirected to copies under %TEMP%.
 - The server runs on `http://localhost:8765` with `reload=False`, so restart it after every code change.
 - With no folder argument, a tkinter dialog asks for one. The last folder is stored in
   `%USERPROFILE%\.dt_explorer.json`, and `DEFAULT_ROOT` is the fallback.
