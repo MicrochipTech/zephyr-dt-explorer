@@ -37,7 +37,7 @@ from pathlib import Path
 from . import board_desc
 from . import pins as pins_mod
 from . import plugins
-from .build import BuildModel, origin_kind
+from .build import BuildModel, compat_ident, origin_kind
 from .buildinfo import BuildInfo, parse_config, read_build_info
 from .draft import BindingIndex, Draft, DraftNode, Use
 from .kconfig_suggest import KconfigLoadError, KconfigSuggestion, load_kconfig, suggest_kconfig
@@ -327,6 +327,19 @@ def _strip_status(text: str) -> str:
 
 def _rename(text: str, old: str, new: str) -> str:
     return re.sub(rf"(?<![\w-]){re.escape(old)}(?![\w-])", new, text)
+
+
+def _zephyr_version(base) -> str | None:
+    """Version text such as 4.3.0 or 4.5.0-rc1 from `<ZEPHYR_BASE>/VERSION`; None when the file is missing or unreadable."""
+    try:
+        text = (Path(base) / "VERSION").read_text(encoding="utf-8", errors="replace")
+    except (OSError, TypeError):
+        return None
+    kv = dict(re.findall(r"^\s*(\w+)\s*=\s*(\S*)", text, re.M))
+    if not kv.get("VERSION_MAJOR"):
+        return None
+    out = f"{kv['VERSION_MAJOR']}.{kv.get('VERSION_MINOR', '0')}.{kv.get('PATCHLEVEL', '0')}"
+    return out + (f"-{kv['EXTRAVERSION']}" if kv.get("EXTRAVERSION") else "")
 
 
 def _adopt_west_topdir(model) -> None:
@@ -830,6 +843,10 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                      target_board=tgt_info.board_target or tgt_info.board or "?")
     if src.build.resolve() == tgt.build.resolve():
         rep.notes.append("source and target are the same build folder")
+    src_ver, tgt_ver = _zephyr_version(src_info.zephyr_base), _zephyr_version(tgt_info.zephyr_base)
+    if src_ver and tgt_ver and src_ver != tgt_ver:
+        rep.notes.append(f"source Zephyr {src_ver}, target Zephyr {tgt_ver}: app APIs may have changed "
+                         "(outside the devicetree; the build of src/ can fail on renamed functions or types)")
 
     log.info("port %s (%s) -> %s (%s), fast check=%s", src.build, rep.source_board, tgt.build,
              rep.target_board, check)
@@ -1002,6 +1019,14 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     alias_src = {}
     for a, n in src.edt._dt.alias2node.items():
         alias_src.setdefault(n.path, []).append(a)
+    # what the generated overlay adds to the target: aliases and chosen entries of ported nodes, and of carried text
+    after_aliases = {a for n in ported_draft.nodes for a in n.use.aliases}
+    after_chosen = {compat_ident(c) for n in ported_draft.nodes for c in n.use.chosen}
+    for c in rep.carried:
+        if c.desc.startswith("/aliases "):
+            after_aliases.add(c.desc.split(None, 1)[1])
+        elif c.desc.startswith("/chosen "):
+            after_chosen.add(compat_ident(c.desc.split(None, 1)[1]))
     for r in src.code_refs:
         m = re.match(r"DT_(\w+)\((\w+)\)", r["macro"])
         kind, name = m.group(1), m.group(2)
@@ -1046,8 +1071,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                     ref.suggestion = _not_ported_hint(snode)
         elif kind == "ALIAS":
             tn = tgt.edt._dt.alias2node.get(name.replace("_", "-")) or tgt.edt._dt.alias2node.get(name)
-            if tn is not None:
-                continue
+            if tn is not None or name.replace("_", "-") in after_aliases or name in after_aliases:
+                continue                    # the target board or the overlay of this port defines it
             ref.detail = "alias does not exist in the target devicetree"
             if snode is not None and _label(snode) in conflicts:
                 ref.detail += f"; the node is not ported ({conflicts[_label(snode)]})"
@@ -1058,12 +1083,13 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                 if tlbl is None and tc is not None and tc.status == "okay":
                     tlbl = _label(tc)
                 if tlbl:
-                    ref.alias_entry = f"{name.replace('_', '-')} = &{tlbl};"
-                    ref.suggestion = f"keep DT_ALIAS({name}); add the alias to the target overlay"
+                    # the overlay of this port adds the alias, so the reference resolves after it
+                    alias_entries.setdefault(name.replace("_", "-"), f"&{tlbl}")
+                    continue
                 else:
                     ref.suggestion = _not_ported_hint(snode)
         else:
-            if name in tgt.chosen:
+            if name in tgt.chosen or name in after_chosen:
                 continue
             ref.detail = "chosen entry does not exist in the target devicetree"
         if ref.alias_entry:

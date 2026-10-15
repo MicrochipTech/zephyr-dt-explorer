@@ -213,7 +213,7 @@ def test_port_build_synthetic(world):
     assert macros["DT_NODELABEL(ledx)"].problem == "missing"
     assert "not carried over" in macros["DT_NODELABEL(ledx)"].suggestion
     assert macros["DT_NODELABEL(u2)"].problem == "missing"
-    assert macros["DT_ALIAS(my_uart)"].alias_entry == "my-uart = &u1;"
+    assert "DT_ALIAS(my_uart)" not in macros                               # the port's own alias for &u1 resolves it
     assert res.overlay.count("my-uart = &u1;") == 1                        # the node's own alias, not repeated
 
     # pins: P8 is a pad of the device but not on the package, P9 is no pad of the device at all
@@ -505,3 +505,42 @@ def test_conflict_suggestion_says_which_target_pads_are_taken(world, monkeypatch
     assert n.status == "conflict"
     sug = next(x for x in n.lines if x.startswith("suggestion:"))
     assert "already used in the target build: P3 by &i0" in sug and "no free instance" in sug
+
+
+def test_alias_reference_is_judged_after_the_overlay(world):
+    s_u0, s_led = world.src.by_path["/s/u0"], world.src.by_path["/s/led"]
+    world.src.code_refs += [
+        {"file": "src/main.c", "line": 20, "macro": "DT_ALIAS(my_u0)", "node": s_u0, "code": ""},
+        {"file": "src/main.c", "line": 21, "macro": "DT_ALIAS(my_led)", "node": s_led, "code": ""},
+        {"file": "src/main.c", "line": 22, "macro": "DT_CHOSEN(zephyr_console)", "node": world.src.by_path["/s/u1"], "code": ""}]
+    res = pr.port_build(world.src, world.tgt, check=False)
+    macros = {r.macro: r for r in res.report.label_refs}
+    # &u0 exists and is okay in the target: the overlay adds the alias, so the reference resolves after it
+    assert "DT_ALIAS(my_u0)" not in macros and "my-u0 = &u0;" in res.overlay
+    # the node of the second alias is not ported: still missing
+    assert macros["DT_ALIAS(my_led)"].problem == "missing"
+    # the chosen entry is added by the overlay for &u1
+    assert "zephyr,console = &u1;" in res.overlay and "DT_CHOSEN(zephyr_console)" not in macros
+
+
+def test_zephyr_version_text(tmp_path):
+    assert pr._zephyr_version(tmp_path) is None
+    (tmp_path / "VERSION").write_text("VERSION_MAJOR = 4\nVERSION_MINOR = 5\nPATCHLEVEL = 0\nVERSION_TWEAK = 0\nEXTRAVERSION = rc1\n")
+    assert pr._zephyr_version(tmp_path) == "4.5.0-rc1"
+    (tmp_path / "VERSION").write_text("VERSION_MAJOR = 4\nVERSION_MINOR = 3\nPATCHLEVEL = 0\nEXTRAVERSION =\n")
+    assert pr._zephyr_version(tmp_path) == "4.3.0"
+
+
+def test_note_when_zephyr_versions_differ(world, monkeypatch, tmp_path):
+    for name, minor in (("zs", 3), ("zt", 5), ("zt2", 3)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "VERSION").write_text(f"VERSION_MAJOR = 4\nVERSION_MINOR = {minor}\nPATCHLEVEL = 0\nEXTRAVERSION =\n")
+
+    def info(target_dir):
+        return lambda b: BuildInfo(build_dir=Path(b), board_target="x",
+                                   zephyr_base=tmp_path / ("zs" if Path(b) == world.src.build else target_dir))
+    monkeypatch.setattr(pr, "read_build_info", info("zt"))
+    notes = pr.port_build(world.src, world.tgt, check=False).report.notes
+    assert any("source Zephyr 4.3.0, target Zephyr 4.5.0" in n and "app APIs may have changed" in n for n in notes)
+    monkeypatch.setattr(pr, "read_build_info", info("zt2"))
+    assert not any("app APIs" in n for n in pr.port_build(world.src, world.tgt, check=False).report.notes)
