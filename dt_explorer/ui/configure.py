@@ -163,8 +163,13 @@ def derive_props(option: ClassOption, instance, pins: dict[str, str],
         return {}, str(exc)
 
 
+# Base-binding properties that are no peripheral setting, hidden in the dialog. Zephyr declares them in
+# i2c-controller.yaml itself (v4.3.0), so a "only the class base file" rule does not remove them.
+NOISE_PROPS = frozenset({"sq-size", "cq-size"})     # RTIO submission/completion queue sizes
+
+
 def neutral_specs(option: ClassOption, index: BindingIndex) -> list[PropSpec]:
-    """Writable neutral properties of the class: scalar properties of the base binding chain."""
+    """Writable neutral properties of the class: scalar properties of the base binding chain, minus NOISE_PROPS."""
     base = next((b for b, c in CLASS_BASES.items() if c == option.cls), None)
     start = index.by_name.get(base) if base else None
     if start is None:
@@ -175,7 +180,7 @@ def neutral_specs(option: ClassOption, index: BindingIndex) -> list[PropSpec]:
         if not isinstance(item, Path) or item in generic:
             continue
         for name, spec in (index.load(item).get("properties") or {}).items():
-            if (not isinstance(spec, dict) or "const" in spec or name in out
+            if (not isinstance(spec, dict) or "const" in spec or name in out or name in NOISE_PROPS
                     or spec.get("type") not in ("int", "string", "boolean")):
                 continue
             out[name] = PropSpec(name, spec["type"], spec.get("enum"), spec.get("default"),

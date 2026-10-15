@@ -172,9 +172,11 @@ def page(build: str | None = None, node: str | None = None, src: str | None = No
                   on_click=lambda: port.open_port(state.model, state.builds, ROOT)) \
             .props("flat no-caps color=white id=port-open")
         ui.space()
-        for kind, (col, txt) in ORIGIN_STYLE.items():
-            if kind != "other":
-                ui.label(txt).style(f"color:{col}; border:1px solid {col}; padding:1px 6px; border-radius:4px")
+        with ui.button("Legend", icon="palette").props("flat no-caps color=white id=legend-btn"):
+            with ui.menu(), ui.column().classes("gap-1 p-2"):
+                for kind, (col, txt) in ORIGIN_STYLE.items():
+                    if kind != "other":
+                        ui.label(txt).style(f"color:{col}; border:1px solid {col}; padding:1px 6px; border-radius:4px")
 
     def reload(path):
         state.builds = find_builds(ROOT)

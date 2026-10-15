@@ -197,6 +197,24 @@ properties:
     assert specs["current-speed"].description == "Baud rate"
 
 
+def test_neutral_specs_hide_rtio_queue_sizes(tmp_path):
+    """sq-size/cq-size sit in i2c-controller.yaml itself; the dialog hides them, clock-frequency stays."""
+    write_binding(tmp_path, "base.yaml", "properties:\n  status:\n    type: string\n")
+    write_binding(tmp_path, "i2c-controller.yaml", """include: base.yaml
+properties:
+  clock-frequency:
+    type: int
+  sq-size:
+    type: int
+    default: 4
+  cq-size:
+    type: int
+    default: 4
+""")
+    index = BindingIndex([tmp_path])
+    assert [s.name for s in C.neutral_specs(opt("i2c"), index)] == ["clock-frequency"]
+
+
 def test_class_options_come_from_the_recipe(tmp_path, device):
     write_binding(tmp_path, "base.yaml", "properties: {}\n")
     for base in ("uart", "i2c", "spi"):
