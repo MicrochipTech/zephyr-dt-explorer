@@ -557,6 +557,15 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
+- Generated device module "Generate code" (from side session dt-explorer-c7, user-approved 2026-10-15; builds on child
+  nodes and the Apply path from P5.6; consider for phase 8): `<app>/dtx_devices/` with CMakeLists.txt
+  (target_sources/target_include_directories), `include/dtx_devices.h` (umbrella, `dtx_devices_init()` with
+  device_is_ready for all), one `dtx_<node>.h/.c` pair per device with a small typed API per class (e.g.
+  `dtx_bme280_76_read()`, `dtx_led0_set(bool)`, `dtx_pwm_led0_set(pulse_ns)`, `dtx_adc0_ch1_read_mv()`); sensor
+  channels from the driver's channel_get (DriverIndex heuristic, user can edit), fetch/get vs read/decode API by
+  Zephyr version; generated files carry a header + checksum (unchanged → regenerate, edited → diff only); Kconfig
+  lines via Apply into prj.conf; acceptance idea: BME280 on SERCOM I2C on same54_xpro, builds, survives
+  `west build -p`. Decision recorded in CONFIGURATOR.md (CMakeLists exception).
 - Kconfig view, device-centred (from side session dt-explorer-c7, user-approved 2026-10-15; not a menuconfig
   clone): (1) node details get a Kconfig section with the symbols tied to the node's compatible
   (`core/kconfig_suggest.py`) and their current value from `zephyr/.config`; (2) "why is this off?" for the
