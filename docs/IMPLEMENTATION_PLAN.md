@@ -161,7 +161,7 @@ For each card:
 view). **Then phase 8** (child nodes on buses, generic binding form for further peripherals, their
 translations): when version 1 is done, the builder writes the phase 8 cards itself from
 CONFIGURATOR.md in the format of §8 (same rules: scope, acceptance, size ≤ 60 tool calls), commits
-them as `plan: phase 8 cards`, and continues. Phases 9 and 10 stay in the backlog. New ideas during
+them as `plan: phase 8 cards`, and continues. Input for these cards: [research/phase8_input.md](research/phase8_input.md). Phases 9 and 10 stay in the backlog. New ideas during
 the run go to the *Backlog* (§10), not into open cards.
 
 Critical path: P0.1 → P1.1 → P1.2 → P1.4 → P1.5 → P3.1 → P3.2 → P3.3 → P3.4 → P4.1 → P5.0 → P5.2 →
