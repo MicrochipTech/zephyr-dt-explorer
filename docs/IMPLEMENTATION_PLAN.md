@@ -488,8 +488,8 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P6.0 | done | f084991 |
 | P6.1 | done | b993082 |
 | P6.2 | done (findings) | 532396b |
-| P6.3 | running | |
-| P6.2b | open | |
+| P6.3 | done | 6d93f0a → master |
+| P6.2b | running | |
 
 **P6.0 Research: two Zephyr versions in one process.** *light*, PS.
 - Dep: –. Scope: `docs/research/edtlib_versions.md`.
@@ -668,4 +668,5 @@ surprising, and anything you were unsure about.
 | P6.2 | [P6.2.md](evidence/P6.2.md) | 8 cmake-only target builds of the unmodified labs on main: all rc 0 (≈ 83 s). Port with 354710c: SG41 verify rc 1 for all labs (board uses `&sercom4` as console UART; ported SPI leaves `current-speed`), SG61 verify rc 0 only because `&sercom4` was dropped silently (PB27 not on package). SG61 pin report: exactly PB26/PB27/PB29 for every lab (same54_xpro.dts itself enables sercom4 SPI there), SG41 none. Also: PD08/PD09 conflict with SG61 board `sercom6`; SDA/SCL swapped at the CUlt connector; lab3 `DT_ALIAS(sercom3)` missing. → fix card P6.3, re-run P6.2b |
 | P5.5 | [P5.5.md](evidence/P5.5.md) | lab0/lab1/lab2 ported + applied to copies, plain `west build -b sam_e54_xpro` links (120/105/149 s), my_led `__device_dts_ord_3` in the image; lab3 compile fails: `mytemp0`/`my_http0`/`DT_ALIAS(sercom3)` need the SERCOM I2C bus, which has no g1 driver in Zephyr v4.3.0 (predicted by report sections 3/5b) → workspace limitation, re-checked against zephyr-main in P6.2b. Real apps unchanged (fc.exe). Not tested on hardware (HC-4) |
 | P3.8 | [P3.8.md](evidence/P3.8.md) | recipe serves `microchip,sercom-g1-uart/-i2c/-spi`; on the main pic32cx_sg41_cult build SERCOM1 I2C (PA00/PA01) + SERCOM3 UART (PA22/PA23) render and validate with no errors; g1 Kconfig table lists only CONFIG_SERIAL/I2C/SPI (the g1 driver symbols are promptless `default y` via DT_HAS_…, assigning them in a conf would abort the build). sam0 tests untouched (0 removed lines). 372 passed. Builder re-run 58 passed |
+| P6.3 | [P6.3.md](evidence/P6.3.md) | all 8 lab ports to SG41/SG61 verify rc 0 (SG41 was rc 1); skipped nodes are `conflict` with one line per reason (target uses the instance as another compatible incl. chosen console; pad used by another target node, e.g. SG61 `&sercom6` on PD08/PD09; pad not on package, e.g. SG61 PB27) plus a connector-based suggestion ("spi on EXT1 of the target: MOSI PB24, MISO PC25; no pad for SCK → SERCOM0 …"); code refs to conflicting nodes reported; lab1 → sam_e54_xpro overlay unchanged. Found: `BuildModel.west_top` must come from `WEST_TOPDIR` for cross-workspace builds → builder fixed it in core/build.py (goldens unchanged, full suite 381 passed) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

@@ -183,7 +183,10 @@ class BuildModel:
         cache = (build / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
         self.zephyr_base = Path(self._cache_val(cache, "ZEPHYR_BASE"))
         self.app_dir = Path(self._cache_val(cache, "APPLICATION_SOURCE_DIR"))
-        self.west_top = self.zephyr_base.parent
+        # relative file names in zephyr.dts are relative to the west topdir; an app from another
+        # workspace than its Zephyr has a different one than ZEPHYR_BASE.parent
+        wt = self._cache_val(cache, "WEST_TOPDIR")
+        self.west_top = Path(wt) if wt and Path(wt).is_dir() else self.zephyr_base.parent
 
         self.edt = EdtlibHost.for_zephyr_base(self.zephyr_base).load_edt(zdir / "edt.pickle")
 
@@ -241,7 +244,10 @@ class BuildModel:
         self.build = build
         self.zephyr_base = Path(self._cache_val(cache, "ZEPHYR_BASE"))
         self.app_dir = Path(self._cache_val(cache, "APPLICATION_SOURCE_DIR"))
-        self.west_top = self.zephyr_base.parent
+        # relative file names in zephyr.dts are relative to the west topdir; an app from another
+        # workspace than its Zephyr has a different one than ZEPHYR_BASE.parent
+        wt = self._cache_val(cache, "WEST_TOPDIR")
+        self.west_top = Path(wt) if wt and Path(wt).is_dir() else self.zephyr_base.parent
         self.edt = edt
         self.origins = origins or {}
         self.includes = None
