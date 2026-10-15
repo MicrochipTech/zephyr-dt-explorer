@@ -593,7 +593,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.6 | open | |
 | P8.7 | open | |
 | P8.8 | open | |
-| P8.9 | open | |
+| P8.9 | done | 63540ae |
 | P8.10 | open | |
 | P8.11 | open | |
 | P8.12 | done | 2396f4b → master |
@@ -856,4 +856,5 @@ surprising, and anything you were unsure about.
 | P8.4 | [P8.4.md](evidence/P8.4.md) | `DraftChild` (name, unit, compatible, labels, props, children) under `DraftNode.children`; draft JSON v2 (v1 loads); lab1 `eeprom@5e`, lab3 `mytemp@4f`/`eeprom@5e` lift + render back, edtlib compare 4/4 (non-vacuous); lab3 → main sam_e54_xpro: `mytemp0` inside `&sercom3`, `my_http0` ref resolves, verify rc 0; 8-port matrix + lab1 → e54 unchanged statuses, rc 0; translations accept optional `children:` rules. 461 passed. CONFIGURATOR "Child nodes follow later" → P8.20 |
 | P8.5 | [P8.5.md](evidence/P8.5.md) | generic form (ids gen-prop-*, gen-role-*, gen-save) for recipe-less nodes: scalar props with enum/default/required/description, SoC values prefilled, optional pads; lab1_leer copy: wdog + tc0 (`atmel,sam0-tc32`, prescaler 64) + tc2 with PA00 render, validate no errors, Verify rc 0, Kconfig WATCHDOG/WDT_SAM0/COUNTER/COUNTER_SAM0_TC32; required-empty flagged (unit + UI test). 459 passed. Builder: "Configure…" also for enabled recipe-less nodes (`can_configure_generic`, id cfg-open-generic). Note: Playwright smoke tests run in a child process (session event loop) |
 | P8.13b | [P8.13b.md](evidence/P8.13b.md) | append is the default for an existing file (Draft tab and port dialog): marked block `/* dt_explorer draft begin <date> */ … end */`, re-apply replaces only the block, identical → skip; conf lines appended once in a marked block, duplicates skipped; replace behind the tick with its own diff. lab1 copy: my_led kept + sercom1 I2C appended, full build links, `__device_dts_ord_3` (my_led) and `_40` (sercom1) in nm; #include inside the block works (cpp). 457 passed |
+| P8.9 | [P8.9.md](evidence/P8.9.md) | GMAC recipe (old `atmel,sam0-gmac`/`atmel,sam-mdio`, g1 `microchip,gmac-g1-eth`/`-mdio`): two draft nodes (MAC with `phy-handle`, MDIO with `ethernet-phy@0` child); main SG41: 8 RMII pads automatic (PA12–15, PA17–19, PC20), MDC/MDIO PC22/PC23 chosen (PB14/15 used by TC5 PWM), render + validate + Verify rc 0; Kconfig NETWORKING, NET_L2_ETHERNET, ETH_DRIVER + g1 driver/MDIO symbols (prompted only); lab1 lift → render compare 2/2. Agent stopped once (§4: lift could not hold node-level phandles; test_lift fixture lacks GMAC) → builder widened the scope to core/lift.py + tests/test_lift.py. 521 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
