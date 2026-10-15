@@ -164,7 +164,9 @@ CONFIGURATOR.md in the format of §8 (same rules: scope, acceptance, size ≤ 60
 them as `plan: phase 8 cards`, and continues. Input for these cards: [research/phase8_input.md](research/phase8_input.md). Phases 9 and 10 stay in the backlog. New ideas during
 the run go to the *Backlog* (§10), not into open cards.
 
-Critical path: P0.1 → P1.1 → P1.2 → P1.4 → P1.5 → P3.1 → P3.2 → P3.3 → P3.4 → P4.1 → P5.0 → P5.2 →
+Phase 8 critical path: P8.1 → P8.2 → P8.4/P8.5 → P8.6 → P8.13 → P8.14 → P8.19; parallel: P8.3, P8.12, P8.16.
+
+Critical path (version 1): P0.1 → P1.1 → P1.2 → P1.4 → P1.5 → P3.1 → P3.2 → P3.3 → P3.4 → P4.1 → P5.0 → P5.2 →
 P5.3 → P5.4 → P5.6 → P5.5 → P6.1 → P6.2.
 The board branch (P7.x) can run in parallel after P1.2.
 
@@ -572,6 +574,164 @@ exception of P5.5.
 - Accept: README rows and GUI.md sections for the Board tab, "Apply to app…" in the port dialog, report section 7
   (connector roles) and `conflict` lines with suggestions; element grep in both files; screenshots (Apply/verify shots
   reused from evidence, nothing that writes into apps\ or runs west).
+
+### Phase 8: child nodes, generic form, more peripherals (written by the builder 2026-10-15)
+
+Input: [research/phase8_input.md](research/phase8_input.md) (items 1–17). Rules as for all cards. **New for
+phase 8:** every card that changes the UI also updates README.md and `docs/GUI.md` in its own scope (CLAUDE.md rule)
+and, from P8.2 on, adds a simulated UI test for its new UI. Briefs for UI cards tell the agent to redirect drafts
+and writes to copies under %TEMP% and never to `taskkill /IM`.
+
+| ID | Status | Commit |
+|---|---|---|
+| P8.1 | open | |
+| P8.2 | open | |
+| P8.3 | open | |
+| P8.4 | open | |
+| P8.5 | open | |
+| P8.6 | open | |
+| P8.7 | open | |
+| P8.8 | open | |
+| P8.9 | open | |
+| P8.10 | open | |
+| P8.11 | open | |
+| P8.12 | open | |
+| P8.13 | open | |
+| P8.14 | open | |
+| P8.15 | open | |
+| P8.16 | open | |
+| P8.17 | open | |
+| P8.18 | open | |
+| P8.19 | open | |
+| P8.20 | open | |
+
+**P8.1 Log tab and log file.** (input 14)
+- Dep: –. Scope: `dt_explorer/core/log.py` (new: logger setup, rotating file handler, ring buffer, context header),
+  `dt_explorer/app.py` (`--debug`, setup at start), `dt_explorer/ui/log_tab.py` (new), `dt_explorer/ui/page.py`
+  (tab only), log calls in `core/build.py` (load, counts, timings, `state()` decisions at DEBUG),
+  `core/west_tools.py`, `core/verify.py`, `core/apply.py`, `core/port_report.py` (external calls, writes, decisions;
+  log lines only, no behaviour change), README.md, `docs/GUI.md`.
+- Accept: `%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log` written, rotating; header with tool commit, Python,
+  NiceGUI, Zephyr version, workspace, build, board, SoC, ATDF file, plugins; tab shows the same lines live with Copy
+  and level filter; `state()` reasons visible at DEBUG; goldens unchanged; docs note about local paths in the log.
+
+**P8.2 UI tests.** (input 15)
+- Dep: P8.1. Scope: `tests/ui/` (new), `tests/conftest.py` (UI fixtures only), `requirements-dev.txt`,
+  `pyproject.toml` (pytest markers only), CLAUDE.md (one line on UI tests).
+- Do: simulated tests with `nicegui.testing` (User fixture) for the existing UI: deep links, Configure… → I2C → pads
+  → Save → Draft count and snippet (on a copy of `_soltest/apps/lab1_leer` under %TEMP%), Edit pins, Port to board…
+  (report sections, no Apply), Pins/Package/Board tabs; a few Playwright smoke tests (Configure → Check → Verify,
+  Port, board view) saving screenshots, skipped without Chrome/Playwright or DTX_*.
+- Accept: suite green with and without env vars; each smoke test leaves a screenshot path in its output.
+
+**P8.3 Research: further peripherals.** *light*, PS with everything. (inputs 2, 5)
+- Dep: –. Scope: `docs/research/peripheral_pairs.md`.
+- Do: as P5.0 for TC, TCC, ADC, DAC, EIC, GMAC (+ PHY/mdio), RTC, WDT, DMAC, TRNG, CAN, USB: bindings old ↔ g1
+  (RTOS4 and zephyr-main), presence in `pic32cx_sg.dtsi` and the SAM D5x/E5x dtsi on main, drivers, Kconfig, pin
+  signals in the ATDF; per peripheral a recommendation: own recipe (pins + derived props) or generic form.
+- Accept: property counts = table rows per binding; recommendation table.
+
+**P8.4 Child nodes in the draft model.** (input 3)
+- Dep: P8.2. Scope: `dt_explorer/core/draft.py`, `core/render.py`, `core/lift.py`, `core/translate.py` (children
+  pass through translations), `core/port_report.py` (bus children ported with their bus), tests.
+- Accept: lab1 `eeprom@5e` and lab3 `mytemp@4f` lift into the draft and render back (edtlib compare as P5.3); JSON
+  schema version bumped with a loader for version 1; port of lab3 to main sam_e54_xpro carries `mytemp@4f` as a child
+  of the ported I2C node; goldens unchanged.
+
+**P8.5 Generic binding form.** (input 1)
+- Dep: P8.2. Scope: `dt_explorer/core/generic.py` (new: form spec from a binding chain with type, enum, default,
+  required, description per property; pin roles from the provider's signal roles; recipe-less draft and render path),
+  `ui/configure.py`, `ui/generic_form.py` (new), README.md, `docs/GUI.md`, tests incl. UI test.
+- Accept: on a lab1_leer copy: configure WDT and TC (counter) without a recipe → overlay renders, validate no errors,
+  Verify with west rc 0; a required property left empty is flagged in the form.
+
+**P8.6 Child node form and bus checks.** (inputs 3, 6)
+- Dep: P8.4, P8.5. Scope: `ui/configure.py` (add child), `core/generic.py` (compatibles with `on-bus`),
+  `core/validate.py` (duplicate I2C address, CS GPIO used elsewhere), README.md, `docs/GUI.md`, tests incl. UI test.
+- Accept: add a BME280 (`bosch,bme280`) at 0x76 on a configured SERCOM I2C and an SPI device with a CS GPIO; a second
+  device at 0x76 → error; CS on a used pad → error; Verify rc 0 for the valid case.
+
+**P8.7 Board-level nodes: LEDs, buttons, PWM LEDs, aliases/chosen.** (input 4)
+- Dep: P8.5. Scope: `core/board_nodes.py` (new), `ui/configure.py` or `ui/board_nodes.py`, README.md, `docs/GUI.md`,
+  tests incl. UI test.
+- Accept: add a `gpio-leds` child and a `gpio-keys` child on free pads, set alias `led1` and a chosen entry; render,
+  validate, Verify rc 0 on a lab1_leer copy.
+
+**P8.8 Recipes PWM (TCC/TC) and ADC.** (input 2; split P8.8a/b if large)
+- Dep: P8.3, P8.4, P8.5. Scope: `dt_explorer/recipes/` (new modules per P8.3), tests.
+- Accept: PWM on a TCC WO pin with `#pwm-cells` and prescaler derived; ADC with `channel@N` children
+  (`zephyr,gain`, `zephyr,reference`, `zephyr,input-positive`) and AIN pin roles; both for the old and the g1 port;
+  render + validate + Verify rc 0 on SAME54 (RTOS4) and on main SG41.
+
+**P8.9 GMAC + PHY recipe.** (decision in CONFIGURATOR.md: own recipe, RMII pins automatic)
+- Dep: P8.3, P8.4. Scope: `dt_explorer/recipes/` (gmac module), tests.
+- Do: RMII roles filled from the provider's signals without hand-picking (a role with one candidate is set
+  automatically, alternatives are offered); `mdio` child with the PHY (`ethernet-phy`, address); `phy-handle`;
+  Kconfig only for the Ethernet driver, TCP/IP and TLS stay in menuconfig.
+- Accept: GMAC + PHY on main pic32cx_sg41_cult (pads per the CUlt board file) render, validate, Verify rc 0.
+
+**P8.10 Translations for further peripherals.** (input 5)
+- Dep: P8.3, P8.8, P8.9. Scope: `dt_explorer/translations/`, `docs/research/peripheral_pairs.md` (results), tests.
+- Accept: TC, TCC, ADC, GMAC (and the others P8.3 marks translatable) translate and load in main's edtlib against
+  pic32cx_sg41; CAN and USB are listed as untranslatable in the port report.
+
+**P8.11 Check rules: pin function and channel clashes.** (input 6)
+- Dep: P8.6, P8.8. Scope: `core/validate.py`, tests.
+- Accept: analog pin used as digital (and vice versa) → warning; two ADC channels on one input or two PWM users of one
+  WO channel → error; negative tests can fail.
+
+**P8.12 Importer: mikroBUS and Arduino headers.** PS. (input 11)
+- Dep: –. Scope: `dt_explorer/importers/pipeline.py`, `dt_explorer/connectors/arduino_uno_r3.py`,
+  `connectors/mikrobus.py` (merge and label keys only), `dt_explorer/boards/*.yaml`, `ui/board_view.py` (render these
+  connector types), README.md, `docs/GUI.md`, tests.
+- Accept: SG41/SG61 CUlt YAMLs gain J900/J901 (mikroBUS) and the Arduino header set, SAME54 Xpro its headers if
+  present; board view shows them; existing EXT entries unchanged.
+
+**P8.13 Draft tab "Apply to app".** (inputs 8, 9)
+- Dep: P8.2. Scope: `ui/draft_tab.py`, `core/apply.py` (additions only), README.md, `docs/GUI.md`, tests incl. UI test.
+- Accept: on a copy, the current draft is written as `boards/<board>.overlay`/`.conf` of the build's own board
+  (new files only, diff otherwise); `west build` of the copy without options picks it up.
+
+**P8.14 Generated device module `dtx_devices/`.** (input 10; decision in CONFIGURATOR.md)
+- Dep: P8.6, P8.13. Scope: `core/codegen.py` (new), `dt_explorer/codegen_templates/` (new), `ui/draft_tab.py`
+  ("Generate code"), README.md, `docs/GUI.md`, tests.
+- Accept: on a copy with a BME280 draft: `dtx_devices/` generated (header + checksum), the CMakeLists line added
+  only after the diff confirmation, `prj.conf` lines via Apply; `main.c` including `dtx_devices.h` builds;
+  `west build -p` keeps it; a user-edited generated file is not overwritten (diff shown).
+
+**P8.15 "Changes" tab.** (input 13)
+- Dep: P8.13. Scope: `core/git_status.py` (new), `ui/changes_tab.py` (new), `ui/page.py` (tab only), README.md,
+  `docs/GUI.md`, tests.
+- Accept: on a git repo copy: modified/added/untracked files with diffs; "dtx" badge on tool-written files; Refresh
+  only on demand with time and HEAD shown; no repo or no git → message, nothing breaks.
+
+**P8.16 Port report fixes.** *light* (inputs 16, 17)
+- Dep: –. Scope: `core/port_report.py`, tests.
+- Accept: lab3 report section 3 no longer says "missing" for `DT_ALIAS(sercom3)` when the overlay adds it; a note when
+  source and target Zephyr versions differ (API drift possible).
+
+**P8.17 Connector-aware remap when porting.** (input 12)
+- Dep: P8.16. Scope: `core/port_report.py`, tests.
+- Do: for a conflict whose roles all have target pads at the same connector pins and an instance that can mux them,
+  emit the remapped node (marked as remapped, mapping in the report) instead of only suggesting it.
+- Accept: lab1 → SG41: EXT1 SPI remapped where a free instance exists, otherwise still `conflict`; verify rc 0.
+
+**P8.18 Acceptance: Zephyr samples.** (input 7)
+- Dep: P8.10, P8.11. Scope: `docs/evidence/P8.18.md`.
+- Accept: `basic/blinky_pwm`, `drivers/adc/adc_dt` and one I2C sensor sample configured with the tool on SAME54
+  (RTOS4) and ported to main pic32cx_sg41_cult; verify rc 0 on both; full build of each links.
+
+**P8.19 Acceptance: the user's SG41 scenario.** (addendum to input 11)
+- Dep: P8.7, P8.9, P8.12, P8.14, P8.15. Scope: `docs/evidence/P8.19.md`.
+- Accept: from a `pic32cx_sg41_cult` blinky copy (main): add a UART, an I2C/SPI sensor on the mikroBUS socket and
+  GMAC + PHY with the tool; Apply writes `boards/…overlay/.conf`, `prj.conf` lines and `dtx_devices/`; full build
+  links; the Changes tab lists exactly the written files; not tested on hardware.
+
+**P8.20 Phase 8 docs and CONFIGURATOR sync.** *light*
+- Dep: all other phase 8 cards. Scope: README.md, `docs/GUI.md`, `docs/CONFIGURATOR.md` (status notes),
+  `docs/make_screenshots.py`, `docs/img/`.
+- Accept: every phase 8 UI element documented with a screenshot; CONFIGURATOR.md phase 8 marked done with links to
+  the evidence.
 
 ## 9. Brief template
 
