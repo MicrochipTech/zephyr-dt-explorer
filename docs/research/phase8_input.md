@@ -52,3 +52,19 @@ The Kconfig view (7f94422 entry) may stay in the backlog.
 12. Connector-aware remap when porting between different boards: map each used pad through the
     connector pin (report section 7) to the target pad, pick an instance that can mux those pads for
     the same roles, and emit that instead of the source instance. P6.3 only suggests it.
+
+## Addendum 2026-10-15 (user request via dt-explorer-c7): "Changes" tab, plan into phase 8
+
+13. Read-only git view of the current build's app folder, shown together with "Apply to app" and
+    `dtx_devices/` (it shows what those writes did):
+    - content is exactly git's view: `git status --porcelain` (modified, added, deleted, untracked,
+      .gitignore respected); on click `git diff` against HEAD (untracked: whole file as added) in
+      the existing source viewer with changed lines highlighted;
+    - files the tool wrote (overlay, .conf, CMakeLists line, `dtx_devices/`) get a "dtx" badge;
+      the list itself stays git's;
+    - tab count = number of changed files (like the Draft tab);
+    - read-only: no commit, revert or checkout from the tool;
+    - git state read when the tab opens and on a "Refresh" button only (no polling); show the time
+      of the last read and branch / HEAD short hash;
+    - app not in a git repo or git not on PATH: the tab says so, nothing else breaks;
+    - git calls in core (e.g. `core/git_status.py`, no NiceGUI), UI in its own module.
