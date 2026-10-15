@@ -19,10 +19,22 @@ Findings:
 * ``spi_cs_missing``: an SPI device whose chip-select index is beyond the controller's ``cs-gpios`` list.
 * a GPIO pad (``cs-gpios``, ``int-gpios``, ``reset-gpios`` ...) that another node, or the same node's pinctrl,
   also uses is a ``pin_conflict`` like any other pad clash.
+* ``analog_digital_pad``: a pad selected as analog input by an ADC channel (``zephyr,input-positive`` /
+  ``-negative``; the converter needs no pinctrl for it) that another node uses digitally (GPIO, pinctrl
+  digital function). Warning when a node touched by the overlay takes part, otherwise ``info`` (``..._existing``).
+* ``adc_channel_duplicate``: two channels of one ADC with the same ``reg`` or the same
+  ``zephyr,input-positive`` / ``zephyr,input-negative`` pair (error, ``info`` when already in the build).
+* ``pwm_channel_duplicate``: two ``pwms`` entries on the same channel of one PWM controller (error, ``info``
+  when already in the build).
+* ``interrupt_line_shared``: two interrupt GPIOs (``int-gpios``, ``irq-gpios``, ``interrupt-gpios``, the
+  ``gpios`` of ``gpio-keys`` children) on pads that share one external-interrupt line (warning, ``info``
+  when already in the build).
 * ``provider_constraint``: signals of one instance come from different ``Signal.group`` values; the
   text is the one the device data provider supplied in its ``Constraint``.
 
-The module knows no vendor: pins, groups and texts come from ``core.pins`` and the device model.
+The module knows no vendor: pins, groups and texts come from ``core.pins`` and the device model. Which
+``Signal.attrs["signal_group"]`` names mean "analog" or "interrupt line" is a short table of generic names
+here (``ANALOG_SIGNAL_GROUPS``, ``INTERRUPT_LINE_GROUPS``); a provider with other names would extend them.
 """
 from __future__ import annotations
 
@@ -45,6 +57,13 @@ from .model_host import EdtlibHost
 from .pins import used_pins
 
 GROUP_CONSTRAINT_KIND = "shared_group"
+
+# Signal groups (Signal.attrs["signal_group"]) that are analog functions of a pad, and the group that
+# names an external-interrupt line (its Signal.attrs["index"] is the line number).
+ANALOG_SIGNAL_GROUPS = frozenset({"AIN", "X", "Y", "VOUT", "VREFA", "VREFB", "VREFC"})
+ANALOG_INPUT_GROUP = "AIN"          # its index is what an ADC channel's zephyr,input-positive/-negative selects
+INTERRUPT_LINE_GROUPS = frozenset({"EXTINT"})
+INTERRUPT_GPIO_PROPS = frozenset({"int-gpios", "irq-gpios", "interrupt-gpios"})
 
 
 @dataclass
@@ -253,6 +272,169 @@ def _bus_checks(edt, touched: set[str]) -> list[Finding]:
     return out
 
 
+def _signal_of(device, pad: str, function: str):
+    """The device-model signal behind a pinctrl use (``"<mux> <instance>.<role>"``), or None."""
+    try:
+        mux, rest = function.split(" ", 1)
+        inst_name, role = rest.rsplit(".", 1)
+    except ValueError:
+        return None
+    inst = device.instances.get(inst_name)
+    if inst is None:
+        return None
+    return next((s for s in inst.signals if s.pad == pad and s.role == role and str(s.mux) == mux), None)
+
+
+def _who(model, uses) -> str:
+    return "; ".join(f"{_label(model.by_path[u.node]) if u.node in model.by_path else u.node} "
+                     f"({u.node}: {u.function})" for u in uses)
+
+
+def _adc_channels(edt):
+    """(controller, [channel child]) for every enabled node whose children carry ``zephyr,input-positive``."""
+    for ctrl in edt.nodes:
+        if ctrl.status != "okay":
+            continue
+        kids = [c for c in ctrl.children.values() if c.status == "okay" and "zephyr,input-positive" in c.props]
+        if kids:
+            yield ctrl, kids
+
+
+def _analog_digital(edt, usage, model, touched: set[str]) -> list[Finding]:
+    """A pad that an ADC channel selects as analog input while another node uses it digitally.
+
+    The converter's channel children (``zephyr,input-positive`` / ``-negative``) pick the input by number;
+    the converter itself needs no pinctrl entry for it, so the pin conflict check does not see the pad.
+    A digital user on the same pad is reported here (pinctrl states that already claim the pad as analog and
+    digital show up as ``pin_conflict``).
+    """
+    device = usage.device
+    if device is None:
+        return []
+    out = []
+    for ctrl, kids in _adc_channels(edt):
+        inst = next((i for i in device.instances.values() if ctrl.regs and i.base == ctrl.regs[0].addr), None)
+        if inst is None:
+            continue
+        pad_of = {s.attrs["index"]: s.pad for s in inst.signals
+                  if s.attrs.get("signal_group") == ANALOG_INPUT_GROUP and s.attrs.get("index") is not None}
+        for kid in kids:
+            for prop in ("zephyr,input-positive", "zephyr,input-negative"):
+                p = kid.props.get(prop)
+                pad = pad_of.get(p.val) if p is not None else None
+                digital = [u for u in usage.uses.get(pad, ())
+                           if u.node != ctrl.path and (u.source == "gpio" or getattr(
+                               _signal_of(device, pad, u.function), "attrs", {}).get("signal_group")
+                               not in ANALOG_SIGNAL_GROUPS)]
+                if not digital:
+                    continue
+                paths = list(dict.fromkeys([kid.path, *(u.node for u in digital)]))
+                involved = any(x in touched for x in [*paths, ctrl.path])
+                out.append(Finding("warning" if involved else "info",
+                                   "analog_digital_pad" if involved else "analog_digital_pad_existing",
+                                   f"pad {pad} is analog input {p.val} of &{_label(ctrl)} ({kid.name}: {prop}) "
+                                   f"and is used digitally by {_who(model, digital)}",
+                                   node=kid.path, pad=pad, nodes=tuple(paths), overlay=involved))
+    return out
+
+
+def _adc_checks(edt, touched: set[str]) -> list[Finding]:
+    """Two channels of one converter with the same reg or the same input pair."""
+    out = []
+    for ctrl, kids in _adc_channels(edt):
+        seen: dict[tuple, list] = {}
+        for c in kids:
+            if c.regs:
+                seen.setdefault(("reg", c.regs[0].addr, None), []).append(c)
+            neg = c.props.get("zephyr,input-negative")
+            seen.setdefault(("input", c.props["zephyr,input-positive"].val, neg.val if neg is not None else None),
+                            []).append(c)
+        for key, group in sorted(seen.items(), key=lambda kv: str(kv[0])):
+            if len(group) < 2:
+                continue
+            if key[0] == "reg":
+                what = f"channel number {key[1]}"
+            else:
+                what = f"input {key[1]}" + (f" (negative input {key[2]})" if key[2] is not None else "")
+            involved = any(c.path in touched for c in group) or ctrl.path in touched
+            names = ", ".join(f"{c.name} ({c.path})" for c in group)
+            out.append(Finding("error" if involved else "info",
+                               "adc_channel_duplicate" if involved else "adc_channel_duplicate_existing",
+                               f"{what} is used by {len(group)} channels of &{_label(ctrl)}: {names}",
+                               node=group[0].path, nodes=tuple(c.path for c in group), overlay=involved))
+    return out
+
+
+def _pwm_checks(edt, touched: set[str]) -> list[Finding]:
+    """Two ``pwms`` entries on the same channel of one PWM controller."""
+    users: dict[tuple[str, int], list] = {}
+    ctrls = {}
+    for node in edt.nodes:
+        prop = node.props.get("pwms")
+        if node.status != "okay" or prop is None or prop.type != "phandle-array":
+            continue
+        for entry in prop.val:
+            ctrl = getattr(entry, "controller", None)
+            ch = (getattr(entry, "data", None) or {}).get("channel")
+            if ctrl is None or ch is None:
+                continue
+            ctrls[ctrl.path] = ctrl
+            users.setdefault((ctrl.path, ch), []).append(node)
+    out = []
+    for (cpath, ch), nodes in sorted(users.items()):
+        if len(nodes) < 2:
+            continue
+        involved = any(n.path in touched for n in nodes)
+        names = ", ".join(f"{n.name} ({n.path})" for n in nodes)
+        out.append(Finding("error" if involved else "info",
+                           "pwm_channel_duplicate" if involved else "pwm_channel_duplicate_existing",
+                           f"PWM channel {ch} of &{_label(ctrls[cpath])} is used by {len(nodes)} consumers: {names}",
+                           node=nodes[0].path, nodes=tuple(n.path for n in nodes), overlay=involved))
+    return out
+
+
+def _is_interrupt_use(model, use) -> bool:
+    if use.source != "gpio":
+        return False
+    if use.role in INTERRUPT_GPIO_PROPS:
+        return True
+    parent = getattr(model.by_path.get(use.node), "parent", None)
+    return use.role == "gpios" and parent is not None and "gpio-keys" in (parent.compats or [])
+
+
+def _interrupt_lines(usage, model, touched: set[str]) -> list[Finding]:
+    """Interrupt GPIOs on different pads that share one external-interrupt line."""
+    device = usage.device
+    if device is None:
+        return []
+    line_of: dict[str, set[int]] = {}
+    for inst in device.instances.values():
+        for s in inst.signals:
+            if s.attrs.get("signal_group") in INTERRUPT_LINE_GROUPS and s.attrs.get("index") is not None:
+                line_of.setdefault(s.pad, set()).add(s.attrs["index"])
+    by_line: dict[int, list] = {}
+    for pad, uses in usage.uses.items():
+        for u in uses:
+            if _is_interrupt_use(model, u):
+                for line in line_of.get(pad, ()):
+                    by_line.setdefault(line, []).append(u)
+    out = []
+    for line, uses in sorted(by_line.items()):
+        distinct = list(dict.fromkeys((u.node, u.pad) for u in uses))
+        if len({pad for _, pad in distinct}) < 2:
+            continue                # one pad twice is a pin_conflict, not a shared line
+        paths = list(dict.fromkeys(n for n, _ in distinct))
+        involved = any(p in touched for p in paths)
+        parts = "; ".join(f"{_label(model.by_path[n]) if n in model.by_path else n} ({n}: {pad})"
+                          for n, pad in distinct)
+        out.append(Finding("warning" if involved else "info",
+                           "interrupt_line_shared" if involved else "interrupt_line_shared_existing",
+                           f"interrupt line {line} is shared by {len(distinct)} interrupt GPIOs "
+                           f"on different pads: {parts}",
+                           node=paths[0], nodes=tuple(paths), overlay=involved))
+    return out
+
+
 def _group_mixes(usage, model, touched: set[str]) -> list[Finding]:
     device = usage.device
     if device is None:
@@ -327,5 +509,9 @@ def validate(build_dir, overlay_text: str, *, timings: dict | None = None) -> li
     findings += _conflicts(usage, model, touched)
     findings += _group_mixes(usage, model, touched)
     findings += _bus_checks(edt, touched)
+    findings += _analog_digital(edt, usage, model, touched)
+    findings += _adc_checks(edt, touched)
+    findings += _pwm_checks(edt, touched)
+    findings += _interrupt_lines(usage, model, touched)
     t["total"] = time.perf_counter() - t0
     return findings

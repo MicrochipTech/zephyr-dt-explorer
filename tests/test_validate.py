@@ -171,7 +171,7 @@ def test_valid_bus_devices_pass(bus_env):
     build, ctx, gmap = bus_env
     cs = [G.gpio_entry(gmap, "PB14", 1)]
     draft = [i2c_bus([sensor("bosch,bme280", 0x76, "i2c"), sensor("bosch,bme680", 0x77, "i2c")]),
-             spi_bus([sensor("bosch,bmi160", 0, "spi", gmap, **{"int-gpios": "PB15"})], cs)]
+             spi_bus([sensor("bosch,bmi160", 0, "spi", gmap, **{"int-gpios": "PB12"})], cs)]
     from dt_explorer.core.draft import Draft
     findings, _ = run(build, render_overlay(Draft(nodes=draft), ctx), "I2C bme280 + bmp280, SPI bmi160 with CS")
     assert kinds(findings) == [] and kinds(findings, "warning") == []
@@ -251,3 +251,115 @@ def test_two_gpios_on_one_pad_are_an_error(bus_env):
     node = spi_bus([sensor("bosch,bmi160", 0, "spi", gmap, **{"int-gpios": "PB14"})], [G.gpio_entry(gmap, "PB14", 1)])
     findings, _ = run(build, render_overlay(node, ctx), "int-gpios on the CS pad")
     assert [f.pad for f in findings if f.kind == "pin_conflict"] == ["PB14"]
+
+
+# ---- pin function and channel clashes (P8.11), on the empty lab1 build ---------------------------------------
+LEER = "_soltest/apps/lab1_leer/build_same54_xpro"
+
+def gpio_led(pin: int) -> str:
+    return f'/ {{ extra_leds {{ compatible = "gpio-leds"; led_x: led_x {{ gpios = <&portb {pin} 0>; }}; }}; }};\n'
+
+
+def adc_channels(*chans) -> str:
+    """chans: (reg, positive) or (reg, positive, negative)."""
+    body = ""
+    for c in chans:
+        neg = f" zephyr,input-negative = <{c[2]}>;" if len(c) > 2 else ""
+        body += (f'channel@{c[0]} {{ reg = <{c[0]}>; zephyr,gain = "ADC_GAIN_1"; zephyr,reference = "ADC_REF_INTERNAL"; '
+                 f'zephyr,acquisition-time = <0>; zephyr,input-positive = <{c[1]}>;{neg} }};\n')
+    return f'&adc0 {{ #address-cells = <1>; #size-cells = <0>;\n{body}}};\n'
+
+
+def pwm_user(channel: int) -> str:
+    return (f'/ {{ more_pwm {{ compatible = "pwm-leds"; pwm_x: pwm_x {{ pwms = <&tcc0 {channel} 1000000>; }}; }}; }};\n')
+
+
+def gpio_keys(*pads) -> str:
+    keys = "".join(f"k{i}: k{i} {{ gpios = <&port{p[0]} {p[1]} 0>; zephyr,code = <{i + 1}>; }};\n"
+                   for i, p in enumerate(pads))
+    return f'/ {{ extra_keys {{ compatible = "gpio-keys";\n{keys}}}; }};\n'
+
+
+@pytest.fixture()
+def leer(env, rtos4_build):
+    return rtos4_build(LEER)
+
+
+def of_kind(findings, prefix):
+    return [f for f in findings if f.kind.startswith(prefix)]
+
+
+def test_analog_pad_also_gpio_is_a_warning(env, leer):
+    findings, _ = run(leer, adc_channels((0, 2)) + gpio_led(8), "ADC0 channel on AIN2 (PB08), PB08 also a GPIO")
+    hit = of_kind(findings, "analog_digital_pad")
+    assert len(hit) == 1 and hit[0].severity == "warning" and hit[0].pad == "PB08" and hit[0].overlay
+    assert "pad PB08 is analog input 2 of &adc0" in hit[0].message and "used digitally by led_x" in hit[0].message
+    assert not [f for f in findings if f.severity == "error"]
+
+
+def test_analog_pad_without_digital_user_is_fine(env, leer):
+    """The negative above can fail: the corrected overlay (GPIO on another pad) has no finding."""
+    findings, _ = run(leer, adc_channels((0, 2)) + gpio_led(12), "ADC0 on AIN2 (PB08), GPIO on PB12")
+    assert not of_kind(findings, "analog_digital_pad") and not problems(findings)
+
+
+def test_analog_pad_digital_pinctrl_function_is_a_warning(env, leer):
+    """A digital pinctrl function of another node (a UART on PA04/PA05) on the analog pad counts as digital."""
+    build, ctx = env
+    text = adc_channels((0, 4)) + render_overlay(uart("SERCOM0", "PA04", "PA05"), ctx)
+    findings, _ = run(leer, text, "ADC0 on AIN4 (PA04), SERCOM0 PAD0 on PA04")
+    hit = of_kind(findings, "analog_digital_pad")
+    assert len(hit) == 1 and hit[0].severity == "warning" and hit[0].pad == "PA04" and "sercom0" in hit[0].message
+
+
+def test_negative_adc_input_counts_as_analog_too(env, leer):
+    findings, _ = run(leer, adc_channels((0, 3, 2)) + gpio_led(8), "ADC0 AIN3 vs AIN2 (PB08), PB08 also a GPIO")
+    hit = of_kind(findings, "analog_digital_pad")
+    assert len(hit) == 1 and "zephyr,input-negative" in hit[0].message and hit[0].pad == "PB08"
+
+
+def test_two_adc_channels_on_one_input_are_an_error(env, leer):
+    findings, _ = run(leer, adc_channels((0, 3), (1, 3)), "two channels on AIN3")
+    hit = of_kind(findings, "adc_channel_duplicate")
+    assert len(hit) == 1 and hit[0].severity == "error" and hit[0].overlay and len(hit[0].nodes) == 2
+    assert "input 3 is used by 2 channels of &adc0" in hit[0].message
+
+
+def test_two_adc_channels_with_one_reg_are_an_error(env, leer):
+    text = adc_channels((0, 3)) + '&adc0 { channel_b: channel-b@0 { reg = <0>; zephyr,gain = "ADC_GAIN_1"; ' \
+        'zephyr,reference = "ADC_REF_INTERNAL"; zephyr,acquisition-time = <0>; zephyr,input-positive = <4>; }; };\n'
+    findings, _ = run(leer, text, "two channels with reg 0")
+    hit = [f for f in of_kind(findings, "adc_channel_duplicate") if "channel number 0" in f.message]
+    assert len(hit) == 1 and hit[0].severity == "error"
+
+
+def test_adc_channels_on_different_inputs_are_fine(env, leer):
+    """Negative: distinct inputs, and the same positive input with different negative inputs."""
+    findings, _ = run(leer, adc_channels((0, 3), (1, 4), (2, 3, 5)), "AIN3, AIN4, AIN3 vs AIN5")
+    assert not of_kind(findings, "adc_channel_duplicate") and not problems(findings)
+
+
+def test_second_pwm_user_on_one_channel_is_an_error(env, leer):
+    findings, _ = run(leer, pwm_user(2), "second consumer on tcc0 channel 2 (pwm_led_0 has it)")
+    hit = of_kind(findings, "pwm_channel_duplicate")
+    assert len(hit) == 1 and hit[0].severity == "error" and hit[0].overlay and len(hit[0].nodes) == 2
+    assert "PWM channel 2 of &tcc0 is used by 2 consumers" in hit[0].message and "pwm_led_0" in hit[0].message
+
+
+def test_pwm_users_on_different_channels_are_fine(env, leer):
+    findings, _ = run(leer, pwm_user(3), "second consumer on tcc0 channel 3")
+    assert not of_kind(findings, "pwm_channel_duplicate") and not problems(findings)
+
+
+def test_shared_interrupt_line_is_a_warning(env, leer):
+    findings, _ = run(leer, gpio_keys(("a", 4), ("b", 4)), "buttons on PA04 and PB04 (both EXTINT4)")
+    hit = of_kind(findings, "interrupt_line_shared")
+    assert len(hit) == 1 and hit[0].severity == "warning" and hit[0].overlay and len(hit[0].nodes) == 2
+    assert "interrupt line 4 is shared by 2 interrupt GPIOs" in hit[0].message
+    assert "PA04" in hit[0].message and "PB04" in hit[0].message
+    assert not [f for f in findings if f.severity == "error"]
+
+
+def test_distinct_interrupt_lines_are_fine(env, leer):
+    findings, _ = run(leer, gpio_keys(("a", 4), ("b", 5)), "buttons on PA04 (EXTINT4) and PB05 (EXTINT5)")
+    assert not of_kind(findings, "interrupt_line_shared") and not problems(findings)
