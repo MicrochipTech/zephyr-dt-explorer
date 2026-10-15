@@ -20,6 +20,10 @@ Valid combinations (SAM D5x/E5x). Sources:
   (or SS when the hardware chip select role CS is used).
 * I2C: fixed, SDA = PAD0, SCL = PAD1; no derived properties.
 
+The SERCOM pad registers are identical on the new port (``microchip,sercom-g1-uart/-i2c/-spi``,
+bindings in current Zephyr: ``rxpo``/``txpo``/``dipo``/``dopo`` with the same meaning), so the same
+roles, derived properties and ``lift`` serve both; only the Kconfig table differs (``KCONFIG``).
+
 Imports only ``dt_explorer.core.*``.
 """
 from __future__ import annotations
@@ -42,6 +46,12 @@ CLASSES: dict[str, tuple[str, list[str]]] = {
     "i2c": ("atmel,sam0-i2c", ["SDA", "SCL"]),
     "spi": ("atmel,sam0-spi", ["MOSI", "MISO", "SCK", "CS"]),
 }
+# new port (g1): compatible -> class; pad registers and role sets are those of the same class above
+G1_CLASSES: dict[str, str] = {
+    "microchip,sercom-g1-uart": "uart",
+    "microchip,sercom-g1-i2c": "i2c",
+    "microchip,sercom-g1-spi": "spi",
+}
 REQUIRED = {"uart": ["TX", "RX"], "i2c": ["SDA", "SCL"], "spi": ["MOSI", "MISO", "SCK"]}
 
 # UART txpo -> {role: pad index}; values from the ATDF value group and the SAMD5/E5 binding table
@@ -61,7 +71,16 @@ KCONFIG: dict[str, dict[str, str]] = {
     "atmel,sam0-uart": {"CONFIG_SERIAL": "y", "CONFIG_UART_SAM0": "y"},
     "atmel,sam0-i2c": {"CONFIG_I2C": "y", "CONFIG_I2C_SAM0": "y"},
     "atmel,sam0-spi": {"CONFIG_SPI": "y", "CONFIG_SPI_SAM0": "y"},
+    # g1 driver symbols (UART_MCHP_SERCOM_G1, I2C_MCHP_SERCOM_G1, SPI_MCHP_SERCOM_G1; zephyr-main
+    # drivers/{serial,i2c,spi}/Kconfig.mchp) are promptless "default y, depends on
+    # DT_HAS_MICROCHIP_SERCOM_G1_*_ENABLED": the devicetree switches them on, and assigning a
+    # promptless symbol is a fatal Kconfig error in Zephyr (scripts/kconfig/kconfig.py,
+    # check_no_promptless_assign). Only the user-visible subsystem menuconfig is listed.
+    "microchip,sercom-g1-uart": {"CONFIG_SERIAL": "y"},
+    "microchip,sercom-g1-i2c": {"CONFIG_I2C": "y"},
+    "microchip,sercom-g1-spi": {"CONFIG_SPI": "y"},
 }
+SAM0_COMPATIBLES = [c for c, _ in CLASSES.values()]
 
 
 def _pad_index(value) -> int:
@@ -76,6 +95,8 @@ def _class_of_compatible(compatible: str) -> str:
     for cls, (comp, _) in CLASSES.items():
         if comp == compatible:
             return cls
+    if compatible in G1_CLASSES:
+        return G1_CLASSES[compatible]
     raise RecipeError(f"unknown compatible {compatible!r}")
 
 
@@ -120,7 +141,7 @@ def _normalize_pins(pins) -> dict[int, str]:
 class AtmelSam0SercomRecipe:
     api_version = 1
     name = "atmel_sam0_sercom"
-    compatibles = [c for c, _ in CLASSES.values()]
+    compatibles = SAM0_COMPATIBLES + list(G1_CLASSES)
 
     # ---- roles -------------------------------------------------------------------
     def roles_for(self, compatible: str) -> list[str]:
@@ -268,13 +289,13 @@ class AtmelSam0SercomRecipe:
 
     # ---- Kconfig ---------------------------------------------------------------------
     def kconfig(self, compatible: str | None = None) -> dict[str, str]:
-        """Kconfig symbols for a compatible; without argument the union of all three classes."""
+        """Kconfig symbols for a compatible; without argument the union of the three sam0 tables."""
         if compatible is not None:
             _class_of_compatible(compatible)
             return dict(KCONFIG[compatible])
         out: dict[str, str] = {}
-        for t in KCONFIG.values():
-            out.update(t)
+        for c in SAM0_COMPATIBLES:
+            out.update(KCONFIG[c])
         return out
 
 

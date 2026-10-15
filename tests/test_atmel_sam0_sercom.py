@@ -247,3 +247,112 @@ def test_lift_board_real_workspace(rtos4_ws, capsys):
     assert lifts["sercom2"][1] == {"compatible": "atmel,sam0-uart", "rxpo": 1, "txpo": 0}
     assert lifts["sercom4"][3] == {"MOSI": "PB27", "SCK": "PB26", "MISO": "PB29"}
     assert lifts["sercom7"][3] == {"SDA": "PD08", "SCL": "PD09"}
+
+
+# ---- g1 port: microchip,sercom-g1-uart/-i2c/-spi (P3.8) ----------------------------------------
+G1 = {"uart": "microchip,sercom-g1-uart", "i2c": "microchip,sercom-g1-i2c", "spi": "microchip,sercom-g1-spi"}
+SAM0 = {"uart": "atmel,sam0-uart", "i2c": "atmel,sam0-i2c", "spi": "atmel,sam0-spi"}
+
+
+def test_g1_registered_for_all_three_compatibles():
+    plugins.register_recipe(AtmelSam0SercomRecipe)
+    for c in G1.values():
+        assert plugins.get_recipe(c).name == "atmel_sam0_sercom"
+    assert recipe.compatibles == list(SAM0.values()) + list(G1.values())
+
+
+@pytest.mark.parametrize("cls", ["uart", "i2c", "spi"])
+def test_g1_roles_equal_sam0_roles(cls):
+    inst = Instance("SERCOM3", "SERCOM", 0x41014000, [])
+    assert recipe.roles_for(G1[cls]) == recipe.roles_for(SAM0[cls])
+    assert recipe.pin_roles(inst, G1[cls]) == recipe.pin_roles(inst, SAM0[cls])
+
+
+def test_g1_kconfig_table():
+    # only the promptless-free subsystem symbols: UART_/I2C_/SPI_MCHP_SERCOM_G1 are `default y` without a
+    # prompt (switched on by DT_HAS_..._ENABLED); assigning them is a Zephyr Kconfig error
+    assert recipe.kconfig(G1["uart"]) == {"CONFIG_SERIAL": "y"}
+    assert recipe.kconfig(G1["i2c"]) == {"CONFIG_I2C": "y"}
+    assert recipe.kconfig(G1["spi"]) == {"CONFIG_SPI": "y"}
+    assert len(recipe.kconfig()) == 6          # no-argument union stays the sam0 tables
+    with pytest.raises(RecipeError):
+        recipe.kconfig("microchip,sercom-g1")
+
+
+def test_g1_lift_matches_sam0_lift():
+    pins = {"PAD0": "PA22", "PAD1": "PA23", "PAD2": "PA24", "PAD3": "PA25"}
+    for props in ({"rxpo": 1, "txpo": 0}, {"rxpo": 1, "txpo": 2}, {"dipo": 3, "dopo": 0}, {"dipo": 0, "dopo": 2}, {}):
+        cls = "uart" if "rxpo" in props else "spi" if "dipo" in props else "i2c"
+        assert recipe.lift({"compatible": G1[cls], **props}, pins) == recipe.lift({"compatible": SAM0[cls], **props}, pins)
+    got = recipe.lift({"compatible": ["microchip,sercom-g1-uart"], "rxpo": 1, "txpo": 0}, pins)
+    assert got == {"TX": "PA22", "RX": "PA23"}
+    assert recipe.lift({"compatible": G1["i2c"]}, pins) == {"SDA": "PA22", "SCL": "PA23"}
+
+
+def test_g1_derived_props_equal_sam0():
+    for a in recipe.valid_assignments("uart"):
+        assert recipe.derived_props(a) == recipe.derived_props(dict(a))
+    assert recipe.derived_props({"TX": "PAD0", "RX": "PAD1"}) == {"rxpo": 1, "txpo": 0}
+    assert recipe.derived_props({"MOSI": "PAD3", "SCK": "PAD1", "MISO": "PAD0"}) == {"dipo": 0, "dopo": 2}
+
+
+# ---- g1 port on a real current-Zephyr build (DTX_MAIN_WS) -------------------------------------
+@pytest.fixture(scope="module")
+def main_sg41_build(main_ws):
+    import os
+    import tempfile
+    for cand in (os.environ.get("DTX_MAIN_BUILD"), str(Path(tempfile.gettempdir()) / "dtx_main_sg41")):
+        if cand and (Path(cand) / "zephyr" / "edt.pickle").is_file():
+            return Path(cand)
+    pytest.skip("no pic32cx_sg41_cult cmake-only build (DTX_MAIN_BUILD or %TEMP%/dtx_main_sg41)")
+
+
+def test_g1_draft_i2c_and_uart_on_main_sg41(main_sg41_build, main_ws, capsys):
+    from dt_explorer import app
+    from dt_explorer.core.buildinfo import read_build_info
+    from dt_explorer.core.draft import BindingIndex, Draft, DraftNode
+    from dt_explorer.core.kconfig_suggest import suggest_kconfig
+    from dt_explorer.core.pins import load_device, used_pins
+    from dt_explorer.core.render import RenderContext, render_overlay
+    from dt_explorer.core.build import BuildModel
+    from dt_explorer.core.validate import validate
+
+    app.load_plugins()
+    info = read_build_info(main_sg41_build)
+    device, reason = load_device(info)
+    if device is None:
+        pytest.skip(reason)
+    model = BuildModel(main_sg41_build)
+    used = set(used_pins(model, info).uses)
+    index = BindingIndex([])                    # as ConfigSession does: const props of the binding chain
+    index.by_name = dict(model.yaml_index)
+    rec = plugins.get_recipe(G1["uart"])
+    assert rec is not None and rec.name == "atmel_sam0_sercom"
+
+    def free_pad(inst, role):
+        return next(s.pad for s in device.instances[inst].signals if s.role == role and s.pad not in used)
+
+    i2c_pins = {"SDA": free_pad("SERCOM1", "PAD0"), "SCL": free_pad("SERCOM1", "PAD1")}
+    uart_pins = {"TX": free_pad("SERCOM3", "PAD0"), "RX": free_pad("SERCOM3", "PAD1")}
+    i2c = DraftNode(cls="i2c", roles=["SDA", "SCL"], instance="SERCOM1", pins=i2c_pins,
+                    compatible=G1["i2c"], label="sercom1", props={"clock-frequency": 100000})
+    uart = DraftNode(cls="uart", roles=["TX", "RX"], instance="SERCOM3", pins=uart_pins,
+                     compatible=G1["uart"], label="sercom3", props={"current-speed": 115200})
+
+    assert rec.pin_roles(device.instances["SERCOM1"], G1["i2c"]) == ["SDA", "SCL"]
+    assert rec.derived_props({"SDA": "PAD0", "SCL": "PAD1"}) == {}
+    assert rec.derived_props({"TX": "PAD0", "RX": "PAD1"}) == {"rxpo": 1, "txpo": 0}
+    for node, sym in ((i2c, "CONFIG_I2C"), (uart, "CONFIG_SERIAL")):
+        sug = suggest_kconfig(node.compatible, main_sg41_build)
+        assert sug.source == "recipe" and sug.symbols == {sym: "y"}, sug
+
+    ctx = RenderContext(device=device, pinctrl_compatible="microchip,port-g1-pinctrl",
+                        workspace=info.workspace, soc=info.soc, bindings=index)
+    text = render_overlay(Draft(nodes=[i2c, uart]), ctx)
+    findings = validate(main_sg41_build, text)
+    with capsys.disabled():
+        print("\n--- g1 overlay (SG41) ---\n" + text)
+        for f in findings:
+            print(f)
+    assert "rxpo = <1>;" in text and "txpo = <0>;" in text and G1["i2c"] in text
+    assert not [f for f in findings if f.severity == "error"], findings
