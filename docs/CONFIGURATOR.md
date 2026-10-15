@@ -470,7 +470,15 @@ dt_explorer.py      thin launcher, so dt_explorer.bat keeps working
   | Pin per role | TX → PB25, RX → PB24 | no (board hardware) |
   | Vendor properties | `rxpo`, `txpo` (declared only in the vendor binding) | no, derived again by the target's recipe |
 
-  Child nodes follow later. The draft is plain data, stored as JSON in the app folder:
+  **Child nodes** (phase 8, [P8.4](evidence/P8.4.md)): a `DraftNode` has a list `children` of `DraftChild`
+  (name, unit address, compatible, labels, properties, nested children). They render inside the bus node
+  (`&sercom1 { bme280@76 { ... }; };`), `lift_build` reads them back from a build (lab1 `eeprom@5e`, lab3
+  `mytemp@4f`), and the draft JSON is version 2 (version 1 still loads). The UI is *Add child device…*
+  ([P8.6](evidence/P8.6.md), GUI.md 10.3); the checks `bus_address_duplicate`, `spi_cs_missing` and the GPIO
+  `pin_conflict` cover them, and translations may carry an optional `children:` rule
+  ([P8.10b](evidence/P8.10b.md): `rename:` and `default:`). Board-level nodes (LEDs, buttons, PWM LEDs,
+  aliases, chosen) are one more draft node `&{/}` ([P8.7](evidence/P8.7.md)). The draft is plain data,
+  stored as JSON in the app folder:
   `<app>/.dt_explorer/<build folder name>.draft.json` (e.g. `build_same54_xpro.draft.json`). It
   survives a reload and a pristine rebuild (`west build -p`), and it can be committed with the app
   if wanted.
@@ -851,9 +859,30 @@ is changed.
 7. **Graphical board configurator** for SAME54 Xplained Pro and PIC32CX SG41/SG61 Curiosity Ultra:
    netlist importer, board YAML, board view, connector hints in the porting report. Needs the
    boards' design files.
-8. **Child nodes on buses** (e.g. a sensor on I2C: `reg`, compatible from the bindings with
-   `on-bus: i2c`) and the generic binding form for other peripherals (ADC, TC, …). The matching
-   translations follow with them.
+8. **Child nodes, generic form, more peripherals. Done 2026-10-15** (cards P8.1 to P8.19c; P8.18 had no
+   evidence file when this was written). What it delivered, with the evidence:
+   - Log tab and log file: [P8.1](evidence/P8.1.md); simulated UI tests: [P8.2](evidence/P8.2.md).
+   - Translations for TC/TCC PWM, ADC, DAC, GMAC/MDIO, RTC, WDT, DMAC, TRNG: [P8.3](evidence/P8.3.md),
+     [P8.10](evidence/P8.10.md); consumer cells, untranslatable SoC nodes, child `rename:`/`default:`:
+     [P8.10b](evidence/P8.10b.md); version note in the report: [P8.16](evidence/P8.16.md); remap to a free
+     instance: [P8.17](evidence/P8.17.md).
+   - Child nodes and *Add child device…*: [P8.4](evidence/P8.4.md), [P8.6](evidence/P8.6.md).
+   - Generic form (also *Other compatible*): [P8.5](evidence/P8.5.md), [P8.8](evidence/P8.8.md);
+     board nodes: [P8.7](evidence/P8.7.md).
+   - PWM and ADC recipes: [P8.8](evidence/P8.8.md); GMAC + PHY recipe: [P8.9](evidence/P8.9.md); new
+     checks (analog pad used digitally, duplicate ADC/PWM channel, shared EXTINT line):
+     [P8.11](evidence/P8.11.md).
+   - Mikrobus/Arduino connectors in the board files: [P8.12](evidence/P8.12.md).
+   - *Apply to app* with append and marked blocks: [P8.13](evidence/P8.13.md),
+     [P8.13b](evidence/P8.13b.md); *Generate code* (`dtx_devices/`): [P8.14](evidence/P8.14.md);
+     Changes tab: [P8.15](evidence/P8.15.md).
+   - End-to-end test on an SG41 blinky copy, findings and fixes: [P8.19](evidence/P8.19.md),
+     [P8.19b](evidence/P8.19b.md), [P8.19c](evidence/P8.19c.md) (PASS without hand corrections).
+   - Docs: [P8.20](evidence/P8.20.md).
+
+   Still in the backlog (plan section 10): marking draft nodes that equal the board, moving the analog and
+   interrupt signal tables into the provider, the six `gpio-hog` rows of table 1.5, the device-centred
+   Kconfig view, Arduino Uno R3 / mikroBUS importers, and everything of phases 9 and 10.
 9. **Custom board wizard** (see *Creating a custom board*).
 10. **Class-based porting** for pairs without a translation, up to other vendors (see *Porting*).
 

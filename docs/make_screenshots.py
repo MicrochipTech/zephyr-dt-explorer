@@ -13,7 +13,7 @@ The Port to board… dialog runs its pipeline (no west, nothing written) and sho
 "Verify with west" and the Draft tab's "Verify with west" / "Write to app" run west or write into the app,
 so those shots are not produced here: they are copied from the evidence images (REUSED below).
 
-    py docs/make_screenshots.py [--port 8765] [--crop-only]
+    py docs/make_screenshots.py [--port 8765] [--port-synth 8792] [--only-phase8] [--crop-only]
 """
 import argparse
 import os
@@ -40,6 +40,23 @@ REUSED = {
     "apply_written.png":      "P5.6_written.png",           # result after Write files, with the west hint
     # Board tab of the SG41 CUlt build (root = the sg41 build folder); P7.4 run, no writes
     "board_sg41_cult.png":    "P7.4_sg41_cult.png",
+    # Phase 8 shots of dialogs that were saved, applied or written on copies under %TEMP% (evidence runs; nothing is
+    # clicked here because it would write into apps\ or run west). docs/GUI.md refers to docs/img only.
+    "generic_form_tc0.png":       "P8.5_generic_form_tc0.png",       # generic form for &tc0
+    "generic_form_required.png":  "P8.5_generic_form_required.png",  # required property left empty
+    "child_dialog_spi.png":       "P8.6_child_dialog_spi.png",       # Add child device, SPI (bmi160)
+    "child_dialog_i2c.png":       "P8.6_child_dialog_i2c.png",       # Add child device, I2C (bme280)
+    "child_draft_conflict.png":   "P8.6_draft_spi_pad_conflict.png", # Check: CS pad that the console uses
+    "board_nodes_dialog.png":     "P8.7_board_nodes_dialog.png",     # Board nodes...
+    "board_nodes_draft.png":      "P8.7_board_nodes_draft.png",      # Draft tab with the board node
+    "draft_apply_append.png":     "P8.13b_append_plan.png",          # Apply to app: EXISTS, default append, marked block diff
+    "draft_apply_second.png":     "P8.19c_apply_result_second.png",  # second Apply: block replaced, west build -p always hint
+    "codegen_plan.png":           "P8.14_plan.png",                  # Generate code: plan
+    "codegen_edited.png":         "P8.14_edited.png",                # Generate code: edited file, diff
+    "codegen_cmake_confirm.png":  "P8.14_cmake_confirm.png",         # add_subdirectory(dtx_devices) confirmation
+    "codegen_done.png":           "P8.19c_codegen_done.png",         # after Write files
+    "changes_list.png":           "P8.19c_changes_tab.png",          # Changes tab with dtx badges
+    "changes_diff.png":           "P8.19c_changes_diff.png",         # diff in the source viewer
 }
 CUT_OLD_HEADER = {"draft_verify_ok.png", "draft_verify_fail.png"}   # Draft tab shots with the old header
 WS = Path(os.environ.get("DTX_RTOS4_WS", r"C:\Masters\26020_RTOS4\zephyrproject"))
@@ -71,7 +88,7 @@ SHOTS = {  # name -> (query, width, height)
 
 
 CROPS = {  # element image -> (source screenshot, box (left, top, right, bottom))
-    "el_header":        ("node_led", (0, 0, 1500, 74)),
+    # el_header is cut from a wide window in phase8_ui_shots(): at 1500 px the header wraps since P8.7 (Board nodes...)
     # boxes are measured below the header, which is 74 px high: one row since P3.7 (the origin chips are in
     # the Legend menu). Before P3.7 the chips wrapped and the header was 116 px high (see GUI.md 1).
     "el_tree":          ("node_led", (0, 74, 515, 620)),
@@ -87,6 +104,7 @@ CROPS = {  # element image -> (source screenshot, box (left, top, right, bottom)
     "el_header_defs":   ("include_header", (515, 95, 1490, 690)),
     "el_orphan":        ("orphan", (0, 78, 1500, 182)),
 }
+PORT_TARGET_LAB1 = Path(tempfile.gettempdir()) / "dtx_p62_lab1_pic32cx_sg41_cult"   # cmake-only SG41 CUlt build of lab1 (P6.2)
 
 
 def legend():
@@ -202,6 +220,120 @@ def extra_ui_shots(base):
             print(name, (IMG / f"{name}.png").exists())
 
 
+def _wait_dialog(pg, sel="#cfg-dialog"):
+    pg.locator(sel).wait_for(state="visible")
+    pg.wait_for_timeout(1200)
+
+
+def _run_port(pg, base, source, target):
+    """Opens Port to board..., types the target path, runs the port (no west, nothing written)."""
+    pg.goto(f"{base}?build={source}")
+    pg.locator("#port-open").click()
+    pg.locator("#port-dialog").wait_for(state="visible")
+    pg.locator(".q-dialog [aria-label=Clear]").first.click()
+    pg.get_by_label("or a build folder path").fill(str(target))
+    pg.keyboard.press("Tab")
+    pg.wait_for_timeout(800)
+    pg.locator("#port-run").click()
+    pg.wait_for_function("() => { const e = document.querySelector('#port-status');"
+                         " return !!e && e.innerText.trim() !== '' && !e.innerText.includes('porting'); }",
+                         timeout=300000)
+    pg.wait_for_timeout(800)
+
+
+def _crop_report(pg, name, first, last=None, before=3, after=3):
+    """Cuts the part of the open port report from the line containing `first` to the line containing `last`."""
+    from PIL import Image
+    rep = pg.locator("#port-report")
+    tmp = IMG / f"_{name}_full.png"
+    rep.screenshot(path=tmp)
+    ys = pg.evaluate("""([a, b]) => {
+        const r = document.querySelector('#port-report'); const top = r.getBoundingClientRect().top;
+        const nodes = []; const w = document.createTreeWalker(r, NodeFilter.SHOW_TEXT);
+        while (w.nextNode()) nodes.push(w.currentNode);
+        const find = (t, n0, i0) => {          // a line of text: range from the match to the end of its line
+          for (let n = n0; n < nodes.length; n++) {
+            const v = nodes[n].nodeValue; const i = v.indexOf(t, n === n0 ? i0 : 0);
+            if (i >= 0) { let e = v.indexOf('\\n', i); if (e < 0) e = v.length;
+              const q = document.createRange(); q.setStart(nodes[n], i); q.setEnd(nodes[n], e);
+              const bb = q.getBoundingClientRect(); return [bb.top - top, bb.bottom - top, n, i]; } }
+          return null; };
+        const f = find(a, 0, 0);
+        const l = (b && f) ? find(b, f[2], f[3] + 1) : null;
+        return [f && [f[0], f[1]], l && [l[0], l[1]]]; }""", [first, last])
+    if ys[0] is None or (last and ys[1] is None):
+        print("WARNING: text not found in the port report:", first, last)
+        tmp.unlink(missing_ok=True)
+        return
+    im = Image.open(tmp)
+    top = max(0, int(ys[0][0]) - before)
+    bottom = min(im.size[1], int((ys[1] or ys[0])[1]) + after)
+    im.crop((0, top, im.size[0], bottom)).save(IMG / f"{name}.png")
+    tmp.unlink(missing_ok=True)
+    print(name, (IMG / f"{name}.png").exists())
+
+
+def phase8_ui_shots(base, base_synth=None):
+    """Phase 8 shots that only open dialogs and tabs (nothing is saved, written or built).
+
+    Wide header, Log tab, Changes tab (app folder not in a git repo), Configure for PWM (tcc1), ADC (adc1), the TC
+    counter with "Other compatible (generic form)" and the generic form behind it, GMAC/MDIO (Edit pins), and the new
+    lines of the port report (lab1 -> SG41 CUlt build from P6.2): consumer lines, untranslatable, "not ported",
+    version note. `base_synth` is a second explorer whose board data has EXT1 pins 16-18 of the SG41 CUlt on a free
+    SERCOM3 (see docs/evidence/P8.17.md, acceptance 4); it gives the `[remapped]` lines. Without it that shot is skipped.
+    """
+    from playwright.sync_api import sync_playwright
+    IMG.mkdir(parents=True, exist_ok=True)
+    node = lambda path: f"{base}?{LAB1}&node={quote(path, safe='')}"
+    with sync_playwright() as p:
+        br = p.chromium.launch(executable_path=str(CHROME), headless=True)
+        pg = br.new_page(viewport={"width": 1500, "height": 1000})
+        tall = br.new_page(viewport={"width": 1500, "height": 3600})   # the port report (2500 px) must fit the window
+        wide = br.new_page(viewport={"width": 1900, "height": 300})
+        wide.goto(f"{base}?{LAB1}")
+        wide.wait_for_timeout(3000)
+        wide.screenshot(path=IMG / "el_header.png", clip={"x": 0, "y": 0, "width": 1900, "height": 74})
+        wide.close()
+
+        pg.goto(f"{base}?{LAB1}&tab=log")
+        pg.wait_for_timeout(3500)
+        pg.screenshot(path=IMG / "log_tab.png", clip={"x": 0, "y": 126, "width": 1160, "height": 640})
+        pg.goto(f"{base}?{LAB1}&tab=changes")
+        pg.wait_for_timeout(3000)
+        pg.screenshot(path=IMG / "changes_no_repo.png", clip={"x": 0, "y": 126, "width": 900, "height": 190})
+
+        for name, path, btn in (("configure_pwm", "/soc/tcc@41018000", "#cfg-open"),
+                                ("configure_adc", "/soc/adc@43002000", "#cfg-open"),
+                                ("configure_tc_other", "/soc/tc@4101a000", "#cfg-open"),
+                                ("configure_gmac", "/soc/ethernet@42000800/ethernet", "#cfg-edit")):
+            pg.goto(node(path))
+            pg.locator(btn).wait_for(state="visible")
+            pg.locator(btn).click()
+            _wait_dialog(pg)
+            pg.locator("#cfg-dialog").screenshot(path=IMG / f"{name}.png")
+            if name == "configure_tc_other":
+                pg.locator("#cfg-open-generic-alt").click()      # the generic form of the other compatible
+                _wait_dialog(pg, "#gen-save")
+                pg.screenshot(path=IMG / "generic_form_alt.png")
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(400)
+
+        # port report, new lines of P8.10b / P8.16
+        if PORT_TARGET_LAB1.is_dir():
+            _run_port(tall, base, "apps/lab1/build_same54_xpro", PORT_TARGET_LAB1)
+            _crop_report(tall, "port_usb_consumer", "&usb0", "cell 'polarity'")
+            _crop_report(tall, "port_not_ported", "/soc/rtc@40002400", "/soc/dac@43002400")
+            _crop_report(tall, "port_version_note", "source Zephyr")
+            tall.locator("#port-close").click()
+        else:
+            print("WARNING: port target not found, port_* shots skipped:", PORT_TARGET_LAB1)
+        if base_synth and PORT_TARGET_LAB1.is_dir():
+            _run_port(tall, base_synth, "apps/lab1/build_same54_xpro", PORT_TARGET_LAB1)
+            _crop_report(tall, "port_remapped", "&sercom4  atmel,sam0-spi", "the target board does not enable this node")
+            tall.locator("#port-close").click()
+        br.close()
+
+
 def copy_reused():
     """Shots that must not be re-taken here (they run west or write into apps\\): copied from the evidence.
 
@@ -217,7 +349,7 @@ def copy_reused():
         print("reused", dst, "<-", src)
 
 
-def main(port):
+def main(port, port_synth=None):
     base = f"http://localhost:{port}/"
     if DRAFT.exists():          # checked first: the Draft shots need a clean build
         raise SystemExit(f"{DRAFT} exists - move it away first, this script deletes it")
@@ -232,14 +364,24 @@ def main(port):
             print(name, out.exists())
     extra_ui_shots(base)
     ui_shots(base)
+    phase8_ui_shots(base, f"http://localhost:{port_synth}/" if port_synth else None)
     copy_reused()
     crops()
     (IMG / "tree_full.png").unlink(missing_ok=True)
 
 
+def only_phase8(port, port_synth=None):
+    """Re-takes only the phase 8 shots (the full run also re-cuts the old element images, see GUI.md header note)."""
+    phase8_ui_shots(f"http://localhost:{port}/", f"http://localhost:{port_synth}/" if port_synth else None)
+    copy_reused()
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765, help="port of the running explorer (default 8765)")
+    ap.add_argument("--port-synth", type=int, default=None,
+                    help="port of a second explorer with synthetic SG41 board data (EXT1 on SERCOM3), for the [remapped] shot")
+    ap.add_argument("--only-phase8", action="store_true", help="only the phase 8 shots (phase8_ui_shots) and the reused copies")
     ap.add_argument("--crop-only", action="store_true", help="only re-cut the element images")
     args = ap.parse_args()
-    crops() if args.crop_only else main(args.port)
+    crops() if args.crop_only else (only_phase8(args.port, args.port_synth) if args.only_phase8 else main(args.port, args.port_synth))

@@ -11,7 +11,7 @@ The window has three areas:
 | Area | Content |
 |---|---|
 | **Header** (top) | Build selection, reload, New build…, Full build, Port to board…, Board nodes…, Legend |
-| **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Board** (the connectors), **Draft** (pending configurator changes) |
+| **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Board** (the connectors), **Draft** (pending configurator changes), **Log** (what the tool does, section 11a), **Changes** (what git sees in the app, section 11b) |
 | **Right panel** | Details of whatever is selected on the left; the overview when nothing is selected |
 
 ---
@@ -105,7 +105,7 @@ The result has these parts:
 
 ![Port report](img/port_report.png)
 
-The example ports lab0 (SAME54 Xplained Pro) to the PIC32CX SG41 Curiosity Ultra test build of lab0 (typed into the "or a build folder path" field, since it is not in the workspace). The first picture shows section 1 with three `conflict` nodes: `&sercom2` (its TX/RX pads PB25/PB24 are used by `&sercom0`, which the target board enables), `&sercom4` (the target board enables it as the UART console, so an SPI port would take it over) and `&sercom7` (SDA/SCL PD08/PD09 are used by `&sercom6`). Each conflict has a `suggestion:` line; the port does not remap pins itself. The second picture shows section 7 with the connector roles, and section 3 flags `DT_ALIAS(button0)` as missing because `/buttons/button_0` is not carried over yet.
+The example ports lab0 (SAME54 Xplained Pro) to the PIC32CX SG41 Curiosity Ultra test build of lab0 (typed into the "or a build folder path" field, since it is not in the workspace). The first picture shows section 1 with three `conflict` nodes: `&sercom2` (its TX/RX pads PB25/PB24 are used by `&sercom0`, which the target board enables), `&sercom4` (the target board enables it as the UART console, so an SPI port would take it over) and `&sercom7` (SDA/SCL PD08/PD09 are used by `&sercom6`). Each conflict has a `suggestion:` line. When a free instance of the target reaches the same connector pins, the node is not a conflict but `remapped` (see *New lines of the report* below); on these two boards none qualifies. The second picture shows section 7 with the connector roles, and section 3 flags `DT_ALIAS(button0)` as missing because `/buttons/button_0` is not carried over yet.
 
 ![Port result with conflicts and connector roles](img/port_result.png)
 
@@ -120,7 +120,27 @@ The example ports lab0 (SAME54 Xplained Pro) to the PIC32CX SG41 Curiosity Ultra
 
 When a node of the source would collide with the target board, the port does not emit it. Section 1 then shows a `conflict:` line per reason, a `not emitted; …` line and a `suggestion:` line. The status line counts them (`3 node(s) in conflict with the target board`). There are three kinds: (a) the target board enables the same node with another `compatible` (the target's `chosen` and `aliases` are named); (b) a pad the port needs is used by another enabled node of the target build; (c) a pad is not on the target package. A `DT_NODELABEL(...)` or `DT_ALIAS(...)` in `src/` that points at a conflicting node is listed in section 3 instead of resolving silently.
 
-The suggestions are text only. They name the target pads at the same connector pins, the instances that could mux those pads for the same roles, and the pads already in use. Choose instance and pads with **Configure…** in the Draft workflow (section 10); the port itself does not remap pins.
+The suggestions are text. They name the target pads at the same connector pins, the instances that could mux those pads for the same roles (instances that are busy on the target are not offered any more), and the pads already in use. If you want a conflicting node on another instance, choose instance and pads with **Configure…** in the Draft workflow (section 10).
+
+#### New lines of the report (consumers, untranslatable, not ported, remapped, version)
+
+Besides the sections above, section 1, 3 and 5 of the report carry these lines (the example ports lab1 to the SG41 CUlt build; the status line counts only `conflict` nodes, a `remapped` node is not counted):
+
+- **Consumer lines.** A node that uses a ported controller through a `phandle-array` property is rewritten from the target controller's specifier names. The TC/TCC PWM has `#pwm-cells` 2 on the old driver and 3 on the g1 driver, so the LED that uses it gets the third cell: `consumer /pwmleds/pwm_led_0  pwms  [override]  <&tcc0 2 20000000> -> <&tcc0 2 20000000 0>`, with the note `cell 'polarity' is new in the target: 0`. The second line of the picture is **untranslatable**: `&usb0  [no_target]` says that the target has no USB device node, binding or driver for that IP, so there is nothing to emit.
+
+![Untranslatable SoC node and consumer line](img/port_usb_consumer.png)
+
+- **Translation exists, not ported.** An enabled SoC node (gpio, rtc, dac) that has a translation but no recipe to lift it into the draft is listed in section 5 with the reason; configure it by hand in the target board file.
+
+![Translation exists, not ported](img/port_not_ported.png)
+
+- **Remapped.** A conflicting SERCOM whose connector pins are also on the pads of a free instance of the target is emitted on that instance: `[remapped]`, the lines `remap MOSI: PB27 (EXT1 pin 16) -> PA22` and the consequence for the code (`DT_NODELABEL(sercom4)` must become `DT_NODELABEL(sercom3)`; section 3 lists it as `[remapped]` and the overlay adds an alias). The picture is from a run with changed board data (EXT1 pins 16 to 18 of the SG41 CUlt on free SERCOM3 pads, see docs/evidence/P8.17.md), because on the real CUlt boards no node qualifies (the SCK pin has no pad).
+
+![A remapped node](img/port_remapped.png)
+
+- **Version note.** The last line of the report says `source Zephyr 4.3.0, target Zephyr 4.5.0-rc1: app APIs may have changed` when the source and the target workspace have different Zephyr versions; it is left out inside one workspace. It is about code outside the devicetree.
+
+![Version note](img/port_version_note.png)
 
 #### Apply to app…
 
@@ -133,7 +153,7 @@ The suggestions are text only. They name the target pads at the same connector p
    - **EXISTS**: the file exists and differs. Default is **append**: the app's own content stays and the port result goes into a block marked `/* dt_explorer port begin <date> */ … /* dt_explorer end */` (`id=port-apply-diff-<kind>` shows the file after the append; applying again replaces only that block; a `.conf` gets its lines added once, lines the file already has are left out). The block is valid DTS because the overlay may repeat `&label { };` and `/ { };`; an `#include` in the result stays inside the block (cpp accepts it there). **Replace** is the explicit alternative: tick **Replace the existing … instead of appending** (`id=port-apply-replace-<kind>`); the fold-out *Replace instead* (`id=port-apply-diff-replace-<kind>`) shows that diff.
    - **identical** (grey): the existing file already has this content; nothing is written.
    - **SKIP (COMMENTS ONLY)**: the port result holds only comments, e.g. a `.conf` with no Kconfig lines; it is not written.
-2. **Write files** writes the files that are not skipped, and shows the result. The next step is the hint `west build -b <target board> <app>` (or **New build…** for a new build folder).
+2. **Write files** writes the files that are not skipped, and shows the result. The next step is the hint `west build -p always -b <target board> <app>` (or **New build…** for a new build folder); `-p always` makes Zephyr read the new board files.
 
 ![Apply plan for a new file](img/apply_plan_new.png)
 
@@ -427,7 +447,7 @@ node as it is built.
 
 ### 10.2 Generic form (nodes without a recipe)
 
-![Generic form for tc0](evidence/img/P8.5_generic_form_tc0.png)
+![Generic form for tc0](img/generic_form_tc0.png)
 
 When no recipe covers the `compatible` of a disabled node but the build has its binding, **Configure…**
 still appears and opens a form generated from the binding. The example is `&tc0`
@@ -449,15 +469,21 @@ still appears and opens a form generated from the binding. The example is `&tc0`
 5. **Use** and **Save** work as in section 10. The draft node has the class `generic`; its pinctrl
    group is named `<label>_generic_default`.
 
-![Required property left empty](evidence/img/P8.5_generic_form_required.png)
+![Required property left empty](img/generic_form_required.png)
 
 The second picture is `&adc1` with the required `prescaler` emptied.
 
 A node that is already enabled and has no recipe (for example `wdog`) has no button in the node view.
 
+**Other compatible (generic form).** A node that has a recipe can have a second family without one. `&tc2` is the example: the recipe dialog offers the class **PWM**, and above the pads a list **Other compatible (generic form)** (`cfg-alt-compat`) with the next button **Use generic form** (`cfg-open-generic-alt`). The list names the compatibles whose binding exists and has something to configure: the node's own old one (`atmel,sam0-tc32`) or a g1 binding that includes the node's base (`microchip,tc-g1-counter`). The button opens the generic form above for that compatible, so a TC can be a counter instead of a PWM.
+
+![TC with Other compatible](img/configure_tc_other.png)
+
+![Generic form for the other compatible of &tc2](img/generic_form_alt.png)
+
 ### 10.3 Child devices on a bus (I2C, SPI)
 
-![Add an SPI device](evidence/img/P8.6_child_dialog_spi.png)
+![Add an SPI device](img/child_dialog_spi.png)
 
 When the class is I2C or SPI, the dialog has a **Child devices** list below *Properties* and the button
 **Add child device…** (`cfg-child-add`). It opens a second dialog (`child-dialog`). The example is a
@@ -484,6 +510,10 @@ The list in the main dialog shows each child with a delete button (`cfg-child-re
 that the board file already has (for example `eeprom@5e` on `&sercom7`) is shown as *from the board* and
 cannot be removed. **Save** puts the children into the draft node; they render inside the node:
 
+![Add an I2C device](img/child_dialog_i2c.png)
+
+An I2C device looks the same with the address in hex instead of the chip select. Saved, the draft node renders like this:
+
 ```
 &sercom5 {
 	...
@@ -502,11 +532,11 @@ rules: `bus_address_duplicate` (two I2C devices at one address or two SPI device
 `spi_cs_missing` (chip select beyond the `cs-gpios` list, error) and `pin_conflict` for a GPIO pad that another
 node, or the same node's pinctrl, also uses (error).
 
-![The check reports a CS pad that the console uses](evidence/img/P8.6_draft_spi_pad_conflict.png)
+![The check reports a CS pad that the console uses](img/child_draft_conflict.png)
 
 ### 10.4 Board nodes… (LEDs, buttons, PWM LEDs, aliases, chosen)
 
-![Board nodes dialog](evidence/img/P8.7_board_nodes_dialog.png)
+![Board nodes dialog](img/board_nodes_dialog.png)
 
 The header button **Board nodes…** edits the nodes that belong to the board, not to a peripheral:
 
@@ -528,11 +558,28 @@ The header button **Board nodes…** edits the nodes that belong to the board, n
    user_pwm_leds { ... }; aliases { ... }; chosen { ... }; };`; the board's own `leds`, `buttons` and
    `aliases` stay as they are.
 
-![Draft with a board node](evidence/img/P8.7_board_nodes_draft.png)
+![Draft with a board node](img/board_nodes_draft.png)
 
 Limits: the pad of an LED or button needs the GPIO controllers to map onto the device's pads (the same
 mapping the Pins tab uses); a PWM LED does not touch pins (the controller's own pinctrl does). Port to board…
 does not carry board nodes over.
+
+### 10.5 PWM, ADC and GMAC (recipes)
+
+The same **Configure…** dialog (section 10) covers more peripherals than the SERCOM. The class name is the only button; the pads and properties change with the peripheral. Nothing here is saved until **Save**.
+
+**PWM (TCC and TC).** `&tcc1` of lab1 is the example. One pad list per output `WO0` to `WO7` (a TC has `WO0` and `WO1`), taken from the device data; pick the pads you need. The PWM controller's `#pwm-cells` is not a field: it is 2 on the old driver and 3 on the g1 driver, set by the recipe. The recipe suggests a prescaler. A consumer such as `pwm-leds` needs the channel that belongs to its pad; **Board nodes…** (section 10.4) takes controller and channel.
+
+![Configure a TCC as PWM](img/configure_pwm.png)
+
+**ADC.** `&adc1` is the example. One pad list per input `AIN0` to `AIN15`. Every pad that you choose becomes a child `channel@N` with `reg = <N>` and `zephyr,input-positive = <N>` (the AIN number); `prescaler` is required on the g1 driver and the recipe suggests the smallest value that keeps the ADC clock at 16 MHz or less. The check warns when an ADC input pad is also used digitally (`analog_digital_pad`) and reports two users of one channel (`adc_channel_duplicate`, `pwm_channel_duplicate`).
+
+![Configure an ADC](img/configure_adc.png)
+
+**GMAC (Ethernet).** The SAME54 Xplained Pro enables the GMAC itself, so the example is **Edit pins…** (on a disabled GMAC it is **Configure…**). The dialog has two tabs, **Ethernet** (the MAC) and **MDIO**. The eight RMII pads each have exactly one candidate pad, so they are filled in and need no hand picking (the optional MII pads stay empty). For MDC/MDIO the dialog offers the IOSET pairs and prefers the pair the node has now if nothing else uses it. Saving gives two draft nodes: the MAC with `phy-handle`, and the MDIO bus with the PHY `ethernet-phy@0` as its child. The Kconfig lines are the Ethernet driver symbols; TCP/IP and TLS stay in menuconfig.
+
+![Edit pins of the GMAC](img/configure_gmac.png)
+
 
 ---
 
@@ -595,7 +642,13 @@ lines the file already has are left out, with a note. **Replace** is the explici
 (`id=draft-apply-diff-replace-<kind>`) shows the diff existing file -> draft, and the box **Replace the existing … instead of
 appending** (`id=draft-apply-replace-<kind>`) makes **Write files** overwrite the file, dropping everything the draft does not
 contain. **Write files** (`id=draft-apply-confirm`) then writes; the result lines end with the west
-command for the next build. `src/` and other files are never touched.
+command for the next build, `west build -p always -b <board> <app>` (`-p always`: a pristine build makes Zephyr read the new board files). `src/` and other files are never touched.
+
+![Apply to app: the existing file is kept, the draft is appended as a marked block](img/draft_apply_append.png)
+
+The second picture is the second Apply on the same app with a changed value (UART speed 57600 instead of 115200): the diff shows that only the content of the block changes (the old `&sercom7` lines out, the new in; everything outside the block stays), and the result lines end with the `west build -p always` hint. The shots are from copies of an app in the temp folder, because the button writes into the app.
+
+![Apply to app: second apply replaces only the block, build hint](img/draft_apply_second.png)
 
 The Draft tab opens by itself after Save. Use `tab=draft` in a link to open it directly.
 
@@ -607,7 +660,7 @@ hand. Devices are the child nodes with a node label: a sensor on an I2C or SPI b
 child with a compatible. A child without a label is left out with a note (`DT_NODELABEL` needs one). The button shows a
 plan first and writes nothing (`id=codegen-box`):
 
-![Generate code: plan](img/P8.14_plan.png)
+![Generate code: plan](img/codegen_plan.png)
 
 * **Devices** (`id=codegen-device-<node>`). A sensor has a channel list (`id=codegen-chan-<node>`), pre-filled from the
   `SENSOR_CHAN_*` that the driver's `channel_get` names (found through the driver index; a heuristic). Add or remove
@@ -622,16 +675,22 @@ plan first and writes nothing (`id=codegen-box`):
   `EDITED`, is **not** overwritten, and the diff to what would be generated is shown (`id=codegen-diff-<name>`). A file
   without the header is treated the same way. A generated file whose device left the draft is listed as `STALE` and not deleted.
 
-![Generate code: an edited file](img/P8.14_edited.png)
+![Generate code: an edited file](img/codegen_edited.png)
 
 * **CMakeLists.txt of the app.** The module needs one line, `add_subdirectory(dtx_devices)`. The tab shows the diff of
   `CMakeLists.txt` (`id=codegen-cmake-diff`); **Add the line…** (`id=codegen-cmake-add`) opens a confirmation dialog with
   the same diff (`id=codegen-cmake-dialog`, `codegen-cmake-ok` / `codegen-cmake-cancel`). Only after OK is the line
   appended, and never twice. This is the only change outside `dtx_devices/`; `src/` is never touched.
+![Confirmation for the CMakeLists.txt line](img/codegen_cmake_confirm.png)
+
 * **prj.conf.** The Kconfig lines (the driver symbols of the draft plus `CONFIG_SENSOR=y` / `CONFIG_GPIO=y` when the module
   needs them) are appended to the app's `prj.conf` as a marked block `# dt_explorer codegen begin <date>` … `# dt_explorer end`
   (`id=codegen-conf-diff`, button `id=codegen-conf-confirm`); lines the file already has are left out, applying again replaces
   only that block.
+
+After **Write files** the tab lists the written files:
+
+![Generate code: files written](img/codegen_done.png)
 
 The application then includes `dtx_devices.h` from its own `src/main.c` (you write that part). The overlay itself still
 goes through **Apply to app…**.
@@ -642,6 +701,8 @@ goes through **Apply to app…**.
 
 Shows the log of the tool (see README, section Log) while it runs; the lines are the same as in the log file
 `%USERPROFILE%\.dt_explorer\logs\dtx_<date>.log`, which is named above the lines. Direct link: `tab=log`.
+
+![Log tab](img/log_tab.png)
 
 - **Level** hides lines below DEBUG, INFO or WARNING. The buffer holds the last 5000 lines.
 - **DEBUG** switches the detail level of the tool itself: with it on, the tool also records a line for every node
@@ -673,6 +734,16 @@ It is read only: the tool never commits, reverts or checks out. Direct link: `ta
   time of the last read, the branch and the short HEAD hash (`HEAD (no commits yet)` for a new repository).
 - If the app folder is not inside a git repository, or git is not on PATH, the tab shows a message instead of the list;
   everything else works as before.
+
+![Changes tab: app folder is not in a git repository](img/changes_no_repo.png)
+
+The list after Apply to app and Generate code on an app that is in a git repository (a copy under the temp folder): the purple **dtx** badges mark the files the tool wrote, `CMakeLists.txt` and `prj.conf` are modified, `src/main.c` was edited by hand and has no badge.
+
+![Changes tab: changed files with dtx badges](img/changes_list.png)
+
+A click on a file shows its diff against HEAD in the source viewer:
+
+![Changes tab: diff of a modified file](img/changes_diff.png)
 
 ## 12. Direct links (URL parameters)
 
