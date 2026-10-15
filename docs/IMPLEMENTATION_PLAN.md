@@ -317,6 +317,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P3.5 | done | b0d4f98 |
 | P3.6 | done | ac29235 → master |
 | P3.7 | done | 4f0a2d7 → master |
+| P3.8 | running | |
 
 **P3.1 Intent-based draft.**
 - Dep: P1.2. Scope: `dt_explorer/core/draft.py`.
@@ -360,6 +361,16 @@ Status values: `open`, `running`, `done`, `blocked`.
   dialog hides base-binding properties that are not about the peripheral (`sq-size`, `cq-size`: keep a generic rule,
   e.g. hide properties from bindings outside the class base binding's own file, or a small deny list in the UI).
 - Accept: screenshot of the header at 1500 px in one row; the I2C dialog without `sq-size`/`cq-size`; suite green.
+
+**P3.8 SERCOM recipe for the g1 port.**
+- Dep: P3.2, P5.2b. Scope: `dt_explorer/recipes/atmel_sam0_sercom.py`, `tests/test_atmel_sam0_sercom.py`.
+- Why: the recipe covers only `atmel,sam0-uart/-i2c/-spi`; Configure… / Edit pins… on a PIC32CX SG or new-port SAM
+  E54 build (`microchip,sercom-g1-uart/-i2c/-spi`) had no roles, derived properties or Kconfig table (hint from side
+  session dt-explorer-c7). The pad registers are identical (P5.2b), so the same recipe serves both ports.
+- Do: add the g1 compatibles with their own Kconfig table (symbols verified in `zephyr-main` drivers/*/Kconfig*);
+  class detection per compatible; no change for the sam0 compatibles.
+- Accept: on the main pic32cx_sg41_cult build, a draft SERCOM I2C and a UART get roles, derived props and the g1
+  Kconfig symbols; render + validate on that build give no errors; existing recipe tests unchanged; suite green.
 
 ### Phase 4: authoritative check
 
