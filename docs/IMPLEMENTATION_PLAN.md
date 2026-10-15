@@ -532,6 +532,7 @@ surprising, and anything you were unsure about.
 - Formatters: `decode(int)` for packed pinmux values, so `core/pins.py` no longer re-reads macro names from source lines (found at P1.6).
 
 - Importer: Arduino Uno R3 and mikroBUS headers (label-keyed pins, merge the four Arduino headers into one connector); found at P7.3.
+- Draft tab "Apply to app": write the checked draft overlay and the suggested Kconfig lines into the current build's app (`<app>/boards/<board>.overlay`/`.conf`, or the app overlay already in use), reusing `core/apply.py` from P5.6 (new file → write; existing file → show diff, user decides; never touch `src/`). Asked for by the user on 2026-10-15.
 
 - Phase 9: custom board wizard.
 - Phase 10: class-based porting, other vendors.
