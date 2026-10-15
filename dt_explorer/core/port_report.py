@@ -393,65 +393,125 @@ def _target_conflicts(dn, tnode, t, tgt: BuildModel, tgt_usage, tgt_dev, pkg) ->
     return out
 
 
-def _conflict_suggestion(dn, tnode, tgt: BuildModel, tgt_usage, tgt_dev, pkg,
-                         src_board: str | None, tgt_board: str | None) -> str:
-    """Text only: target pads at the same connector pins, and the instances that can mux them for the same roles."""
-    hint = "choose instance and pads with Configure..."
+@dataclass
+class _RemapPlan:
+    """Result of looking for the same connector pins on the target board and an instance behind them."""
+    conn: str = ""                                      # connector name on both boards
+    mapped: dict = field(default_factory=dict)          # role -> (source pad, pin key, target pad)
+    missing: list[str] = field(default_factory=list)    # roles without a target pad at that connector pin
+    fits: list = field(default_factory=list)            # (instance name, instance, {role: signal role}, exact)
+    taken: dict = field(default_factory=dict)           # target pad -> names of its users
+    blocked: list[str] = field(default_factory=list)    # "INSTANCE (why)": muxes the pads but cannot be used
+    no_data: str = ""                                   # set: no connector data, nothing could be planned
+
+    @property
+    def choice(self):
+        """The instance to remap to: only with a target pad for every role and an exact valid assignment."""
+        return next((f for f in self.fits if f[3]), None) if not self.missing else None
+
+
+def _plan_remap(dn, tnode, tgt: BuildModel, tgt_usage, tgt_dev, pkg, src_board: str | None,
+                tgt_board: str | None, avoid_pads=(), avoid_bases=()) -> _RemapPlan:
+    """Source pad -> source connector pin -> target pad at that pin (one connector for all roles), then the
+    free instances of the target device that can mux those pads for the same roles (device model signals and
+    the recipe's valid assignments). `avoid_*`: pads and register bases that other nodes of this port use."""
+    plan = _RemapPlan()
     sb, tb = board_desc.load_board(src_board), board_desc.load_board(tgt_board)
     if sb is None or tb is None or tgt_dev is None:
-        return f"no connector data for both boards; {hint}"
+        plan.no_data = "no connector data for both boards"
+        return plan
     on_pkg = set(pkg.pins.values()) if pkg is not None else set()
-    mapped: dict[str, tuple[str, str]] = {}             # role -> (connector, target pad)
-    missing: list[str] = []
-    for role, pad in dn.pins.items():
-        found = None
-        for conn in sb.connectors:
-            tconn = next((c for c in tb.connectors if c.name == conn.name and c.type == conn.type), None)
-            for key, pin in conn.pins.items():
-                if pin.pad == pad and tconn is not None:
-                    tp = tconn.pins.get(key)
-                    ok = tp is not None and tp.pad and (not on_pkg or tp.pad in on_pkg)
-                    found = (conn.name, tp.pad if ok else None, key)
-                    break
-            if found:
-                break
-        if found and found[1]:
-            mapped[role] = (found[0], found[1])
-        else:
-            missing.append(f"{role} ({pad}, " + (f"{found[0]} pin {found[2]}" if found else "not on a connector") + ")")
-    if not mapped:
-        return f"no target pad at the connector pins of the source pads; {hint}"
+    best = None
+    for conn in sb.connectors:
+        tconn = next((c for c in tb.connectors if c.name == conn.name and c.type == conn.type), None)
+        if tconn is None:
+            continue
+        mapped: dict = {}
+        missing: list[str] = []
+        for role, pad in dn.pins.items():
+            key = next((k for k, p in conn.pins.items() if p.pad == pad), None)
+            if key is None:
+                missing.append(f"{role} ({pad}, not on {conn.name})")
+                continue
+            tp = tconn.pins.get(key)
+            if tp is not None and tp.pad and (not on_pkg or tp.pad in on_pkg):
+                mapped[role] = (pad, key, tp.pad)
+            else:
+                missing.append(f"{role} ({pad}, {conn.name} pin {key})")
+        if mapped and (best is None or len(mapped) > len(best[1])):
+            best = (conn.name, mapped, missing)
+        if mapped and not missing:
+            break
+    if best is None:
+        plan.missing = [f"{r} ({p})" for r, p in dn.pins.items()]
+        return plan
+    plan.conn, plan.mapped, plan.missing = best
     recipe = plugins.get_recipe(dn.compatible) if dn.compatible else None
     vfn = getattr(recipe, "valid_assignments", None)
     valid = list(vfn(dn.cls)) if vfn is not None else None
-    busy = {_first_addr(n) for n in tgt.edt.nodes
-            if n.status == "okay" and n.path != tnode.path and _first_addr(n) is not None}
-    taken = {p for p, us in tgt_usage.uses.items() if any(u.node != tnode.path for u in us)}
-    fits: list[str] = []
+    busy = {_first_addr(n): n for n in tgt.edt.nodes if n.status == "okay" and _first_addr(n) is not None}
+    for _r, (_s, _k, tpad) in plan.mapped.items():
+        users = list(dict.fromkeys(_node_name(tgt, u.node) for u in tgt_usage.uses.get(tpad, [])))
+        if tpad in avoid_pads:
+            users.append("another node of this port")
+        if users:
+            plan.taken[tpad] = users
     for inst in tgt_dev.instances.values():
         if recipe is not None and not recipe.pin_roles(inst, dn.compatible):
             continue
-        if inst.base in busy:
-            continue
-        ok = True
-        for role, (_c, tpad) in mapped.items():
-            prs = {s.role for s in inst.signals if s.pad == tpad}
-            if not prs or tpad in taken or (valid is not None and not any(a.get(role) in prs for a in valid)):
-                ok = False
+        sig_roles: dict[str, str] = {}
+        for role, (_s, _k, tpad) in plan.mapped.items():
+            hits = [s for s in inst.signals if s.pad == tpad]
+            if len(hits) != 1:
                 break
-        if ok:
-            fits.append(inst.name)
-    conn_names = ", ".join(dict.fromkeys(c for c, _p in mapped.values()))
-    text = f"{dn.cls} on {conn_names} of the target: " + ", ".join(f"{r} {p}" for r, (_c, p) in mapped.items())
-    if missing:
-        text += "; no pad there for " + ", ".join(missing)
-    used = [f"{p} by {', '.join(dict.fromkeys(_node_name(tgt, u.node) for u in tgt_usage.uses[p] if u.node != tnode.path))}"
-            for _c, p in mapped.values() if p in taken]
-    if used:
-        text += "; already used in the target build: " + ", ".join(used)
-    text += (f" -> instance(s) that can mux them: {', '.join(fits)}" if fits
+            sig_roles[role] = hits[0].role
+        else:
+            exact = [a for a in (valid if valid is not None else [dict(sig_roles)]) if set(a) == set(sig_roles)
+                     and all(a[r] == sig_roles[r] for r in sig_roles)]
+            loose = [a for a in (valid or []) if set(sig_roles) <= set(a)
+                     and all(a[r] == sig_roles[r] for r in sig_roles)]
+            if not exact and not loose:
+                continue
+            why = None
+            if inst.base in busy:
+                why = f"enabled as {_node_name(tgt, busy[inst.base].path)}"
+            elif inst.base in avoid_bases:
+                why = "used by another node of this port"
+            elif plan.taken:
+                why = "pad " + ", ".join(plan.taken) + " in use"
+            if why:
+                plan.blocked.append(f"{inst.name} ({why})")
+                continue
+            if exact and not plan.missing:
+                try:
+                    if recipe is not None:
+                        recipe.derived_props(exact[0])
+                except Exception:  # noqa: BLE001 - a recipe error means this combination is not valid
+                    continue
+            plan.fits.append((inst.name, inst, exact[0] if exact else loose[0], bool(exact)))
+    return plan
+
+
+def _plan_text(plan: _RemapPlan, dn, hint: str) -> str:
+    """The text after `suggestion:` of a conflict that could not be remapped."""
+    if plan.no_data:
+        return f"{plan.no_data}; {hint}"
+    if not plan.mapped:
+        return f"none of the source pads ({', '.join(dn.pins.values())}) sits at a connector pin that has a pad on the target board; no remap; {hint}"
+    text = f"{dn.cls} on {plan.conn} of the target: " + ", ".join(f"{r} {m[2]}" for r, m in plan.mapped.items())
+    if plan.missing:
+        text += "; no pad there for " + ", ".join(plan.missing)
+    if plan.taken:
+        text += "; already used in the target build: " + ", ".join(
+            f"{p} by {', '.join(u)}" for p, u in plan.taken.items())
+    names = [f[0] for f in plan.fits]
+    text += (f" -> instance(s) that can mux them: {', '.join(names)}" if names
              else " -> no free instance can mux them for these roles")
-    return text + f" ({hint}; the port does not remap)"
+    if plan.blocked:
+        text += " (not usable: " + "; ".join(plan.blocked[:4]) + ")"
+    why = ("a role has no pad at the target connector pin" if plan.missing else
+           "no free instance with a valid role assignment")
+    return text + f"; no remap: {why} ({hint})"
 
 
 # ---- app-defined nodes: carried verbatim from the app overlay -------------------------------------
@@ -653,7 +713,8 @@ def _overlay_files(src: BuildModel) -> list[Path]:
 
 
 def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: PortReport,
-                     ported_labels: dict[str, str]) -> tuple[list[str], set[str], set[str]]:
+                     ported_labels: dict[str, str],
+                     remapped: dict[str, str] | None = None) -> tuple[list[str], set[str], set[str]]:
     """Copy what the app overlay defines and no translation covers into the target overlay.
 
     Returns (overlay pieces, source paths that were handled, labels that the carried text defines).
@@ -802,7 +863,7 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
             continue
         body = _body_text(it.text)
         for k, ref in c.refs:           # a ported node whose label differs in the target
-            if k == "label" and ref not in tgt_labels and ported_labels.get(ref) in tgt_labels:
+            if k == "label" and (ref not in tgt_labels or ref in (remapped or {}))                     and ported_labels.get(ref) in tgt_labels:
                 body = re.sub(rf"&{re.escape(ref)}(?![\w-])", "&" + ported_labels[ref], body)
         head = "/ {" if c.wrapper == "/" else f"{c.wrapper} {{"
         pieces.append(f"/* carried from {c.source}:{it.line} */\n{head}\n{body}\n}};\n")
@@ -878,6 +939,23 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     cov_by_label = {c.label: c for c in lift.covered}
     conflicts: dict[str, str] = {}                  # source label -> first reason; nodes that are not emitted
     tgt_pkg = pins_mod.default_package(tgt_dev) if tgt_dev is not None else None
+    has_binding = lambda c: tgt_index.find(c) is not None          # noqa: E731
+    remapped_labels: dict[str, str] = {}            # source label -> target label of nodes moved to another instance
+
+    # Pads and register bases of the nodes that this port carries over on their own instance: a remapped node
+    # must not take them. Remapped nodes add theirs as they are decided.
+    in_use_pads: set[str] = set()
+    in_use_bases: set = set()
+    for d0 in draft.nodes:
+        c0 = cov_by_label.get(d0.label)
+        sn0 = src.by_path.get(c0.path) if c0 else None
+        tn0 = _match_target(sn0, d0.label, tgt) if sn0 is not None else None
+        t0 = _translation_for(d0.compatible or "", list(tn0.compats), has_binding) if tn0 is not None else None
+        if t0 is None or t0.no_target is not None:
+            continue
+        if not _target_conflicts(d0, tn0, t0, tgt, tgt_usage, tgt_dev, tgt_pkg):
+            in_use_pads |= set(d0.pins.values())
+            in_use_bases.add(_first_addr(tn0))
 
     for dn in draft.nodes:
         cov = cov_by_label.get(dn.label)
@@ -894,8 +972,7 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             continue
         res.target_path = tnode.path
         tlabel = _label(tnode) or dn.label
-        t = _translation_for(dn.compatible or "", list(tnode.compats),
-                             has_binding=lambda c: tgt_index.find(c) is not None)
+        t = _translation_for(dn.compatible or "", list(tnode.compats), has_binding=has_binding)
         if t is None:
             res.status = "no_translation"
             res.lines.append(f"no translation registered for {dn.compatible}; node not ported")
@@ -911,27 +988,57 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         if tgt_index.find(t.target) is None:
             res.notes.append(f"binding for {t.target} not found in the target workspace")
         reasons = _target_conflicts(dn, tnode, t, tgt, tgt_usage, tgt_dev, tgt_pkg)
+        remap_lines: list[str] = []
+        if reasons:
+            plan = _plan_remap(dn, tnode, tgt, tgt_usage, tgt_dev, tgt_pkg, src_info.board, tgt_info.board,
+                               in_use_pads, in_use_bases)
+            choice, rejected = plan.choice, []
+            if choice is not None:
+                tn2 = next((n for n in tgt.edt.nodes if _first_addr(n) == choice[1].base and n.compats
+                            and not n.path.startswith("/cpus")), None)
+                t2 = _translation_for(dn.compatible or "", list(tn2.compats), has_binding) if tn2 is not None else None
+                dn2 = replace(dn, pins={r: m[2] for r, m in plan.mapped.items()}, instance=choice[0])
+                if tn2 is None:
+                    rejected = [f"{choice[0]} has no node in the target devicetree"]
+                elif t2 is None or t2.no_target is not None:
+                    rejected = [f"no translation to a target binding for the node of {choice[0]}"]
+                else:
+                    rejected = _target_conflicts(dn2, tn2, t2, tgt, tgt_usage, tgt_dev, tgt_pkg)
+            if choice is not None and not rejected:
+                src_inst = dn.instance or res.source_path
+                remap_lines = [f"remapped: {dn.cls} {src_inst} -> {choice[0]} (&{dn.label} -> &{_label(tn2) or choice[0]}); "
+                               f"the connector pins stay the same ({plan.conn})"]
+                remap_lines += [f"remap {r}: {sp} ({plan.conn} pin {k}) -> {tp}" for r, (sp, k, tp) in plan.mapped.items()]
+                remap_lines += [f"remap because: {x}" for x in reasons]
+                in_use_pads |= set(dn2.pins.values())
+                in_use_bases.add(choice[1].base)
+                dn, tnode, t, reasons = dn2, tn2, t2, []
+                res.target_path, res.target_compatible = tnode.path, t.target
+                tlabel = _label(tnode) or dn.label
+                remapped_labels[dn.label or tlabel] = tlabel
         if reasons:
             res.status = "conflict"
             res.lines += [f"conflict: {x}" for x in reasons]
             moved = dn.use.chosen + dn.use.aliases
             res.lines.append("not emitted; the target board's node, chosen entries and aliases stay as they are"
                              + (f" (not moved: {', '.join(moved)})" if moved else ""))
-            res.lines.append("suggestion: " + _conflict_suggestion(
-                dn, tnode, tgt, tgt_usage, tgt_dev, tgt_pkg, src_info.board, tgt_info.board))
+            res.lines.append("suggestion: " + _plan_text(plan, dn, "choose instance and pads with Configure..."))
+            if rejected:
+                res.lines.append(f"remap to {choice[0]} rejected: " + "; ".join(rejected))
             conflicts[dn.label or tlabel] = reasons[0]
             continue
 
         # source properties = board-written ones + what the source recipe derives from the roles
         props: dict = {"compatible": [dn.compatible], **dn.props, **dn.vendor_props}
         recipe = plugins.get_recipe(dn.compatible) if dn.compatible else None
-        if recipe is not None and dn.pins and src_dev is not None:
+        if recipe is not None and dn.pins and (tgt_dev if remap_lines else src_dev) is not None:
             try:
-                sigs = _signals(dn, RenderContext(device=src_dev))
+                sigs = _signals(dn, RenderContext(device=tgt_dev if remap_lines else src_dev))
                 props.update(recipe.derived_props({r: s.role for r, s in sigs}))
             except (RenderError, ValueError) as exc:
                 res.notes.append(f"derived properties not recomputed: {exc}")
         translated, res.lines = t.translate(props)
+        res.lines = remap_lines + res.lines
         for pname, note in t.target_only.items():
             res.lines.append(f"target-only property '{pname}': {note}")
         res.translated = {k: v for k, v in translated.items()}
@@ -965,9 +1072,28 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                   if getattr(tgt.edt.chosen_nodes.get(c), "path", None) != tnode.path]
         aliases = [a for a in dn.use.aliases
                    if getattr(tgt.edt._dt.alias2node.get(a), "path", None) != tnode.path]
+        if remap_lines:
+            # the target board's own chosen entries and aliases stay; the instance in them is another node
+            kept_c = [c for c in chosen if c in tgt.edt.chosen_nodes]
+            kept_a = [a for a in aliases if a in tgt.edt._dt.alias2node]
+            chosen = [c for c in chosen if c not in kept_c]
+            aliases = [a for a in aliases if a not in kept_a]
+            for c in kept_c:
+                res.notes.append(f"chosen {c} not moved: the target board points it at {tgt.edt.chosen_nodes[c].path}")
+            for a in kept_a:
+                res.notes.append(f"alias {a} not moved: the target board points it at {tgt.edt._dt.alias2node[a].path}")
+            if chosen or aliases:
+                res.notes.append("moved to &" + tlabel + ": " + ", ".join(
+                    [f"chosen {c}" for c in chosen] + [f"alias {a}" for a in aliases]))
+            res.notes.append(f"code that uses DT_NODELABEL({dn.label}) must use DT_NODELABEL({tlabel}) "
+                             f"(or an alias); &{dn.label} in the target is another node")
         res.emitted += [f"chosen {c}" for c in chosen] + [f"alias {a}" for a in aliases]
         if not okay:
-            res.notes += _clock_notes(src_node, t)
+            if remap_lines:
+                res.notes.append(f"the clock rules of the source node belong to its own instance; check that the "
+                                 f"target board's clock controller enables the peripheral clocks of &{tlabel}")
+            else:
+                res.notes += _clock_notes(src_node, t)
             res.notes.append("the target board does not enable this node: the overlay enables it")
 
         tdn = DraftNode(cls=dn.cls, roles=list(dn.roles) if pins else [], props={}, use=Use(chosen, aliases),
@@ -997,11 +1123,14 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                 text = _rename(text, f"{tlabel}_{dn.cls}_default", f"{tlabel}_{dn.cls}_edit")
         ported_draft.nodes.append(tdn)
         ported_labels[dn.label or tlabel] = tlabel
-        pieces.append(f"/* &{tlabel}: {dn.compatible} -> {t.target} */\n{text.rstrip()}\n")
+        if remap_lines:
+            res.status = "remapped"
+        note = f" (remapped from &{dn.label}, {dn.cls} {src_inst} -> {dn.instance})" if remap_lines else ""
+        pieces.append(f"/* &{tlabel}: {dn.compatible} -> {t.target}{note} */\n{text.rstrip()}\n")
 
     # ---- other nodes of the source build that were written by the board or the app ------------
     step("carrying app-defined nodes ...")
-    carried_pieces, handled, carried_labels = _carry_app_nodes(src, tgt, lift, rep, ported_labels)
+    carried_pieces, handled, carried_labels = _carry_app_nodes(src, tgt, lift, rep, ported_labels, remapped_labels)
     pieces += carried_pieces
     for u in lift.uncovered:
         if u.origin in ("soc", "module") or u.path in handled:
@@ -1036,6 +1165,16 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             tn = tgt.edt.label2node.get(name)
             if name in carried_labels:
                 continue                    # defined by app text that this port carries over
+            if name in remapped_labels:
+                new = remapped_labels[name]
+                ref.problem = "remapped"
+                ref.detail = f"the node is ported to &{new} (remapped to another instance); &{name} in the target is another node"
+                ref.suggestion = f"DT_NODELABEL({new}), or DT_ALIAS({_alias_name(name).replace('-', '_')}) with the alias entry"
+                ref.alias_entry = f"{_alias_name(name)} = &{new};"
+                a_name, a_val = (x.strip() for x in ref.alias_entry.rstrip(";").split("=", 1))
+                alias_entries.setdefault(a_name, a_val)
+                rep.label_refs.append(ref)
+                continue
             if name in conflicts:
                 ref.problem = "conflict"
                 ref.detail = f"the node is not ported ({conflicts[name]}); the label in the target is another node"

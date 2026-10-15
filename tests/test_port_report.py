@@ -442,7 +442,7 @@ def test_no_node_is_dropped_silently(world):
     sec1 = dict(rep.sections())["1. Nodes: translated and untranslatable properties"]
     for n in rep.nodes:
         assert any(x.startswith(f"&{n.label} ") for x in sec1)
-        if n.status not in ("emitted", "identical"):
+        if n.status not in ("emitted", "identical", "remapped"):
             assert n.lines or n.notes, n.label
         if f"&{n.label} {{" in res.overlay:
             assert n.status in ("emitted", "identical")
@@ -453,21 +453,38 @@ class _RecipeWithAssignments(FakeRecipe):
         yield {"TX": "PAD0", "RX": "PAD1"}
 
 
-def test_conflict_suggestion_names_connector_pads_and_instances(world, monkeypatch):
+def _boards(monkeypatch, world, src_pins, tgt_pins):
+    """Fake board descriptions with one connector X1 (pin 1 = TX, pin 2 = RX); a None pad is an untraced pin."""
     from dt_explorer.core import board_desc as bd
-    pins = lambda a, b: {"1": bd.ConnPin("1", "UART_TX", a), "2": bd.ConnPin("2", "UART_RX", b)}   # noqa: E731
-    boards = {"acme_board": bd.BoardDesc("acme_board", "Acme", [bd.Connector("X1", "hdr", pins("P5", "P6"))]),
-              "beta_board": bd.BoardDesc("beta_board", "Beta", [bd.Connector("X1", "hdr", pins("P3", "P4"))])}
+    mk = lambda pads: {str(i + 1): bd.ConnPin(str(i + 1), r, p) for i, (r, p) in enumerate(zip(("UART_TX", "UART_RX"), pads))}  # noqa: E731
+    boards = {"acme_board": bd.BoardDesc("acme_board", "Acme", [bd.Connector("X1", "hdr", mk(src_pins))]),
+              "beta_board": bd.BoardDesc("beta_board", "Beta", [bd.Connector("X1", "hdr", mk(tgt_pins))])}
     monkeypatch.setattr(pr.board_desc, "load_board", lambda b, dirs=None: boards.get(b))
     monkeypatch.setattr(pr, "read_build_info", lambda b: BuildInfo(
         build_dir=Path(b), board=world.src.board if Path(b) == world.src.build else world.tgt.board))
     plugins.register_recipe(_RecipeWithAssignments)
-    world.draft.nodes[1].pins = {"TX": "P5", "RX": "P6"}                  # the source pads at connector X1
+    world.draft.nodes[1].pins = {"TX": src_pins[0], "RX": src_pins[1]}
+
+
+def test_conflict_suggestion_names_connector_pads_and_instances(world, monkeypatch):
+    """One role has no pad at the target connector pin: the instance that could mux the others is named, no remap."""
+    _boards(monkeypatch, world, ("P5", "P6"), ("P3", None))        # the source pads are unknown to the target device
+    n = _by_label(world)["u1"]
+    assert n.status == "conflict"
+    sug = next(x for x in n.lines if x.startswith("suggestion:"))
+    assert "uart on X1 of the target: TX P3" in sug and "no pad there for RX (P6, X1 pin 2)" in sug
+    assert "instance(s) that can mux them: U1" in sug and "no remap: a role has no pad" in sug
+
+
+def test_conflict_suggestion_names_busy_instance(world, monkeypatch):
+    """The pads exist on the target, but the instance behind them is enabled as another node."""
+    _boards(monkeypatch, world, ("P5", "P6"), ("P3", "P4"))
     _enable_u1_as_other(world)
     n = _by_label(world)["u1"]
     sug = next(x for x in n.lines if x.startswith("suggestion:"))
     assert "uart on X1 of the target: TX P3, RX P4" in sug
-    assert "instance(s) that can mux them: U1" in sug and "does not remap" in sug
+    assert "no free instance" in sug and "U1 (enabled as &u1)" in sug and "no remap" in sug
+    assert n.status == "conflict"
 
 
 def test_conflict_suggestion_without_board_data_is_still_given(world):
@@ -492,14 +509,7 @@ def test_west_topdir_is_taken_from_the_cmake_cache(tmp_path):
 
 
 def test_conflict_suggestion_says_which_target_pads_are_taken(world, monkeypatch):
-    from dt_explorer.core import board_desc as bd
-    pins = lambda a, b: {"1": bd.ConnPin("1", "UART_TX", a), "2": bd.ConnPin("2", "UART_RX", b)}   # noqa: E731
-    boards = {"acme_board": bd.BoardDesc("acme_board", "Acme", [bd.Connector("X1", "hdr", pins("P5", "P6"))]),
-              "beta_board": bd.BoardDesc("beta_board", "Beta", [bd.Connector("X1", "hdr", pins("P3", "P4"))])}
-    monkeypatch.setattr(pr.board_desc, "load_board", lambda b, dirs=None: boards.get(b))
-    monkeypatch.setattr(pr, "read_build_info", lambda b: BuildInfo(
-        build_dir=Path(b), board=world.src.board if Path(b) == world.src.build else world.tgt.board))
-    world.draft.nodes[1].pins = {"TX": "P5", "RX": "P6"}
+    _boards(monkeypatch, world, ("P5", "P6"), ("P3", "P4"))
     world.tgt_uses["P3"] = [NS(node="/t/i0", source="pinctrl")]
     n = _by_label(world)["u1"]
     assert n.status == "conflict"
@@ -544,3 +554,120 @@ def test_note_when_zephyr_versions_differ(world, monkeypatch, tmp_path):
     assert any("source Zephyr 4.3.0, target Zephyr 4.5.0" in n and "app APIs may have changed" in n for n in notes)
     monkeypatch.setattr(pr, "read_build_info", info("zt2"))
     assert not any("app APIs" in n for n in pr.port_build(world.src, world.tgt, check=False).report.notes)
+
+
+# ---- P8.17: remap to another instance at the same connector pins --------------------------------------
+class _RecipeBothWays(FakeRecipe):
+    def valid_assignments(self, cls):
+        yield {"TX": "PAD0", "RX": "PAD1"}
+        yield {"TX": "PAD1", "RX": "PAD0"}
+
+
+def _remap_world(world, monkeypatch, tgt_pins=("P6", "P7"), recipe=_RecipeWithAssignments):
+    """u1 of the source sits on connector X1 (P5, P6) and conflicts on the target (its instance is enabled as
+    another node); the target has a free instance U5 (node &u5) behind the pads at the same connector pins."""
+    _boards(monkeypatch, world, ("P5", "P6"), tgt_pins)
+    plugins.register_recipe(recipe)
+    dev = pr.pins_mod.used_pins(world.src).device
+    dev.instances["U5"] = Instance("U5", "UART", 0x5000, [Signal("PAD0", "P6", "A"), Signal("PAD1", "P7", "A")])
+    dev.packages[0].pins.update({"6": "P6", "7": "P7"})
+    t_u5 = _node("/t/u5", "u5", ["beta,generic"], status="disabled", addr=0x5000)
+    world.tgt.edt.nodes.append(t_u5)
+    world.tgt.edt.label2node["u5"] = t_u5
+    world.tgt.by_path["/t/u5"] = t_u5
+    _enable_u1_as_other(world)
+    return t_u5
+
+
+def test_conflict_is_remapped_to_a_free_instance(world, monkeypatch):
+    _remap_world(world, monkeypatch)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "remapped" and n.target_path == "/t/u5" and n.target_compatible == "beta,uart"
+    text = "\n".join(n.lines)
+    assert "remapped: uart U1 -> U5 (&u1 -> &u5)" in text
+    assert "remap TX: P5 (X1 pin 1) -> P6" in text and "remap RX: P6 (X1 pin 2) -> P7" in text
+    assert "remap because: " in text and "enables &u1 as beta,other" in text
+    # the overlay configures the target instance, not the conflicting one; derived property recomputed on the target
+    assert "&u5 {" in res.overlay and "&u1 {" not in res.overlay
+    assert "<P6_U5_PAD0>, <P7_U5_PAD1>" in res.overlay and "rxsel = <1>;" in res.overlay
+    assert "current-speed = <19200>;" in res.overlay and 'status = "okay";' in res.overlay
+    # chosen entry and alias follow the node; the report names the consequence for code
+    assert "zephyr,console = &u5;" in res.overlay and "my-uart = &u5;" in res.overlay
+    assert any("DT_NODELABEL(u1) must use DT_NODELABEL(u5)" in x for x in n.notes)
+    assert "[remapped]" in "\n".join(res.report.lines())
+    ref = {r.macro: r for r in res.report.label_refs}["DT_NODELABEL(u1)"]
+    assert ref.problem == "remapped" and "DT_NODELABEL(u5)" in ref.suggestion and ref.alias_entry == "u1 = &u5;"
+    assert "u1 = &u5;" in res.overlay                           # alias entry for code that wants a stable name
+    assert [d.label for d in res.draft.nodes if d.instance == "U5"] == ["u5"]
+
+
+def test_remap_recomputes_derived_properties_for_the_target_pads(world, monkeypatch):
+    """Target pads on the other pad roles of the instance: the derived property follows the new assignment."""
+    dev_pads = ("P7", "P6")
+    _remap_world(world, monkeypatch, tgt_pins=dev_pads, recipe=_RecipeBothWays)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "remapped"
+    assert "rxsel = <0>;" in res.overlay and "<P7_U5_PAD1>, <P6_U5_PAD0>" in res.overlay
+
+
+def test_remap_keeps_target_chosen_and_alias(world, monkeypatch):
+    """A chosen entry that the target board already defines stays; the report says so."""
+    _remap_world(world, monkeypatch)
+    world.tgt.edt.chosen_nodes["zephyr,console"] = world.tgt.by_path["/t/u0"]
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "remapped"
+    assert "zephyr,console = &u5;" not in res.overlay and "my-uart = &u5;" in res.overlay
+    assert any("chosen zephyr,console not moved" in x for x in n.notes)
+
+
+def test_no_remap_when_a_role_has_no_target_pad(world, monkeypatch):
+    _remap_world(world, monkeypatch, tgt_pins=("P6", None))
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "conflict" and "&u5 {" not in res.overlay
+    assert any("no pad there for RX (P6, X1 pin 2)" in x and "no remap" in x for x in n.lines)
+
+
+def test_no_remap_when_the_instance_is_not_free(world, monkeypatch):
+    t_u5 = _remap_world(world, monkeypatch)
+    t_u5.status = "okay"
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "conflict" and "&u5 {" not in res.overlay
+    assert any("U5 (enabled as &u5)" in x for x in n.lines)
+
+
+def test_no_remap_when_the_target_pads_are_used(world, monkeypatch):
+    _remap_world(world, monkeypatch)
+    world.tgt_uses["P7"] = [NS(node="/t/i0", source="pinctrl")]
+    n = _by_label(world)["u1"]
+    assert n.status == "conflict" and any("already used in the target build: P7 by &i0" in x for x in n.lines)
+
+
+def test_no_remap_when_no_valid_assignment(world, monkeypatch):
+    """The instance offers the pads, but not for these roles (TX on PAD1 is not a valid assignment here)."""
+    _remap_world(world, monkeypatch, tgt_pins=("P7", "P6"))        # TX -> PAD1, RX -> PAD0: only _RecipeBothWays allows it
+    n = _by_label(world)["u1"]
+    assert n.status == "conflict" and any("no remap: no free instance with a valid role assignment" in x for x in n.lines)
+
+
+def test_remap_does_not_take_pads_of_another_ported_node(world, monkeypatch):
+    """A node that the port carries over on its own instance keeps its pads."""
+    _remap_world(world, monkeypatch, tgt_pins=("P1", "P2"))
+    n = _by_label(world)["u1"]
+    assert n.status == "conflict"                                   # P1/P2 belong to u0 (identical in the target)
+
+
+def test_second_conflict_cannot_take_the_instance_of_the_first(world, monkeypatch):
+    _remap_world(world, monkeypatch)
+    # a second source node on the same connector pins competes for U5: only the first (u1) gets it
+    world.draft.nodes[2].pins = {"TX": "P5", "RX": "P6"}
+    t_u2 = world.tgt.by_path.get("/t/u2") or _node("/t/u2", "u2", ["beta,other"], status="okay", addr=0x3000)
+    world.tgt.edt.nodes.append(t_u2)
+    world.tgt.edt.label2node["u2"] = t_u2
+    world.tgt.by_path["/t/u2"] = t_u2
+    by = _by_label(world)
+    assert by["u1"].status == "remapped" and by["u2"].status == "conflict"
