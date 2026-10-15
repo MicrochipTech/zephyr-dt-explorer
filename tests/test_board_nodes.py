@@ -165,3 +165,79 @@ def test_board_nodes_validate_without_error_and_a_used_pad_conflicts(leer):
     B.apply_spec(leer.draft, bad, pm)
     errs = [f for f in leer.check() if f.severity == "error"]
     assert [f.kind for f in errs] == ["pin_conflict"] and "led_bad" in errs[0].message and "led0" in errs[0].message
+
+
+# ---- P8.18b: a PWM controller that the same draft enables, and zephyr,user ---------------------------------
+def pwm_model(cells=2):
+    def node(label, path, status, n):
+        props = {"#pwm-cells": SimpleNamespace(to_num=lambda n=n: n)} if n else {}
+        return SimpleNamespace(labels=[label], path=path, status=status, _node=SimpleNamespace(props=props))
+    return SimpleNamespace(edt=SimpleNamespace(
+        nodes=[node("tcc0", "/soc/tcc@1", "okay", 2), node("tcc3", "/soc/tcc@4", "disabled", 0),
+               node("adc1", "/soc/adc@9", "disabled", 0)], chosen_nodes={}))
+
+
+def pwm_draft(cells=2):
+    from dt_explorer.core.draft import DraftNode
+    return Draft(nodes=[DraftNode(cls="pwm", label="tcc3", compatible="acme,pwm",
+                                  vendor_props={"#pwm-cells": cells}),
+                        DraftNode(cls="uart", label="sercom1")])
+
+
+def test_pwm_controllers_include_the_pwm_nodes_of_the_draft():
+    model = pwm_model()
+    assert [p["label"] for p in B.pwm_controllers(model)] == ["tcc0"]               # tcc3 is disabled in the build
+    both = B.pwm_controllers(model, pwm_draft())
+    assert [p["label"] for p in both] == ["tcc0", "tcc3"]
+    tcc3 = both[1]
+    assert tcc3["draft"] is True and tcc3["path"] == "/soc/tcc@4" and tcc3["cells"] == ["channel", "period"]
+    assert [p["label"] for p in B.pwm_controllers(model, pwm_draft(3))][1:] == ["tcc3"]
+    assert B.pwm_controllers(model, pwm_draft(3))[1]["cells"] == ["channel", "period", "flags"]
+    assert "sercom1" not in {p["label"] for p in both}                              # only class pwm
+
+
+def test_pwm_led_on_a_controller_that_the_draft_enables_is_accepted():
+    model = pwm_model()
+    sp = B.BoardSpec(entries=[B.Entry(B.PWM_LEDS, "pwm_led_tool", ctrl="tcc3", channel=0)],
+                     aliases={"pwm-led0": "/user_pwm_leds/pwm_led_tool"})
+    errs = lambda **kw: msgs(B.check_spec(sp, model=model, pad_map=PAD_MAP, **kw), "error")      # noqa: E731
+    assert errs() == ["pwm_led_tool: no PWM controller 'tcc3' in the build"]
+    assert errs(draft=Draft()) == ["pwm_led_tool: no PWM controller 'tcc3' in the build"]
+    assert errs(draft=pwm_draft()) == []
+    cells = {p["label"]: len(p["cells"]) for p in B.pwm_controllers(model, pwm_draft(3))}
+    text = render_overlay(Draft(nodes=[B.spec_to_node(sp, PAD_MAP, cells)]), RenderContext())
+    assert "pwms = <&tcc3 0 20000000 0>;" in text                                     # the draft node's own cell count
+
+
+def user_spec() -> B.BoardSpec:
+    return B.BoardSpec(user={"io-channels": [("adc1", (6,)), ("adc1", (7,))], "pwms": [("tcc3", (0, 1000))]})
+
+
+def test_zephyr_user_overlay_text_round_trip_and_summary(tmp_path):
+    node = B.spec_to_node(user_spec(), PAD_MAP)
+    text = render_overlay(Draft(nodes=[node]), RenderContext())
+    assert "\tzephyr,user {\n\t\tio-channels = <&adc1 6>, <&adc1 7>;\n\t\tpwms = <&tcc3 0 1000>;\n\t};" in text
+    d = Draft(build="b")
+    B.apply_spec(d, user_spec(), PAD_MAP)
+    save_draft(d, tmp_path, "b")
+    back = load_draft(tmp_path, "b")
+    assert B.read_spec(back, PAD_MAP) == user_spec()
+    assert B.summary(back.nodes[0]) == "zephyr,user (io-channels, pwms)"
+    assert not B.BoardSpec(user={"io-channels": [("adc1", (6,))]}).is_empty()
+
+
+def test_zephyr_user_problems():
+    model, draft = pwm_model(), pwm_draft()
+    sp = B.BoardSpec(user={"io-channels": [("adc1", (6,))], "Bad Name": [("tcc3", (0,))], "pwms": [("gone", (0,))],
+                           "dmas": [("tcc0", (-1,))], "empty": []})
+    errs = msgs(B.check_spec(sp, model=model, pad_map=PAD_MAP, pwm_ctrls={}, draft=draft), "error")
+    assert errs == ["zephyr,user property 'Bad Name': not a valid property name",
+                    "zephyr,user pwms: no node with label 'gone' in the build or the draft",
+                    "zephyr,user dmas: cells must be 0 or more", "zephyr,user empty: no entry"]
+
+
+def test_zephyr_user_validates_on_the_real_build(leer):
+    pm = B.gpio_pad_map(leer.model, leer.device)
+    B.apply_spec(leer.draft, B.BoardSpec(user={"io-channels": [("adc0", (1,)), ("adc0", (2,))]}), pm)
+    assert [f for f in leer.check() if f.severity == "error"] == []
+    assert "zephyr,user {\n\t\tio-channels = <&adc0 1>, <&adc0 2>;" in leer.overlay()

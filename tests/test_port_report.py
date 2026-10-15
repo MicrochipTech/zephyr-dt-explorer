@@ -769,7 +769,7 @@ def test_lab1_to_sg41_new_pairs_are_translated_in_the_real_port(rtos4_ws, main_w
         if not (b / "zephyr" / "edt.pickle").is_file():
             pytest.skip(f"no build at {b} (zephyr/edt.pickle missing)")
     app.load_plugins()
-    res = pr.port_build(src, tgt, check=False)
+    res = pr.port_build(src, tgt, check=False, include_board_config=True)
     by = {n.label: n for n in res.report.nodes}
     for label, compat, target in (("adc0", "atmel,sam0-adc", "microchip,adc-g1"),
                                   ("tcc0", "atmel,sam0-tcc-pwm", "microchip,tcc-g1-pwm"),
@@ -932,7 +932,7 @@ def _soc_world(world, origin_file="zephyr\\boards\\acme\\b.dts"):
 
 def test_enabled_soc_node_without_recipe_is_listed_as_untranslatable(world):
     _soc_world(world)
-    res = pr.port_build(world.src, world.tgt, check=False)
+    res = pr.port_build(world.src, world.tgt, check=False, include_board_config=True)
     by = {n.label: n for n in res.report.nodes}
     assert by["usb0"].status == "no_target" and by["usb0"].lines == ["untranslatable: beta has no USB device driver"]
     text = "\n".join(res.report.lines())
@@ -944,7 +944,7 @@ def test_enabled_soc_node_without_recipe_is_listed_as_untranslatable(world):
 
 def test_enabled_soc_node_with_a_translation_but_no_recipe_is_listed_as_not_ported(world):
     _soc_world(world)
-    rep = pr.port_build(world.src, world.tgt, check=False).report
+    rep = pr.port_build(world.src, world.tgt, check=False, include_board_config=True).report
     (u,) = [x for x in rep.unported if x.path == "/s/rtc0"]
     assert "translation acme,rtc -> beta,rtc exists, not ported because no recipe lifts the node" in u.reason
     assert not any(x.path == "/s/quiet" for x in rep.unported)
@@ -954,3 +954,158 @@ def test_soc_node_that_only_the_soc_enables_stays_silent(world):
     _soc_world(world, origin_file="zephyr\\dts\\acme.dtsi")
     res = pr.port_build(world.src, world.tgt, check=False)
     assert "usb0" not in {n.label for n in res.report.nodes} and not any(u.path == "/s/rtc0" for u in res.report.unported)
+
+
+# ---- P8.18b: the port carries the app's configuration, not the source board's ---------------------------
+BOARD_FILE = "zephyr\\boards\\acme\\b.dts"
+APP_FILE = "apps\\x\\boards\\b.overlay"
+
+
+def test_source_board_only_nodes_are_not_ported_by_default(world):
+    _soc_world(world)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    rep = res.report
+    by = {n.label: n for n in rep.nodes}
+    assert "usb0" not in by                                         # no 'untranslatable' line: the target board's own applies
+    reasons = {u.path: u.reason for u in rep.unported}
+    assert reasons["/s/usb0"] == pr.BOARD_OWN and reasons["/s/rtc0"] == pr.BOARD_OWN
+    assert "not ported (the target board's own applies)" in "\n".join(rep.lines())
+    assert "acme,usb" not in {r.source_compatible for r in rep.kconfig}
+    assert "quiet" not in by and not any(u.path == "/s/quiet" for u in rep.unported)
+
+
+def _set_origins(world, props_by_path):
+    world.src.origins = {path: NodeOrigin("zephyr\\dts\\acme.dtsi", 1, {k: NS(file=f) for k, f in props.items()})
+                         for path, props in props_by_path.items()}
+
+
+def test_covered_node_that_only_the_board_configures_is_not_ported_unless_asked(world):
+    _set_origins(world, {"/s/u1": {"status": BOARD_FILE, "pinctrl-0": BOARD_FILE, "current-speed": BOARD_FILE}})
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "not_ported" and pr.BOARD_OWN in n.lines[0]
+    assert "&u1 {" not in res.overlay and "zephyr,console = &u1;" not in res.overlay
+    full = pr.port_build(world.src, world.tgt, check=False, include_board_config=True)
+    assert {x.label: x for x in full.report.nodes}["u1"].status == "emitted" and "&u1 {" in full.overlay
+
+
+def test_node_that_the_app_also_touches_is_ported_without_the_board_file_properties(world):
+    world.draft.nodes[1].vendor_props = {"acme,legacy": 1}
+    original = world.draft.nodes[1]
+    _set_origins(world, {"/s/u1": {"status": BOARD_FILE, "pinctrl-0": BOARD_FILE, "acme,legacy": BOARD_FILE,
+                                   "current-speed": APP_FILE}})
+    world.src.resolve = lambda f: world.tmp / "no_such.overlay"                      # the overlay text is not needed here
+    res = pr.port_build(world.src, world.tgt, check=False)
+    n = {x.label: x for x in res.report.nodes}["u1"]
+    assert n.status == "emitted" and "current-speed = <19200>;" in res.overlay      # the app's property goes over
+    assert not any("acme,legacy" in x for x in n.lines)                              # the board file's does not
+    assert "u1_uart_default" not in res.overlay and "<P3_U1_PAD0>" not in res.overlay   # nor its pads
+    world.draft.nodes[1] = original                      # the fake lift hands out the same draft again
+    full = pr.port_build(world.src, world.tgt, check=False, include_board_config=True)
+    assert "u1_uart_default" in full.overlay
+    assert any("acme,legacy" in x for x in {x.label: x for x in full.report.nodes}["u1"].lines)
+
+
+def test_pads_only_board_nodes_use_are_not_reported_as_pin_issues_by_default(world):
+    # P8 / P9 belong to /s/led (uncovered, written by the board file)
+    _set_origins(world, {"/s/led": {"status": BOARD_FILE}})
+    world.lift.uncovered[0] = UncoveredNode("/s/led", ["ledx"], "acme,led", "board", "no recipe")
+    assert [p.pad for p in pr.port_build(world.src, world.tgt, check=False).report.pin_issues] == []
+    assert [p.pad for p in pr.port_build(world.src, world.tgt, check=False, include_board_config=True)
+            .report.pin_issues] == ["P8", "P9"]
+
+
+# ---- P8.18b: `&{/} { ... }` blocks of the app overlay ----------------------------------------------------
+ROOT_OVERLAY = """&{/} {
+    status = "okay";
+
+    user_leds {
+        compatible = "acme,led";
+
+        mine: mine {
+            owner = <&u0>;
+        };
+    };
+
+    aliases {
+        alias-x = "/user_leds/mine";
+        alias-y = "/user_leds/gone";
+        alias-z = "/soc/there";
+    };
+};
+"""
+
+
+def test_parse_items_understands_a_path_reference_block():
+    text = '&{/} { status = "okay"; a { p = <&{/x/y}>; }; };\n'
+    _a, b = pr._mask(text)
+    top = pr._parse_items(text, b, 0, len(text))
+    assert [(i.kind, i.name) for i in top] == [("node", "&{/}")]
+    assert [(i.kind, i.name) for i in top[0].items] == [("prop", "status"), ("node", "a")]
+    assert [(i.kind, i.name) for i in top[0].items[1].items] == [("prop", "p")]
+
+
+def test_root_path_block_of_the_app_overlay_is_carried_like_a_root_block(world):
+    _overlay_world(world, ROOT_OVERLAY)
+    world.src.origins["/user_leds"] = NodeOrigin("apps\\x\\boards\\b.overlay", 4)
+    world.tgt.by_path["/soc/there"] = world.tgt.by_path["/aliases"]
+    res = pr.port_build(world.src, world.tgt, check=False)
+    rep, ov = res.report, res.overlay
+    assert "/ {\n\tuser_leds {" in ov and "mine: mine {" in ov and "owner = <&u0>;" in ov
+    assert '&{/aliases} {\n\talias-x = "/user_leds/mine";\n};' in ov           # a path to a carried node
+    assert '&{/aliases} {\n\talias-z = "/soc/there";\n};' in ov                 # a path to a node of the target
+    assert "alias-y" not in ov
+    nc = {n.desc: n.reason for n in rep.not_carried}
+    assert nc["/aliases alias-y"] == "references /user_leds/gone missing in target"
+    assert not any("is not in the source devicetree" in r for r in nc.values())
+    assert "/ {\n\tstatus" not in ov                                    # the root status is no decision
+    assert {c.desc for c in rep.carried} >= {"user_leds", "/aliases alias-x", "/aliases alias-z"}
+
+
+def test_alias_to_a_path_that_a_dropped_node_defines_is_dropped_too(world):
+    _overlay_world(world, ROOT_OVERLAY.replace("owner = <&u0>;", "owner = <&nolabel>;"))
+    world.src.origins["/user_leds"] = NodeOrigin("apps\\x\\boards\\b.overlay", 4)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    nc = {n.desc: n.reason for n in res.report.not_carried}
+    assert nc["user_leds"] == "references nolabel missing in target"
+    assert nc["/aliases alias-x"].startswith("references /user_leds/mine missing in target (/user_leds/mine is not carried")
+
+
+# ---- P8.18b: clock controller entries ----------------------------------------------------------------------
+CLOCK = ("atmel,assigned-clocks: generator 0 moves to the clock controller. Add in the target board file: "
+         '&clock { gclkperiph { tcc3 { subsystem = <ID_G>; gclkperiph-src = "gclk0"; gclkperiph-en = <1>; }; }; '
+         "mclkperiph { tcc3 { subsystem = <ID_M>; mclk-en = <1>; }; }; };")
+
+
+def test_clock_rule_of_the_translation_becomes_an_overlay_piece():
+    res = pr.NodeResult("tcc3", "/s/tcc3", "acme,tcc", notes=[CLOCK, "other note"])
+    tgt = NS(edt=NS(label2node={"clock": object()}))
+    (piece,) = pr._clock_pieces(res, "tcc3", tgt)
+    assert piece.startswith("/* &tcc3: clock controller entries") and "\n&clock {\n\tgclkperiph {\n\t\ttcc3 {\n" in piece
+    assert "\t\t\tsubsystem = <ID_G>;\n" in piece and piece.rstrip().endswith("};")
+    assert res.notes[0].startswith("atmel,assigned-clocks: generator 0 moves to the clock controller. Emitted in the overlay: &clock {")
+    assert res.emitted == ["clock entries (&clock)"] and res.notes[1] == "other note"
+
+
+def test_clock_rule_that_cannot_be_emitted_stays_a_report_line_with_the_reason():
+    for text, label, why in ((CLOCK, {}, "the target devicetree has no &clock"),
+                             (CLOCK.replace("; }; };", "; };"), {"clock": 1}, "not a single &label { ... }; block")):
+        res = pr.NodeResult("tcc3", "/s/tcc3", "acme,tcc", notes=[text])
+        assert pr._clock_pieces(res, "tcc3", NS(edt=NS(label2node=label))) == []
+        assert "Add in the target board file" in res.notes[0] and why in res.notes[1] and res.emitted == []
+
+
+def test_consumer_cells_come_from_the_binding_of_the_compatible_the_port_sets(world, tmp_path):
+    """The target node is disabled with another compatible (its edtlib binding has no 'pwm' space): the cells of
+    the binding YAML of the compatible that the overlay gives it count (P8.18b: tcc3 -> microchip,tcc-g1-pwm)."""
+    _consumer_world(world)
+    world.tgt.by_path["/t/u1"]._binding = NS(specifier2cells={})
+    y = tmp_path / "beta,uart.yaml"
+    y.write_text('compatible: "beta,uart"\ninclude: [base.yaml]\npwm-cells:\n  - channel\n  - period\n  - polarity\n')
+    world.tgt.yaml_index = {"beta,uart.yaml": y}
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert "&led0 {\n\tpwms = <&u1 2 1000 0>;\n};" in res.overlay
+    (fix,) = res.report.consumers
+    assert fix.status == "override" and "cell 'polarity' is new in the target: 0" in fix.detail
+    assert pr._binding_cells(world.tgt, "beta,uart") == {"pwm": ["channel", "period", "polarity"]}
+    assert pr._binding_cells(world.tgt, "beta,none") == {} and pr._binding_cells(world.tgt, None) == {}

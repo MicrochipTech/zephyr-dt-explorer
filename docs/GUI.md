@@ -83,6 +83,12 @@ carried over. The source build is not changed. Nothing is written into the app u
 - **Target build**: a build of the same app for another board (the list shows only builds of a different
   board). **Create target build…** opens New build… for it; a cmake-only build is enough. Or type a build
   folder path below the list.
+- **Include source board configuration** (checkbox, off by default): off, the port carries the **app's**
+  configuration (the app overlay and the draft) and leaves what only the **source board file** configures to the
+  target board's own file (pad overrides of a PWM, Ethernet, ...). Those nodes are listed in section 1
+  (`[not_ported]`) and section 5 as `not ported (the target board's own applies)`, and the status line counts them.
+  On, the board configuration is carried over as well. A node that the app also touches is ported without the
+  properties, pads, chosen entries and aliases that the board file wrote.
 - **Run port**: runs the port. The log shows the steps, and the result appears below the log.
 
 The result has these parts:
@@ -97,7 +103,7 @@ The result has these parts:
 | 3. Node references in src/ that the target does not resolve | Each `DT_NODELABEL(...)` / `DT_ALIAS(...)` of the app that the target lacks, with a suggestion |
 | 4. Pins not available on the target SoC | Pins that the source uses but the target package does not have |
 | 5. Nodes without translation and not representable children | Nodes that have to be carried over by hand, and child nodes that the draft cannot represent yet |
-| 5b. App-defined nodes of the app overlay | Nodes that the app's overlay defines, and whether each is carried over to the target (`carried:`) |
+| 5b. App-defined nodes of the app overlay | Nodes that the app's overlay defines, and whether each is carried over to the target (`carried:`). Both `/ { ... }` and `&{/} { ... }` blocks (the form **Board nodes…** writes: LEDs, keys, PWM LEDs, aliases, chosen, `zephyr,user`) are read; an alias or chosen path must exist in the target or be carried too |
 | 7. Connector roles of the used pads | For each connector pin that the port uses: the pin's role and pad on both boards, e.g. `EXT1 pin 16 (MOSI): PB27 on same54_xpro → PB24 on pic32cx_sg41_cult`, with the node that uses it. A pin is `not available` when its net does not reach the SoC. Needs a board description for both boards; without one the section is left out |
 
   Below the sections, **Fast check on the target build** lists the findings of the same check as in the
@@ -534,7 +540,7 @@ node, or the same node's pinctrl, also uses (error).
 
 ![The check reports a CS pad that the console uses](img/child_draft_conflict.png)
 
-### 10.4 Board nodes… (LEDs, buttons, PWM LEDs, aliases, chosen)
+### 10.4 Board nodes… (LEDs, buttons, PWM LEDs, aliases, chosen, zephyr,user)
 
 ![Board nodes dialog](img/board_nodes_dialog.png)
 
@@ -544,25 +550,30 @@ The header button **Board nodes…** edits the nodes that belong to the board, n
    build has a PWM controller). Give it a **Name** (lower case letters, digits and `_`; it becomes the node
    name and the label). An LED or button takes a **GPIO pad** (every pad shows who already uses it),
    **active low**, and for a button **pull** (a button starts as pull-up, active low) and an optional
-   `zephyr,code`. A PWM LED takes the **PWM controller**, the **channel** and the **period** in ms. The
+   `zephyr,code`. A PWM LED takes the **PWM controller** (a controller of the build or a PWM node that the same
+   draft enables, e.g. a new `tcc3`), the **channel** and the **period** in ms. The
    optional **label text** becomes the `label` property. **Add** refuses a bad name, a label the build
    already has, and a pad or PWM channel used twice in the dialog.
 2. **Aliases** and **Chosen**: a name and the node it points at (a node of the build or one of the new board
    nodes). The chosen name offers the common `zephyr,...` names and takes any other. Both are written as
    path strings (`led1 = "/user_leds/led_user";`). Removing an entry removes the aliases that pointed at it.
+   **zephyr,user**: a property name (`io-channels`, `pwms`, `gpios`, or any name), a controller (a node of the
+   build or of the draft, e.g. the ADC you configured) and its cells (`6`); **Add** once per entry. The overlay writes
+   `zephyr,user { io-channels = <&adc1 6>, <&adc1 7>; };`, which samples such as `adc_dt` read with
+   `DT_PATH(zephyr_user)`; no hand edit is needed.
 3. The line under the title lists the problems. A pad that something else already uses is a
    **warning** here; the **Check** in the Draft tab reports it as the error `pin_conflict`. An alias or chosen
    name that the build already has is a warning too (the overlay replaces it).
 4. **Save** puts one draft node in the Draft tab (row **board nodes**, pencil = edit again, trash = remove all).
    An empty dialog removes it. The overlay writes `&{/} { user_leds { ... }; user_keys { ... };
-   user_pwm_leds { ... }; aliases { ... }; chosen { ... }; };`; the board's own `leds`, `buttons` and
+   user_pwm_leds { ... }; aliases { ... }; chosen { ... }; zephyr,user { ... }; };`; the board's own `leds`, `buttons` and
    `aliases` stay as they are.
 
 ![Draft with a board node](img/board_nodes_draft.png)
 
 Limits: the pad of an LED or button needs the GPIO controllers to map onto the device's pads (the same
 mapping the Pins tab uses); a PWM LED does not touch pins (the controller's own pinctrl does). Port to board…
-does not carry board nodes over.
+carries them over as part of the app overlay (section 1.3, section 5b).
 
 ### 10.5 PWM, ADC and GMAC (recipes)
 

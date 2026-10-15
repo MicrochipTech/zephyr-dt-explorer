@@ -68,7 +68,7 @@ class NodeResult:
     source_compatible: str
     target_compatible: str | None = None
     target_path: str | None = None
-    status: str = "emitted"             # emitted | identical | conflict | no_target | no_translation | no_node | error
+    status: str = "emitted"             # emitted | identical | remapped | conflict | no_target | no_translation | no_node | not_ported | error
     translated: dict = field(default_factory=dict)       # target property -> value (all of them)
     emitted: list[str] = field(default_factory=list)     # properties that went into the overlay
     same_in_target: list[str] = field(default_factory=list)   # translated but already so in the target
@@ -291,6 +291,48 @@ def _set_by_user(src, path: str) -> bool:
     return origin is not None and any(origin_kind(p.file) not in ("soc", "module") for p in origin.props.values())
 
 
+BOARD_OWN = "not ported (the target board's own applies)"
+
+
+def _written_kinds(src, path: str) -> dict[str, str]:
+    """Property name -> origin kind for the properties of a source node that a board file or the app wrote
+    (SoC and module descriptions are the platform's, not a decision)."""
+    origin = (getattr(src, "origins", None) or {}).get(path)
+    out: dict[str, str] = {}
+    for name, p in (origin.props if origin is not None else {}).items():
+        if getattr(p, "file", ""):
+            k = origin_kind(p.file)
+            if k not in ("soc", "module"):
+                out[name] = k
+    return out
+
+
+def _board_only(src, path: str) -> bool:
+    """True when every property the user-level files wrote for the node comes from the source BOARD file."""
+    kinds = _written_kinds(src, path)
+    return bool(kinds) and set(kinds.values()) == {"board"}
+
+
+def _without_board_config(src, path: str, dn: DraftNode) -> DraftNode:
+    """`dn` without the properties, pins, chosen entries and aliases that the source board file wrote."""
+    kinds = _written_kinds(src, path)
+    board = {k for k, v in kinds.items() if v == "board"}
+    if not board:
+        return dn
+    pinctrl = any(k.startswith("pinctrl-") for k in board)
+    def kept(entries, owner):
+        o = (getattr(src, "origins", None) or {}).get(owner)
+        return [e for e in entries if not (o is not None and e in o.props and origin_kind(o.props[e].file or "") == "board")]
+    return replace(dn, props={k: v for k, v in dn.props.items() if k not in board},
+                   vendor_props={k: v for k, v in dn.vendor_props.items() if k not in board},
+                   pins={} if pinctrl else dn.pins, roles=[] if pinctrl else dn.roles,
+                   use=Use(kept(dn.use.chosen, "/chosen"), kept(dn.use.aliases, "/aliases")))
+
+
+def _under(paths: set[str], path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in paths)
+
+
 def _node_pads(usage, path: str) -> set[str]:
     return {pad for pad, uses in usage.uses.items() for u in uses
             if u.node == path and u.source == "pinctrl" and pad}
@@ -347,6 +389,60 @@ def _clock_notes(src_node, t: Translation) -> list[str]:
     except Exception as exc:  # noqa: BLE001 - hooks are plugin code; the report stays usable
         return [f"clock rules could not be evaluated: {exc}"]
     return [x for x in lines if x.startswith(("atmel,assigned-clocks", "clocks"))]
+
+
+_CLOCK_MARK = "Add in the target board file: "
+
+
+def _balanced(text: str) -> bool:
+    depth = 0
+    for ch in text:
+        depth += (ch == "{") - (ch == "}")
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _format_dts(text: str) -> str:
+    """One-line devicetree text (``a { b { p = <1>; }; };``) as indented lines."""
+    out, depth = [], 0
+    for tok in re.findall(r"[^{};]+\{|[^{};]*;|\}\s*;?", text):
+        tok = tok.strip()
+        if tok.startswith("}"):
+            depth -= 1
+        out.append("\t" * depth + tok)
+        if tok.endswith("{"):
+            depth += 1
+    return "\n".join(out)
+
+
+def _clock_pieces(res: NodeResult, label: str, tgt: BuildModel) -> list[str]:
+    """Overlay pieces for the clock rules a translation reports as ``... Add in the target board file: &ctrl {...};``.
+
+    The translation hook names the clock controller entries that the peripheral needs on the target, which the
+    old board file did not have. A note whose text is a balanced ``&label { ... };`` block for a label that the
+    target has becomes an overlay piece (the note then says so); anything else stays a report line and gets a
+    note that says why it was not emitted.
+    """
+    pieces: list[str] = []
+    for i, note in enumerate(list(res.notes)):
+        head, mark, text = note.partition(_CLOCK_MARK)
+        if not mark:
+            continue
+        text = text.strip()
+        m = re.match(r"&([A-Za-z_]\w*)\s*\{", text)
+        if m is None or not text.endswith("};") or not _balanced(text):
+            why = "the translation's text is not a single &label { ... }; block"
+        elif m.group(1) not in tgt.edt.label2node:
+            why = f"the target devicetree has no &{m.group(1)}"
+        else:
+            pieces.append(f"/* &{label}: clock controller entries (from the translation's clock rule) */\n"
+                          + _format_dts(text) + "\n")
+            res.notes[i] = head + "Emitted in the overlay: " + text
+            res.emitted.append(f"clock entries (&{m.group(1)})")
+            continue
+        res.notes.append(f"clock entries not emitted: {why}; add them by hand as the line above says")
+    return pieces
 
 
 def _not_ported_hint(snode) -> str:
@@ -680,6 +776,7 @@ class _Cand:
     reason: str = ""                    # set = not carried
     refs: list = field(default_factory=list)        # ("label", name) | ("path", path)
     defined: list = field(default_factory=list)     # labels defined inside the text
+    defined_paths: list = field(default_factory=list)   # source paths of the nodes the text defines
 
 
 def _blank(arr: list[str], text: str, s: int, e: int) -> None:
@@ -758,6 +855,9 @@ def _parse_items(orig: str, clean: str, start: int, end: int) -> list[_Item]:
             continue
         j = i
         while j < end and clean[j] not in ";{":
+            if clean[j] == "&" and clean.startswith("{", j + 1):         # &{/path}: a path reference, not a block
+                close = clean.find("}", j + 2, end)
+                j = end if close < 0 else close
             j += 1
         if j >= end:
             break
@@ -789,6 +889,17 @@ def _defined_labels(it: _Item) -> list[str]:
         if c.kind == "node":
             out += _defined_labels(c)
     return out
+
+
+def _defined_paths(it: _Item, path: str) -> list[str]:
+    out = [path]
+    for c in it.items:
+        if c.kind == "node":
+            out += _defined_paths(c, f"{path}/{c.name}")
+    return out
+
+
+_PATH_STRING = re.compile(r'=\s*"(/[^"]*)"\s*;?\s*$')
 
 
 def _refs_of(it: _Item) -> list[tuple[str, str]]:
@@ -865,6 +976,12 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
     def add(item: _Item, path: str, wrapper: str, source: str, covered=False, reason="") -> None:
         c = _Cand(item, path, wrapper, source, includes.get(source, []), covered, reason)
         c.refs, c.defined = _refs_of(item), _defined_labels(item)
+        if item.kind == "node":
+            c.defined_paths = _defined_paths(item, path)
+        elif item.kind == "prop" and path in ("/aliases", "/chosen"):
+            m = _PATH_STRING.search(item.text)          # alias = "/path/to/node": the node must exist in the target
+            if m:
+                c.refs.append(("spath", m.group(1)))
         cands.append(c)
 
     def walk(items: list[_Item], parent: str, wrapper: str, source: str, parent_covered: bool) -> None:
@@ -874,7 +991,7 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
                 continue
             if it.kind == "prop":
                 labels = [r for k, r in _refs_of(it) if k == "label"]
-                if parent_covered or parent in cov_paths or (
+                if parent_covered or parent in cov_paths or (parent == "/" and it.name == "status") or (
                         parent in ("/aliases", "/chosen") and labels and all(x in cov_labels for x in labels)):
                     add(it, parent, wrapper, source, covered=True)      # the translation / the use entries do it
                 else:
@@ -919,7 +1036,7 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
             if blk.kind != "node":
                 if blk.name not in ("/dts-v1/", "/plugin/"):
                     add(blk, "?", "/", source, reason="statement outside a node block is not carried over")
-            elif blk.name == "/":
+            elif blk.name in ("/", "&{/}"):                 # `&{/} { }` (Board nodes) is the same as `/ { }`
                 walk(blk.items, "/", "/", source, False)
             elif blk.name.startswith("&{") and blk.name.endswith("}"):
                 walk(blk.items, blk.name[2:-1], blk.name, source, blk.name[2:-1] in cov_paths)
@@ -958,13 +1075,14 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
     while changed:                      # references must exist in the target or be defined by carried text
         changed = False
         avail = tgt_labels | child_labels | {x for c in todo if not c.reason for x in c.defined}
-        dropped = {x: c for c in todo if c.reason for x in c.defined}
+        avail_paths = {x for c in todo if not c.reason for x in c.defined_paths}
+        dropped = {x: c for c in todo if c.reason for x in c.defined + c.defined_paths}
         for c in todo:
             if c.reason:
                 continue
             for kind, ref in c.refs:
                 if (kind == "label" and (ref in avail or ported_labels.get(ref) in tgt_labels)) \
-                        or (kind == "path" and ref in tgt.by_path):
+                        or (kind in ("path", "spath") and (ref in tgt.by_path or ref in avail_paths)):
                     continue
                 c.reason = f"references {ref} missing in target"
                 if ref in dropped:
@@ -1018,6 +1136,25 @@ def _specifier_names(node) -> dict[str, list[str]]:
     b = getattr(node, "_binding", None) or getattr(node, "binding", None)
     spec = getattr(b, "specifier2cells", None) or {}
     return {k: list(v) for k, v in spec.items()}
+
+
+def _binding_cells(tgt: BuildModel, compatible: str | None) -> dict[str, list[str]]:
+    """Specifier cell names per space from the binding YAML of `compatible` (``pwm-cells: [channel, period, ...]``,
+    own file first, then the includes). Used for a target node that is not enabled yet: its edtlib node has the
+    binding of the compatible it has now, not the one the port gives it."""
+    if not compatible:
+        return {}
+    index = BindingIndex([])
+    index.by_name = dict(getattr(tgt, "yaml_index", None) or {})
+    path = index.find(compatible)
+    out: dict[str, list[str]] = {}
+    for p in index.chain(path) if path is not None else []:
+        if isinstance(p, str):
+            continue
+        for key, val in index.load(p).items():
+            if key.endswith("-cells") and key != "#cells" and isinstance(val, list):
+                out.setdefault(key[: -len("-cells")], [str(x) for x in val])
+    return out
 
 
 def _map_specifier(data: dict, tnames: list[str]) -> tuple[list[int], list[str]]:
@@ -1090,12 +1227,12 @@ def _rewrite_consumers(src: BuildModel, tgt: BuildModel, rep: PortReport, ported
     target and nothing it references is missing; otherwise reported with the exact line to add.
     Returns the overlay pieces; the decisions are in ``rep.consumers``.
     """
-    ctrls: dict[str, tuple] = {}            # source path -> (source node, target node, target label)
+    ctrls: dict[str, tuple] = {}            # source path -> (source node, target node, target label, target compatible)
     for r in rep.nodes:
         if r.status in ("emitted", "identical", "remapped") and r.target_path and r.source_path in src.by_path:
             tn = tgt.by_path.get(r.target_path)
             if tn is not None:
-                ctrls[r.source_path] = (src.by_path[r.source_path], tn, _label(tn) or r.label)
+                ctrls[r.source_path] = (src.by_path[r.source_path], tn, _label(tn) or r.label, r.target_compatible)
     if not ctrls:
         return []
     carried = [c.path for c in rep.carried]
@@ -1115,8 +1252,10 @@ def _rewrite_consumers(src: BuildModel, tgt: BuildModel, rep: PortReport, ported
                 lbl = (_label(ctrl) if ctrl is not None else None) or "?"
                 old.append([Ref(lbl), *vals])
                 if ctrl is not None and ctrl.path in ctrls:
-                    snode_c, tnode_c, tl = ctrls[ctrl.path]
-                    sspec, tspec = _specifier_names(snode_c), _specifier_names(tnode_c)
+                    snode_c, tnode_c, tl, tcompat = ctrls[ctrl.path]
+                    sspec = _specifier_names(snode_c)
+                    tspec = _specifier_names(tnode_c) if (tnode_c.compats or [None])[0] == tcompat else {}
+                    tspec = tspec or _binding_cells(tgt, tcompat) or _specifier_names(tnode_c)
                     base = next((k for k, v in sspec.items() if v == names), None)
                     if base is None and len(sspec) == 1:
                         base = next(iter(sspec))
@@ -1173,10 +1312,16 @@ def _rewrite_consumers(src: BuildModel, tgt: BuildModel, rep: PortReport, ported
 
 # ---- the pipeline ------------------------------------------------------------------------------
 def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel, *,
-               check: bool = True, on_step=None) -> PortResult:
+               check: bool = True, on_step=None, include_board_config: bool = False) -> PortResult:
     """Port `source` to `target` (two build folders of the same app, built for different boards).
 
     `on_step(text)` reports progress. The fast check runs on the target build unless `check` is False.
+
+    By default the app's configuration is ported (the app overlay and the draft). What only the source BOARD
+    file configures is not: the target board file owns its own pads and nodes. Such nodes are listed in the
+    report as "not ported (the target board's own applies)", and a node that the app overlay also touches is
+    ported without the properties, pins, chosen entries and aliases the board file wrote.
+    `include_board_config=True` carries the board configuration over as well (the full carry-over of P5.5/P6.2).
     """
     def step(text: str) -> None:
         log.info("port step: %s", text)
@@ -1220,11 +1365,24 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
 
     step("translating the nodes ...")
     pieces: list[str] = []
+    clock_pieces: list[str] = []                    # clock controller entries for nodes the target board does not clock
     ported_draft = Draft(build=tgt.build.name)
     ported_labels: dict[str, str] = {}              # source label -> target label of nodes that end up okay
     ported_pads: dict[str, list[str]] = {}
     ported_compats: list[tuple[str, str]] = []      # (source compatible, target compatible)
     cov_by_label = {c.label: c for c in lift.covered}
+    board_own: set[str] = set()                     # source paths of nodes left to the target board (option off)
+    skipped: set[int] = set()                       # indexes of draft nodes in `board_own`
+    if not include_board_config:
+        for i, d in enumerate(draft.nodes):
+            c = cov_by_label.get(d.label)
+            if c is None:
+                continue
+            if _board_only(src, c.path):
+                skipped.add(i)
+                board_own.add(c.path)
+            else:
+                draft.nodes[i] = _without_board_config(src, c.path, d)
     conflicts: dict[str, str] = {}                  # source label -> first reason; nodes that are not emitted
     tgt_pkg = pins_mod.default_package(tgt_dev) if tgt_dev is not None else None
     has_binding = lambda c: tgt_index.find(c) is not None          # noqa: E731
@@ -1237,7 +1395,9 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     # must not take them. Remapped nodes add theirs as they are decided.
     in_use_pads: set[str] = set()
     in_use_bases: set = set()
-    for d0 in draft.nodes:
+    for i0, d0 in enumerate(draft.nodes):
+        if i0 in skipped:
+            continue
         c0 = cov_by_label.get(d0.label)
         sn0 = src.by_path.get(c0.path) if c0 else None
         tn0 = _match_target(sn0, d0.label, tgt) if sn0 is not None else None
@@ -1248,11 +1408,15 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             in_use_pads |= set(d0.pins.values())
             in_use_bases.add(_first_addr(tn0))
 
-    for dn in draft.nodes:
+    for idx, dn in enumerate(draft.nodes):
         cov = cov_by_label.get(dn.label)
         src_node = src.by_path.get(cov.path) if cov else None
         res = NodeResult(dn.label, cov.path if cov else "?", dn.compatible or "?")
         rep.nodes.append(res)
+        if idx in skipped:
+            res.status = "not_ported"
+            res.lines.append(f"{BOARD_OWN}: only the source board file configures it")
+            continue
         if cov is not None:
             res.notes += cov.notes
         tnode = _match_target(src_node, dn.label, tgt) if src_node is not None else None
@@ -1385,6 +1549,7 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                                  f"target board's clock controller enables the peripheral clocks of &{tlabel}")
             else:
                 res.notes += _clock_notes(src_node, t)
+                clock_pieces += _clock_pieces(res, tlabel, tgt)
             res.notes.append("the target board does not enable this node: the overlay enables it")
 
         kids, commit_kids = _port_children(dn, t, tnode, cov.path if cov else res.source_path, src, tgt,
@@ -1427,6 +1592,7 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         note = f" (remapped from &{dn.label}, {dn.cls} {src_inst} -> {dn.instance})" if remap_lines else ""
         pieces.append(f"/* &{tlabel}: {dn.compatible} -> {t.target}{note} */\n{text.rstrip()}\n")
 
+    pieces += clock_pieces
     # ---- other nodes of the source build that were written by the board or the app ------------
     step("carrying app-defined nodes ...")
     carried_pieces, handled, carried_labels = _carry_app_nodes(src, tgt, lift, rep, ported_labels, remapped_labels,
@@ -1439,6 +1605,11 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     for u in lift.uncovered:
         if u.path in handled or (u.origin in ("soc", "module") and not _set_by_user(src, u.path)):
             continue                        # a SoC node that only the SoC description enables is no decision of the board
+        if not include_board_config and _board_only(src, u.path):
+            board_own.add(u.path)
+            rep.unported.append(Unported(u.path, list(u.labels), u.compatible, u.origin, BOARD_OWN,
+                                         u.path in tgt.by_path or any(x in tgt.edt.label2node for x in u.labels)))
+            continue
         sn = src.by_path.get(u.path)
         tn = tgt.by_path.get(u.path) or next((tgt.edt.label2node[x] for x in u.labels if x in tgt.edt.label2node), None)
         tn_m = tn or (_match_target(sn, u.labels[0] if u.labels else None, tgt) if sn is not None else None)
@@ -1477,7 +1648,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             origin = (getattr(src, "origins", None) or {}).get(path)
             rep.not_carried.append(NotCarried(
                 _child_desc(c), path, "node", origin.file if origin else "?", origin.line if origin else 0,
-                f"bus &{dn.label} is not ported and enabled on the target [{res.status}]" + (f": {why}" if why else "")))
+                f"bus &{dn.label} is not ported and enabled on the target [{res.status}]" + (f": {why}" if why else "")
+                if res.status != "not_ported" else f"{BOARD_OWN} (its bus &{dn.label} is the source board's)"))
 
     # ---- node references in src/ ----------------------------------------------------------------
     step("checking node references in src/ ...")
@@ -1589,6 +1761,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         for pad, uses in sorted(src_usage.uses.items()):
             if not pad:
                 continue
+            if board_own and uses and all(_under(board_own, u.node) for u in uses):
+                continue                    # only nodes the target board's own configuration replaces
             nodes = list(dict.fromkeys(
                 (f"&{_label(src.by_path[u.node])}" if u.node in src.by_path and src.by_path[u.node].labels else u.node)
                 for u in uses))

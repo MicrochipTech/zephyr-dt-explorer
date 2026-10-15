@@ -25,6 +25,7 @@ def test_port_lab1_to_e54_report(lab1, lab1_e54, ui_run, tmp_path):
             assert el(user, "port-source").text == f"Source build: {build}  [same54_xpro/same54p20a]"
             assert not by_id(user, "port-report")
             select_value(user, "port-other", str(lab1_e54))
+            select_value(user, "port-include-board", True)          # lab1 is all source-board configuration (P8.18b)
             click(user, "port-run")
             await wait_until(lambda: by_id(user, "port-report"), timeout=180, what="the port report")
 
@@ -52,3 +53,32 @@ def test_port_lab1_to_e54_report(lab1, lab1_e54, ui_run, tmp_path):
     ui_run(scenario)
     after = sorted((f.name, f.stat().st_mtime_ns) for f in boards.iterdir())
     assert after == before                                              # no board file written into the app
+
+
+def test_port_include_board_configuration_checkbox(lab1, lab1_e54, ui_run):
+    """P8.18b: off (default) leaves the source board's own nodes to the target board; on carries them over."""
+    root, _build = lab1
+
+    async def scenario():
+        async with simulated_app(root) as user:
+            await user.open(f"/?build={BUILD}")
+            click(user, "port-open")
+            cb = el(user, "port-include-board")
+            assert cb.text == "Include source board configuration" and cb.value is False
+            select_value(user, "port-other", str(lab1_e54))
+            click(user, "port-run")
+            await wait_until(lambda: by_id(user, "port-report"), timeout=180, what="the port report")
+            off_status = el(user, "port-status").text
+            off_report = page_text(user, "port-report")
+            assert "left to the target board" in off_status, off_status
+            assert "not ported (the target board's own applies)" in off_report
+
+            select_value(user, "port-include-board", True)
+            click(user, "port-run")
+            await wait_until(lambda: "left to the target board" not in el(user, "port-status").text
+                             and el(user, "port-status").text.startswith("done: "), timeout=180, what="the second port")
+            on_status = el(user, "port-status").text
+            assert "not ported (the target board's own applies)" not in page_text(user, "port-report")
+            assert off_status.split(" node(s) carried")[0] != on_status.split(" node(s) carried")[0]
+
+    ui_run(scenario)

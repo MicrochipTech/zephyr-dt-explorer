@@ -6,6 +6,8 @@ Ids: ``bn-dialog``, ``bn-kind``, ``bn-name``, ``bn-pad``, ``bn-active-low``, ``b
 ``bn-ctrl``, ``bn-channel``, ``bn-period``, ``bn-add``, ``bn-entry-<name>``, ``bn-del-<name>``,
 ``bn-alias-name``, ``bn-alias-target``, ``bn-alias-add``, ``bn-alias-<name>``, ``bn-alias-del-<name>``,
 ``bn-chosen-name``, ``bn-chosen-target``, ``bn-chosen-add``, ``bn-chosen-<name>``, ``bn-chosen-del-<name>``,
+``bn-user-prop``, ``bn-user-ctrl``, ``bn-user-cells``, ``bn-user-add``, ``bn-user-<prop>-<n>``,
+``bn-user-del-<prop>-<n>`` (the ``zephyr,user`` node: phandle-array properties such as ``io-channels``),
 ``bn-problems``, ``bn-save``.
 """
 from __future__ import annotations
@@ -16,6 +18,7 @@ from typing import Callable
 
 from ..core import board_nodes as B
 
+USER_PROP_SUGGESTIONS = ["io-channels", "pwms", "gpios", "dmas"]
 CHOSEN_SUGGESTIONS = ["zephyr,console", "zephyr,shell-uart", "zephyr,uart-mcumgr", "zephyr,bt-uart", "zephyr,display"]
 
 
@@ -38,6 +41,24 @@ def pad_options(pad_map: dict, used: dict[str, list[str]], spec_pads: dict[str, 
     return out
 
 
+def controller_options(session) -> dict[str, str]:
+    """label -> text for the ``zephyr,user`` controller select: nodes of the build with a label, then labels the draft adds."""
+    out: dict[str, str] = {}
+    for n in session.model.edt.nodes:
+        if n.labels and n.path != "/":
+            out.setdefault(n.labels[0], f"&{n.labels[0]}  ({n.path})" + ("" if n.status == "okay" else f"  [{n.status}]"))
+    for d in session.draft.nodes:
+        if d.label and d.label != B.BOARD_LABEL:
+            out[d.label] = f"&{d.label}  (draft node, {d.cls})"
+    return out
+
+
+def parse_cells(text: str) -> tuple[int, ...]:
+    """``"6"`` / ``"1 2 3"`` / ``"1, 2"`` -> cells (decimal or 0x..); ValueError for anything else."""
+    parts = [t for t in re.split(r"[\s,]+", (text or "").strip()) if t]
+    return tuple(int(t, 0) for t in parts)
+
+
 def target_options(session, spec: B.BoardSpec) -> dict[str, str]:
     """path -> text for the alias / chosen target select: nodes of the build with a label, plus the new board nodes."""
     out = {e.path: f"new: {e.name}  ({e.path})" for e in spec.entries}
@@ -53,7 +74,7 @@ class BoardContext:
     def __init__(self, session):
         self.session = session
         self.pad_map = B.gpio_pad_map(session.model, session.device)
-        self.pwm = B.pwm_controllers(session.model)
+        self.pwm = B.pwm_controllers(session.model, session.draft)      # includes the PWM nodes the draft enables
         self.pwm_by_label = {p["label"]: p for p in self.pwm}
         self.pwm_cells = {p["label"]: len(p["cells"]) for p in self.pwm}
         self.existing_aliases = set(session.model.edt._dt.alias2node)
@@ -70,7 +91,8 @@ class BoardContext:
 
     def problems(self, spec: B.BoardSpec) -> list[B.Problem]:
         return B.check_spec(spec, model=self.session.model, pad_map=self.pad_map, other_users=self.used(),
-                            existing_aliases=self.existing_aliases, pwm_ctrls=self.pwm_by_label)
+                            existing_aliases=self.existing_aliases, pwm_ctrls=self.pwm_by_label,
+                            draft=self.session.draft)
 
     def save(self, spec: B.BoardSpec) -> None:
         """Write the spec into the draft and the draft file."""
@@ -105,7 +127,7 @@ def open_board_nodes(session, on_saved: Callable[[], None]) -> None:
         ui.label("Board nodes").classes("text-lg font-bold")
         ui.label("LEDs, buttons and PWM LEDs as nodes under the root, plus alias and chosen entries. "
                  "They are written into the draft overlay as /user_leds, /user_keys, /user_pwm_leds, "
-                 "/aliases and /chosen.").classes("text-xs text-grey-5")
+                 "/aliases, /chosen and /zephyr,user.").classes("text-xs text-grey-5")
         problems_lbl = ui.label().classes("text-sm").style("white-space: pre-wrap").props("id=bn-problems")
 
         ui.label("Entries").classes("font-bold")
@@ -144,6 +166,16 @@ def open_board_nodes(session, on_saved: Callable[[], None]) -> None:
             alias_target = ui.select({}, label="points to", with_input=True).props("dense outlined options-dense id=bn-alias-target") \
                 .classes("grow")
             alias_btn = ui.button("Set", icon="add").props("no-caps id=bn-alias-add")
+
+        ui.label("zephyr,user").classes("font-bold")
+        ui.label("The /zephyr,user node: phandle-array properties for code that reads them with DT_PATH(zephyr_user), "
+                 "e.g. io-channels = <&adc1 6> for the adc_dt sample.").classes("text-xs text-grey-5")
+        user_box = ui.column().classes("w-full gap-1").props("id=bn-user")
+        with ui.row().classes("items-start gap-2 w-full no-wrap"):
+            user_prop = ui.select(USER_PROP_SUGGESTIONS, label="property", new_value_mode="add-unique", with_input=True)                 .props("dense outlined options-dense id=bn-user-prop")
+            user_ctrl = ui.select({}, label="controller", with_input=True)                 .props("dense outlined options-dense id=bn-user-ctrl").classes("grow")
+            user_cells = ui.input("cells (e.g. 6)").props("dense outlined id=bn-user-cells")
+            user_btn = ui.button("Add", icon="add").props("no-caps id=bn-user-add")
 
         ui.label("Chosen").classes("font-bold")
         chosen_box = ui.column().classes("w-full gap-1").props("id=bn-chosen")
@@ -188,6 +220,19 @@ def open_board_nodes(session, on_saved: Callable[[], None]) -> None:
                         ui.space()
                         ui.button(icon="delete", on_click=lambda _e, n=name, d=drop: d(n)) \
                             .props(f"flat dense round id=bn-{prefix}-del-{sid(name)}").props("title=Remove")
+        user_box.clear()
+        with user_box:
+            if not spec.user:
+                ui.label("No zephyr,user property yet.").classes("text-xs text-grey-5")
+            for prop, entries in spec.user.items():
+                for i, (ctrl, cells) in enumerate(entries):
+                    with ui.row().classes("items-center gap-2 w-full").props(f"id=bn-user-{sid(prop)}-{i}"):
+                        ui.label(prop).classes("font-mono")
+                        ui.label(f"<&{ctrl} {' '.join(str(c) for c in cells)}>".replace(" >", ">")).classes("text-xs font-mono")
+                        ui.space()
+                        ui.button(icon="delete", on_click=lambda _e, p=prop, k=i: delete_user(p, k))                             .props(f"flat dense round id=bn-user-del-{sid(prop)}-{i}").props("title=Remove")
+        user_ctrl.options = controller_options(session)
+        user_ctrl.update()
         opts = target_options(session, spec)
         for sel in (alias_target, chosen_target):
             sel.options = opts
@@ -269,6 +314,30 @@ def open_board_nodes(session, on_saved: Callable[[], None]) -> None:
         chosen_name.value, chosen_target.value = None, None
         refresh()
 
+    def add_user() -> None:
+        prop, ctrl = (user_prop.value or "").strip(), user_ctrl.value
+        if not prop or not ctrl:
+            problems_lbl.text = "error: zephyr,user needs a property name and a controller"
+            problems_lbl.classes(replace="text-sm text-red-4")
+            return
+        try:
+            cells = parse_cells(user_cells.value)
+        except ValueError:
+            problems_lbl.text = "error: zephyr,user cells must be numbers"
+            problems_lbl.classes(replace="text-sm text-red-4")
+            return
+        spec.user.setdefault(prop, []).append((ctrl, cells))
+        user_ctrl.value, user_cells.value = None, ""
+        refresh()
+
+    def delete_user(prop: str, k: int) -> None:
+        entries = spec.user.get(prop, [])
+        if 0 <= k < len(entries):
+            del entries[k]
+        if not entries:
+            spec.user.pop(prop, None)
+        refresh()
+
     def delete_alias(name: str) -> None:
         spec.aliases.pop(name, None)
         refresh()
@@ -287,6 +356,7 @@ def open_board_nodes(session, on_saved: Callable[[], None]) -> None:
     add_btn.on_click(add_entry)
     alias_btn.on_click(set_alias)
     chosen_btn.on_click(set_chosen)
+    user_btn.on_click(add_user)
     save_btn.on_click(save)
     on_kind()
     refresh()

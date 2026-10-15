@@ -16,7 +16,7 @@ from nicegui import run, ui
 from ..core import apply as apply_mod
 from ..core import verify as verify_mod
 from ..core.buildinfo import BuildInfoError, read_build_info
-from ..core.port_report import PortResult, port_build
+from ..core.port_report import BOARD_OWN, PortResult, port_build
 from . import new_build
 from .draft_tab import SEVERITY_STYLE, check_summary
 
@@ -78,6 +78,9 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
                 .props("flat no-caps id=port-create")
         other = ui.input("or a build folder path", placeholder="e.g. C:\\...\\build_sam_e54_xpro") \
             .classes("w-full").props("dark dense clearable id=port-other")
+        board_cb = ui.checkbox("Include source board configuration", value=False)             .props("dense id=port-include-board")             .props('title="Off: only the app configuration (app overlay and draft) is ported; what the source board file '
+                   'configures is listed as not ported (the target board own applies). On: the board configuration is '
+                   'carried over as well (pad overrides, Ethernet, ...)."')
         with ui.row().classes("items-center gap-3"):
             run_btn = ui.button("Run port", icon="play_arrow").props("no-caps id=port-run")
             spin = ui.spinner(size="sm").props("id=port-spinner")
@@ -109,6 +112,7 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
         if not (tgt / "zephyr" / "edt.pickle").is_file():
             ui.notify(f"{tgt} is not a configured build (zephyr/edt.pickle missing).", type="negative")
             return
+        with_board = bool(board_cb.value)
         run_btn.set_enabled(False)
         spin.set_visibility(True)
         status.text = "porting …"
@@ -126,7 +130,7 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
 
         timer = ui.timer(0.2, drain)
         try:
-            result: PortResult = await run.io_bound(lambda: port_build(source, tgt, on_step=q.put))
+            result: PortResult = await run.io_bound(lambda: port_build(source, tgt, on_step=q.put, include_board_config=with_board))
         except Exception as exc:                         # noqa: BLE001 - show, do not crash the page
             timer.cancel()
             drain()
@@ -143,8 +147,10 @@ def open_port(model, builds, root: Path | None) -> ui.dialog | None:
         errs = sum(1 for f in (result.report.findings or []) if f.severity == "error")
         nconf = sum(1 for n in result.report.nodes if n.status == "conflict")
         nremap = sum(1 for n in result.report.nodes if n.status == "remapped")
+        nboard = sum(1 for n in result.report.nodes if n.status == "not_ported")             + sum(1 for u in result.report.unported if u.reason == BOARD_OWN)
         status.text = (f"done: {len(result.draft.nodes)} node(s) carried over, "
                        + (f"{nremap} node(s) remapped to another instance (see section 1), " if nremap else "")
+                       + (f"{nboard} node(s) of the source board left to the target board (see sections 1 and 5), " if nboard else "")
                        + (f"{nconf} node(s) in conflict with the target board (not emitted, see section 1), " if nconf else "")
                        + f"{len(result.report.label_refs)} node reference(s) to fix, "
                        f"{len(result.report.pin_issues)} pin issue(s); fast check: "

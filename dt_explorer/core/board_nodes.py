@@ -12,6 +12,7 @@ no new draft or render code is needed. Its children (``DraftChild``) are the boa
         user_pwm_leds { compatible = "pwm-leds"; <name>: <name> { pwms = <&tcc0 2 20000000>; }; };
         aliases { led1 = "/user_leds/<name>"; };
         chosen  { zephyr,shell-uart = "/soc/sercom@41012000"; };
+        zephyr,user { io-channels = <&adc1 6>, <&adc1 7>; };
     };
 
 * GPIO flags are plain integers (bit 0 active low = 1, pull-up = 16, pull-down = 32, the devicetree
@@ -19,6 +20,8 @@ no new draft or render code is needed. Its children (``DraftChild``) are the boa
 * ``aliases`` and ``chosen`` hold *string paths* (``"/user_leds/<name>"``), which dtc and edtlib accept
   in both blocks (a phandle in angle brackets would not be a valid alias). A node of the draft is
   addressed by its path under the container, a node of the build by its path in the devicetree.
+* ``zephyr,user`` holds phandle-array properties (``io-channels``, ``pwms``, ``gpios`` ...) of any name: each
+  entry is a controller label plus its cells. A controller can be a node of the build or a node of the draft.
 * A container (``user_leds`` ...) is omitted while it has no entry; the carrier node disappears from the
   draft when nothing is left (``apply_spec`` removes it).
 * The pad of a GPIO entry is *not* stored: it is derived from "controller + pin" with the same
@@ -41,6 +44,8 @@ BOARD_CLASS = "board"
 BOARD_LABEL = "{/}"
 
 LEDS, KEYS, PWM_LEDS = "leds", "keys", "pwm-leds"
+USER_NODE = "zephyr,user"
+USER_PROP_RE = re.compile(r"^[a-z#][a-z0-9,#_-]*$")
 CONTAINERS = {                      # kind -> (container node name, compatible)
     LEDS: ("user_leds", "gpio-leds"),
     KEYS: ("user_keys", "gpio-keys"),
@@ -84,12 +89,14 @@ class BoardSpec:
     entries: list[Entry] = field(default_factory=list)
     aliases: dict[str, str] = field(default_factory=dict)      # alias name -> target path
     chosen: dict[str, str] = field(default_factory=dict)       # chosen name -> target path
+    # zephyr,user: property name -> phandle-array entries (controller label, cells)
+    user: dict[str, list[tuple[str, tuple[int, ...]]]] = field(default_factory=dict)
 
     def of(self, kind: str) -> list[Entry]:
         return [e for e in self.entries if e.kind == kind]
 
     def is_empty(self) -> bool:
-        return not (self.entries or self.aliases or self.chosen)
+        return not (self.entries or self.aliases or self.chosen or self.user)
 
 
 # ---- GPIO pads <-> controller + pin -------------------------------------------------------------------
@@ -122,16 +129,39 @@ def gpio_pad_map(model, device) -> dict[str, tuple[str, int]]:
     return out
 
 
-def pwm_controllers(model) -> list[dict]:
-    """The PWM controllers of the build: label, path, cells (names of the specifier cells)."""
-    out = []
+def _cell_count(value, default: int = 2) -> int:
+    """Number of specifier cells from a draft property value (``2``, ``[2]``, a ``Sym``)."""
+    v = value[0] if isinstance(value, (list, tuple)) and value else value
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def pwm_controllers(model, draft: Draft | None = None) -> list[dict]:
+    """The PWM controllers: label, path, cells (names of the specifier cells).
+
+    The enabled ones of the build, plus the nodes of class ``pwm`` that `draft` holds (a controller the same
+    draft enables). A draft node wins over a build node of the same label; its path is the build's path for
+    that label (``""`` when the build has no such node) and its cell count comes from its ``#pwm-cells``.
+    """
+    out: dict[str, dict] = {}
     for n in model.edt.nodes:
         cells = n._node.props.get("#pwm-cells")             # the cell count is no edtlib property: read dtlib's
         if cells is None or n.status != "okay" or not n.labels:
             continue
         names = ["channel", "period", "flags"][:cells.to_num()]
-        out.append({"label": n.labels[0], "path": n.path, "cells": names})
-    return sorted(out, key=lambda d: d["path"])
+        out[n.labels[0]] = {"label": n.labels[0], "path": n.path, "cells": names}
+    if draft is not None:
+        paths = {lb: n.path for n in model.edt.nodes for lb in n.labels}
+        for d in draft.nodes:
+            if d.cls != "pwm" or not d.label:
+                continue
+            count = _cell_count(d.vendor_props.get("#pwm-cells", d.props.get("#pwm-cells")),
+                                len(out[d.label]["cells"]) if d.label in out else 2)
+            out[d.label] = {"label": d.label, "path": paths.get(d.label, ""),
+                            "cells": ["channel", "period", "flags"][:count], "draft": True}
+    return sorted(out.values(), key=lambda d: (d["path"] or "~", d["label"]))
 
 
 # ---- spec <-> DraftChild -----------------------------------------------------------------------------
@@ -166,6 +196,9 @@ def spec_to_node(spec: BoardSpec, pad_map: dict, pwm_cells: dict[str, int] | Non
         kids.append(DraftChild(name="aliases", props=dict(spec.aliases)))
     if spec.chosen:
         kids.append(DraftChild(name="chosen", props=dict(spec.chosen)))
+    if spec.user:
+        kids.append(DraftChild(name=USER_NODE, props={
+            prop: [[Ref(ctrl), *cells] for ctrl, cells in entries] for prop, entries in spec.user.items() if entries}))
     return DraftNode(cls=BOARD_CLASS, label=BOARD_LABEL, children=kids)
 
 
@@ -202,6 +235,10 @@ def spec_from_node(node: DraftNode | None, pad_map: dict) -> BoardSpec:
             spec.aliases.update({k: str(v) for k, v in ch.props.items()})
         elif ch.name == "chosen":
             spec.chosen.update({k: str(v) for k, v in ch.props.items()})
+        elif ch.name == USER_NODE:
+            for prop, val in ch.props.items():
+                if isinstance(val, list) and val and all(isinstance(x, list) and x and isinstance(x[0], Ref) for x in val):
+                    spec.user[prop] = [(x[0].label, tuple(int(c) for c in x[1:])) for x in val]
     return spec
 
 
@@ -234,12 +271,17 @@ def target_paths(spec: BoardSpec) -> dict[str, str]:
 
 
 def check_spec(spec: BoardSpec, *, model, pad_map: dict, other_users: dict[str, list[str]] | None = None,
-               existing_aliases: set[str] | None = None, pwm_ctrls: dict[str, dict] | None = None) -> list[Problem]:
+               existing_aliases: set[str] | None = None, pwm_ctrls: dict[str, dict] | None = None,
+               draft: Draft | None = None) -> list[Problem]:
     """Problems of a spec before it is saved. Pad conflicts are warnings here: ``validate`` reports them as errors.
 
-    `other_users` = pad -> descriptions of what the build and the other draft nodes put on it.
+    `other_users` = pad -> descriptions of what the build and the other draft nodes put on it. `draft` = the
+    draft the spec goes into: its PWM nodes count as PWM controllers (unless `pwm_ctrls` is given) and its
+    node labels as targets of ``zephyr,user`` entries.
     """
     probs: list[Problem] = []
+    if pwm_ctrls is None and draft is not None:
+        pwm_ctrls = {p["label"]: p for p in pwm_controllers(model, draft)}
     other_users = other_users or {}
     labels = {lb for n in model.edt.nodes for lb in n.labels}
     seen_names: set[str] = set()
@@ -286,6 +328,17 @@ def check_spec(spec: BoardSpec, *, model, pad_map: dict, other_users: dict[str, 
                 probs.append(Problem("error", f"{block} '{name}': not a valid {block} name"))
             if path not in targets:
                 probs.append(Problem("error", f"{block} '{name}': target {path} does not exist (a board node that is no longer in the draft?)"))
+    known = labels | {d.label for d in (draft.nodes if draft is not None else []) if d.label and d.label != BOARD_LABEL}
+    for prop, entries in spec.user.items():
+        if not USER_PROP_RE.match(prop):
+            probs.append(Problem("error", f"{USER_NODE} property '{prop}': not a valid property name"))
+        if not entries:
+            probs.append(Problem("error", f"{USER_NODE} {prop}: no entry"))
+        for ctrl, cells in entries:
+            if ctrl not in known:
+                probs.append(Problem("error", f"{USER_NODE} {prop}: no node with label '{ctrl}' in the build or the draft"))
+            if any(c < 0 for c in cells):
+                probs.append(Problem("error", f"{USER_NODE} {prop}: cells must be 0 or more"))
     for name in spec.aliases:
         if name in (existing_aliases or set()):
             probs.append(Problem("warning", f"alias '{name}' exists in the build: this overlay replaces it"))
@@ -311,4 +364,6 @@ def summary(node: DraftNode) -> str:
         parts.append(f"{len(spec.aliases)} alias{'es' if len(spec.aliases) > 1 else ''}")
     if spec.chosen:
         parts.append(f"{len(spec.chosen)} chosen")
+    if spec.user:
+        parts.append(f"{USER_NODE} ({', '.join(spec.user)})")
     return ", ".join(parts) or "empty"

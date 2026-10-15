@@ -129,6 +129,80 @@ def test_refusals_and_warnings(lab1_leer_copy, ui_run):
     ui_run(scenario)
 
 
+def _draft_with_tcc3(app):
+    """Store a draft that enables tcc3 as a PWM node (the Configure flow of the tool, through its core API)."""
+    from dt_explorer.app import load_plugins
+    from dt_explorer.core import plugins
+    from dt_explorer.core.build import BuildModel
+    from dt_explorer.ui import configure as C
+    load_plugins()
+    sess = C.ConfigSession(BuildModel(app / BUILD))
+    inst = sess.instance_of(sess.node_for_label("tcc3"))
+    compat = "atmel,sam0-tcc-pwm"
+    rec = plugins.get_recipe(compat)
+    opt = C.ClassOption("pwm", compat, rec)
+    roles = C.option_roles(opt, inst)
+    node = C.build_node(option=opt, instance=inst, label="tcc3", pins={"WO0": "PB16"}, roles_order=roles)
+    node.vendor_props = rec.default_props(compat, inst.name)
+    sess.upsert(node)
+    sess.save()
+
+
+def test_pwm_led_on_a_controller_the_draft_enables_and_zephyr_user(lab1_leer_copy, ui_run):
+    app, _ = lab1_leer_copy
+    _draft_with_tcc3(app)
+
+    async def scenario():
+        async with simulated_app(app) as user:
+            await user.open(f"/?build={BUILD}")
+            click(user, "board-nodes-open")
+            select_value(user, "bn-kind", "pwm-leds")
+            assert set(el(user, "bn-ctrl").options) == {"tcc0", "tcc3"}          # tcc3 is only in the draft
+            select_value(user, "bn-ctrl", "tcc3")
+            select_value(user, "bn-name", "pwm_led_tool")
+            click(user, "bn-add")
+            assert "tcc3 channel 0, period 20 ms" in page_text(user, "bn-entry-pwm_led_tool")
+            assert el(user, "bn-problems").text == "" and el(user, "bn-save").enabled
+            select_value(user, "bn-alias-name", "pwm-led0")
+            select_value(user, "bn-alias-target", "/user_pwm_leds/pwm_led_tool")
+            click(user, "bn-alias-add")
+
+            # zephyr,user with io-channels, no hand edit
+            assert "draft node" in el(user, "bn-user-ctrl").options["tcc3"]
+            select_value(user, "bn-user-prop", "io-channels")
+            click(user, "bn-user-add")                                             # no controller: refused
+            assert "needs a property name and a controller" in el(user, "bn-problems").text
+            for ch in ("6", "7"):
+                select_value(user, "bn-user-prop", "io-channels")
+                select_value(user, "bn-user-ctrl", "adc0")
+                select_value(user, "bn-user-cells", ch)
+                click(user, "bn-user-add")
+            assert "<&adc0 6>" in page_text(user, "bn-user-io-channels-0") and "<&adc0 7>" in page_text(user, "bn-user-io-channels-1")
+            select_value(user, "bn-user-prop", "pwms")
+            select_value(user, "bn-user-ctrl", "tcc0")
+            select_value(user, "bn-user-cells", "x")
+            click(user, "bn-user-add")
+            assert "cells must be numbers" in el(user, "bn-problems").text
+            click(user, "bn-user-del-io-channels-1")
+            assert not by_id(user, "bn-user-io-channels-1") and by_id(user, "bn-user-io-channels-0")
+            select_value(user, "bn-user-prop", "io-channels")
+            select_value(user, "bn-user-ctrl", "adc0")
+            select_value(user, "bn-user-cells", "7")
+            click(user, "bn-user-add")
+            click(user, "bn-save")
+            await wait_until(lambda: by_id(user, "draft-snippet"), timeout=15, what="the Draft tab")
+            snippet = el(user, "draft-snippet").content
+            for line in ("pwms = <&tcc3 0 20000000>;", 'pwm-led0 = "/user_pwm_leds/pwm_led_tool";',
+                         "zephyr,user {", "io-channels = <&adc0 6>, <&adc0 7>;"):
+                assert line in snippet, line
+            assert "1 PWM LED, 1 alias, zephyr,user (io-channels)" in page_text(user, "draft-node-board")
+
+    ui_run(scenario)
+    stored = json.loads((app / ".dt_explorer" / f"{BUILD}.draft.json").read_text(encoding="utf-8"))
+    board = next(n for n in stored["nodes"] if n["label"] == "{/}")
+    assert [c["name"] for c in board["children"]] == ["user_pwm_leds", "aliases", "zephyr,user"]
+
+
 # ---- real browser: screenshots -------------------------------------------------------------------------
 # The Playwright flow runs in a child process: the session-wide `chrome` fixture leaves an event loop running in
 # the pytest process, which would break every simulated test that sorts after this file.
