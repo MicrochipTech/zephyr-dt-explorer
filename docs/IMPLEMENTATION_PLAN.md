@@ -365,7 +365,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 
 | ID | Status | Commit |
 |---|---|---|
-| P4.1 | open | |
+| P4.1 | done | f789552 |
 
 **P4.1 "Verify with west" and file output.**
 - Dep: P3.5, P2.1. Scope: `dt_explorer/core/verify.py`, `dt_explorer/ui/draft_tab.py`.
@@ -572,4 +572,5 @@ surprising, and anything you were unsure about.
 | P3.5 | [P3.5.md](evidence/P3.5.md) | Playwright on lab1: SERCOM1 → I2C, SDA PC22, SCL PC23, 100 kHz → snippet with `#address-cells`/`#size-cells` (render now emits binding `const` props), CONFIG_I2C + CONFIG_I2C_SAM0, check 0 errors (PC18 info only), PC22/PC23 purple in the package view; negative: SERCOM0 on PB24/PA05 → 2 pin_conflict errors + IOSET warning. 301 passed. Also fixed: tab clicks delivered strings (Pins/Package were empty on click). Builder: screenshot checked; test_render/test_translate now load edtlib via EdtlibHost (passed only in suite order before). Cosmetic: base-binding props `sq-size`/`cq-size` appear as I2C fields → P3.6 |
 | P5.7 | [P5.7.md](evidence/P5.7.md) | lab1 console SERCOM2 moved PB25/PB24 → PA09/PA08 (PA12/13 taken by GMAC); validate 0 errors; west cmake-only rc 0, scratch zephyr.dts `pinctrl-0 = <&sercom2_uart_edit>` with pinmux 0x3290/0x3280, board group unused. Override: group renamed `<label>_<cls>_edit` in ui/configure.py (render.py unchanged). **Finding:** parallel agents shared `apps\lab1\.dt_explorer` (one agent's draft broke another's validate) → evidence runs must redirect drafts to scratch. Builder re-run 21 passed |
 | P3.6 | [P3.6.md](evidence/P3.6.md) | README + GUI.md sections for Pins, Package, New build…, Full build, Configure…, Draft/check (element grep PASS in both files); make_screenshots.py got `--port` and Playwright shots; 6 new, ~25 regenerated images (header got taller). Incident: an accidental Full build on lab1 during development; builder checked lab1 `edt.pickle`/`zephyr.elf` still dated 2026-10-13. Header wrap and `sq-size`/`cq-size` → P3.7 |
+| P4.1 | [P4.1.md](evidence/P4.1.md) | valid draft (SERCOM1 I2C PC22/PC23) rc 0 in 28.7 s (UI 45.5 s); typo `clock-frequncy` → rc 1 with Zephyr's "devicetree error: … is not declared in 'properties:'" shown in the UI; lab1 build folder identical before/after (416 files, same content hash). Board from `CONFIG_BOARD_TARGET`; scratch in %TEMP%\dt_explorer_verify. Full suite 308 passed, 0 skipped |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
