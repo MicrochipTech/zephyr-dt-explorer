@@ -597,7 +597,8 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.10 | open | |
 | P8.11 | open | |
 | P8.12 | done | 2396f4b → master |
-| P8.13 | open | |
+| P8.13 | done | 50d1ad1 → master |
+| P8.13b | running | |
 | P8.14 | open | |
 | P8.15 | open | |
 | P8.16 | done | a09a65a → master |
@@ -693,8 +694,20 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 - Accept: on a copy, the current draft is written as `boards/<board>.overlay`/`.conf` of the build's own board
   (new files only, diff otherwise); `west build` of the copy without options picks it up.
 
+**P8.13b Append the draft to an existing app overlay.**
+- Dep: P8.13. Scope: `dt_explorer/core/apply.py`, `dt_explorer/ui/draft_tab.py`, `dt_explorer/ui/port.py` (same
+  option), README.md, `docs/GUI.md`, `tests/test_apply.py`, `tests/ui/test_ui_apply.py`.
+- Why (P8.13): almost every app already has `boards/<board>.overlay` (lab1: my_led; lab1_leer: empty), so Apply could
+  only replace it and lose the app's content.
+- Do: a third choice next to "new" and "replace": "append to the existing file" — writes the existing content plus a
+  marked block (`/* dt_explorer draft <date> begin */ … end */`); re-applying replaces only the marked block; conf
+  likewise (lines appended once, duplicates skipped). Diff shown before writing; default for an existing file is
+  append, replace stays behind the explicit tick.
+- Accept: on a lab1 copy, the SERCOM1 I2C draft is appended to the app overlay with my_led kept; full `west build`
+  of the copy links with my_led and sercom1 both okay; a second apply changes only the marked block; suite green.
+
 **P8.14 Generated device module `dtx_devices/`.** (input 10; decision in CONFIGURATOR.md)
-- Dep: P8.6, P8.13. Scope: `core/codegen.py` (new), `dt_explorer/codegen_templates/` (new), `ui/draft_tab.py`
+- Dep: P8.6, P8.13b. Scope: `core/codegen.py` (new), `dt_explorer/codegen_templates/` (new), `ui/draft_tab.py`
   ("Generate code"), README.md, `docs/GUI.md`, tests.
 - Accept: on a copy with a BME280 draft: `dtx_devices/` generated (header + checksum), the CMakeLists line added
   only after the diff confirmation, `prj.conf` lines via Apply; `main.c` including `dtx_devices.h` builds;
@@ -839,4 +852,5 @@ surprising, and anything you were unsure about.
 | P8.3 | [P8.3.md](evidence/P8.3.md) | recipes: TC/TCC PWM (one module; `#pwm-cells` 2→3, consumers need a third cell), ADC (input from pad, prescaler required on g1, children), DAC (small), GMAC+MDIO+PHY (each RMII signal has exactly one pad; MDC/MDIO 4 pairs; SG41: PC22/PC23 because PB14/15 are TC5 PWM); generic: TC/TCC counter, RTC (compatible selector), WDT, DMAC, TRNG; EIC check rule only; untranslatable: CAN, USB device (no node/driver on main). Fixed-label drivers (rtc, dac, clock) → labels must not change. Enumerator extended for child-bindings from includes (binding_pairs table 1.5 misses 6 gpio-hog rows → backlog) |
 | P8.17 | [P8.17.md](evidence/P8.17.md) | remap path works (synthetic SG41 YAML with EXT1 on free SERCOM3 pads: lab1 `&sercom4` → `[remapped]` to `&sercom3`, dipo/dopo recomputed, DT_NODELABEL consequence noted, verify rc 0); on the real CUlt boards nothing qualifies (EXT1 SCK has no pad, SERCOM0/6 busy, sercom2 pads not on a connector) → still `conflict`, only suggestions sharpened (busy instances no longer offered); 8-port matrix + lab1 → sam_e54_xpro overlays identical to before, all verify rc 0. 426 passed. Builder: port dialog status line counts remapped nodes |
 | P8.2 | [P8.2.md](evidence/P8.2.md) | 11 simulated UI tests (`-m ui`, 59 s: deep links incl. pins/package/board/draft/log, Configure I2C save on a lab1_leer copy, Edit pins prefill/cancel, Port report without Apply) + 4 Playwright smoke tests (`-m smoke`, 109 s, screenshots in %TEMP%\dtx_ui_shots; Verify marked `slow`); clean skips without env; drafts redirected. Full suite 441 passed (338 passed / 103 skipped without env). Follow-up: many UI elements lack ids (Cancel, draft-row buttons, header buttons, tabs, enum/switch props, port-other on the native input) → later UI cards add ids to what they touch |
+| P8.13 | [P8.13.md](evidence/P8.13.md) | Draft tab "Apply to app…" (ids draft-apply*) writes `boards/same54_xpro.overlay`/`.conf` for the build's own board; lab1 copy: existing overlay → exists + diff, refused without tick, conf new; lab1_leer copy (own overlay removed): new files, full build rc 0 with "Found devicetree overlay", sercom1 okay, CONFIG_I2C_SAM0=y; real apps unchanged. **Gap:** apps usually have their own board overlay, so Apply can only replace it → card P8.13b (append mode). 446 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
