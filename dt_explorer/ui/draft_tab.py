@@ -22,12 +22,13 @@ SEVERITY_STYLE = {"error": ("error", "red-5"), "warning": ("warning", "orange-5"
 
 
 def kconfig_lines(suggestions) -> list[str]:
-    """``CONFIG_X=y`` lines of all suggestions, deduplicated, in first-seen order."""
+    """``CONFIG_X=y`` lines of all suggestions, deduplicated and sorted (stable across runs, so re-applying
+    gives no reordering diff)."""
     seen: dict[str, str] = {}
     for s in suggestions:
         for k, v in s.symbols.items():
             seen.setdefault(k, v)
-    return [f"{k}={v}" for k, v in seen.items()]
+    return [f"{k}={v}" for k, v in sorted(seen.items())]
 
 
 def check_summary(findings) -> str:

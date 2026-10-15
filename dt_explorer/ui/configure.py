@@ -458,9 +458,12 @@ class ConfigSession:
         return text
 
     def kconfig(self) -> list[KconfigSuggestion]:
+        def added(n):           # children the draft adds; the board's own children need no new Kconfig
+            board = set(self.build_children(n.label)) if n.label and self.is_enabled(n.label) else set()
+            return [ch for ch in n.children if (f"{ch.name}@{ch.unit}" if ch.unit else ch.name) not in board]
         compats = list(dict.fromkeys(
             [n.compatible for n in self.draft.nodes if n.compatible]
-            + [sub.compatible[0] for n in self.draft.nodes for ch in n.children for sub in ch.walk()
+            + [sub.compatible[0] for n in self.draft.nodes for ch in added(n) for sub in ch.walk()
                if sub.compatible]))
         return [suggest_kconfig(c, self.model.build) for c in compats]
 

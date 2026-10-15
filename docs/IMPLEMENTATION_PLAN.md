@@ -607,7 +607,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.18 | running | |
 | P8.19 | done (findings) | 73cfcbd |
 | P8.19b | done | b090b47 → master |
-| P8.19c | running | |
+| P8.19c | done (PASS) | 9acde91 |
 | P8.20 | open | |
 
 **P8.1 Log tab and log file.** (input 14)
@@ -802,6 +802,7 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
+- Draft tab: mark draft nodes that are identical to the board ("unchanged from the board"), e.g. GMAC on the CUlt (found at P8.19c).
 - Move the analog/interrupt signal-group tables (`AIN`, `X`, `Y`, `VOUT`, `VREF*`, `EXTINT`) from core/validate.py into the provider as a classification hook (found at P8.11).
 - binding_pairs.md table 1.5 (GPIO) misses 6 `gpio-hog` child rows (P5.0 enumerator ignored child-bindings from includes; found at P8.3).
 - Generated device module "Generate code" (from side session dt-explorer-c7, user-approved 2026-10-15; builds on child
@@ -899,4 +900,5 @@ surprising, and anything you were unsure about.
 | P8.10 | [P8.10.md](evidence/P8.10.md) | 11 new translation entries (TC counter/PWM, TCC PWM, ADC, DAC, GMAC, MDIO, RTC, WDT, DMAC, TRNG; counts = table rows) loaded in main's edtlib against pic32cx_sg41; CAN/USB/GMAC wrapper `no_target`; negative tests (`#pwm-cells` 2, no prescaler, no refsel) fail in edtlib; lab1 → SG41: adc0 identical, tcc0/gmac/mdio emitted (were no_translation), verify rc 0; fixed unquoted base-group names split at commas. Gaps → card P8.10b: consumer `pwms` cells, uncovered SoC nodes not looked up (usb0), child rename, defaults for missing props. 668 passed |
 | P8.19b | [P8.19b.md](evidence/P8.19b.md) | six fixes, each with a test that fails without it: Kconfig walk skips negated deps (no CONFIG_NET_TEST for ethernet-phy); UART `current-speed` default 115200 via recipe `default_props` (field required); first Apply of a new file writes the marked block (Draft tab and port flow); Apply result says `west build -p always`; edited enabled bus node renders only the difference (SG41 `&sercom6 { bme280_76 … }`); codegen skips board children, sensor class only with a sensor-API driver. 7 existing apply tests now expect marked blocks; full suite 690 passed + 2 re-run (one intended assertion change, one Playwright timeout under load) |
 | P8.10b | [P8.10b.md](evidence/P8.10b.md) | consumer cells rewritten from the target controller's specifier names (lab1 → SG41: `&pwm_led0 { pwms = <&tcc0 2 20000000 0>; }`); `&usb0` listed as untranslatable; translatable nodes without a recipe listed as "translation exists, not ported" (rtc, dac); child `rename: name@unit` (DAC channel@0/@1) and `default:` (ADC prescaler 4) in translations; 9-run matrix verify rc 0. Port UI docs for the new lines → P8.20. 702 passed |
+| P8.19c | [P8.19c.md](evidence/P8.19c.md) | **PASS without hand corrections:** fresh SG41 blinky copy + UART SERCOM7 + bme280@76 on the board's sercom6 + GMAC/PHY (recipe API); overlay one marked block, sercom6 only with the bme280 child, current-speed prefilled, Apply hint `-p always`, no CONFIG_NET_TEST, dtx_devices only bme280; full build links (devices 49/89/91/92/112, dtx and eth/mdio init in nm); second Apply (57600) → still one block, rebuild links; Changes tab 10 dtx-badged + main.c. Builder follow-up: Kconfig suggestions skip the board's own children (no CONFIG_EEPROM for board EEPROMs) and are sorted (no reordering diff). Remaining note: GMAC identical to the board shows nothing in the overlay (backlog: "unchanged from the board" hint) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
