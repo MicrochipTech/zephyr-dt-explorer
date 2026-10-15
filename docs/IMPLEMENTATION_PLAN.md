@@ -595,7 +595,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.8 | done | 66a4ba0 + b497106 |
 | P8.9 | done | 63540ae |
 | P8.10 | running | |
-| P8.11 | running | |
+| P8.11 | done | fc3e933 → master |
 | P8.12 | done | 2396f4b → master |
 | P8.13 | done | 50d1ad1 → master |
 | P8.13b | done | 231c846 → master |
@@ -771,6 +771,7 @@ surprising, and anything you were unsure about.
 
 ## 10. Backlog (not version 1)
 
+- Move the analog/interrupt signal-group tables (`AIN`, `X`, `Y`, `VOUT`, `VREF*`, `EXTINT`) from core/validate.py into the provider as a classification hook (found at P8.11).
 - binding_pairs.md table 1.5 (GPIO) misses 6 `gpio-hog` child rows (P5.0 enumerator ignored child-bindings from includes; found at P8.3).
 - Generated device module "Generate code" (from side session dt-explorer-c7, user-approved 2026-10-15; builds on child
   nodes and the Apply path from P5.6; consider for phase 8): `<app>/dtx_devices/` with CMakeLists.txt
@@ -862,4 +863,5 @@ surprising, and anything you were unsure about.
 | P8.7 | [P8.7.md](evidence/P8.7.md) | "Board nodes…" (header, id board-nodes-open): one draft node `&{/}` with `user_leds` (gpio-leds), `user_keys` (gpio-keys), `user_pwm_leds` (pwm-leds), aliases and chosen (path strings); pad derived from controller+pin, so the existing conflict check covers it (LED on PC18 → pin_conflict); lab1_leer copy: validate clean, Verify rc 0. Limits: GPIO flags as integers; Port does not carry the board node. Merged after P8.14 with 4 hand-resolved conflicts (README, GUI.md 10.3/10.4, draft_tab imports, page imports) |
 | P8.14 | [P8.14.md](evidence/P8.14.md) | "Generate code": `dtx_devices/` (CMakeLists, include/dtx_devices.h with dtx_devices_init(), dtx_bme280_76.h/.c with read/get/init; channels from the driver's channel_get incl. header-defined DT_DRV_COMPAT fallback), header + checksum per file; CMakeLists `add_subdirectory(dtx_devices)` only after diff + confirm; prj.conf block (`plan/apply_prj_conf`); lab1_leer copy with a test main.c links, `west build -p always` too; hand-edited file → nothing written, diff shown; src/ untouched. Builder fixes for the 3 red tests: stale `{"label"}` assertion in test_ui_child; `kconfig_suggest` sets other workspaces' `devicetree` modules aside while loading Kconfig (order-dependent `_LocalProps`). Full suite 591 passed |
 | P8.8 | [P8.8.md](evidence/P8.8.md) | PWM recipe (TCC WO0–7, TC WO0–1; `#pwm-cells` 2 old / 3 g1; prescaler suggested) and ADC recipe (AIN roles → `channel@N` with `zephyr,input-positive`; g1 prescaler required): SAME54 tcc1/tc2 + adc1 and SG41 tcc2/tc1 + adc1 render, validate, Verify rc 0; lift of same54_xpro tcc0/adc0 compares equal. P8.8 broke 9 tests and showed integration gaps → builder widened the card: P8.8b fixes the tests, offers "Other compatible (generic form)" (TC counter), hides `#…-cells`, prefers the node's own compatible family in all recipes (SG41 → g1 first, also SERCOM), picks the role-matching signal on multi-signal pads (ADC0 on SAME54 now renders, Verify rc 0). 602 passed |
+| P8.11 | [P8.11.md](evidence/P8.11.md) | rules: `analog_digital_pad` (ADC channel input pad used digitally, warning), `adc_channel_duplicate` (error), `pwm_channel_duplicate` (error, e.g. second user of tcc0 channel 2 next to the board's pwm_led_0), `interrupt_line_shared` (interrupt GPIOs on one EXTINT line, warning); each positive/corrected and broken once (tests fail). One existing test's pad moved PB15 → PB12 because the new warning is intended (builder accepted). Classification tables with ATDF group names live in validate.py → backlog (move to the provider). 641 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
