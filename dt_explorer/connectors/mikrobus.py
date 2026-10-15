@@ -8,6 +8,9 @@ physical pin 9..14 (the power pins are not in the nexus).
 """
 from __future__ import annotations
 
+import re
+from typing import Mapping
+
 from ..core.plugins import API_VERSION, register_connector
 from . import fraction, hint_matches, is_gnd, is_vcc, normalize
 
@@ -18,6 +21,37 @@ ROLES = {
     "15": "5V", "16": "GND",
 }
 _HINT_PINS = {p: r for p, r in ROLES.items() if r not in ("3V3", "5V", "GND")}
+
+_V33 = re.compile(r"3V3|3P3|3\.3", re.I)
+_V50 = re.compile(r"5V|5P0|5\.0", re.I)
+
+
+def merge_rows(a: Mapping, b: Mapping) -> tuple[dict[str, str | None], dict[str, tuple[str, str]], tuple[int, int]] | None:
+    """Merge the two 1x8 headers of one socket into pin keys "1".."16".
+
+    `a` and `b` map header pad "1".."8" to a net. The left row (keys 1..8) is the header whose pin 7 is
+    the 3.3 V net, the right row (keys 9..16) the one whose pin 7 is the 5 V net. Returns
+    (key -> net, key -> (0|1 = index of the argument, header pad), (index of left, index of right)),
+    or None when the supply pins do not identify the rows.
+    """
+    pa, pb = ({str(k).strip(): v for k, v in x.items()} for x in (a, b))
+    if "7" not in pa or "7" not in pb:
+        return None
+    if _V33.search(pa["7"] or "") and _V50.search(pb["7"] or ""):
+        order = (0, 1)
+    elif _V33.search(pb["7"] or "") and _V50.search(pa["7"] or ""):
+        order = (1, 0)
+    else:
+        return None
+    rows = (pa, pb)
+    nets: dict[str, str | None] = {}
+    origin: dict[str, tuple[str, str]] = {}
+    for offset, idx in zip((0, 8), order):
+        for pad in (str(i) for i in range(1, 9)):
+            if pad in rows[idx]:
+                nets[str(int(pad) + offset)] = rows[idx][pad]
+                origin[str(int(pad) + offset)] = (str(idx), pad)
+    return nets, origin, order
 
 
 @register_connector

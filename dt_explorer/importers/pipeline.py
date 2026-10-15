@@ -9,6 +9,10 @@ Steps (docs/CONFIGURATOR.md, "Generic import pipeline"):
 5. build the board YAML. Everything is ``suggested``; an entry is ``reviewed: builder``
    only when silkscreen name and signal pattern agree (decision HC-6).
 
+Connectors that consist of several parts on the PCB are merged into one connector first
+(P8.12): a mikroBUS socket is two 1x8 headers (keys "1".."16"), an Arduino Uno R3 shield is four
+headers (power, analog, two digital; keys are the Arduino labels A0.., D0.., 3V3, 5V, GND..).
+
 Only ``dt_explorer.core.*`` and the plugin registries (connector helpers) are used. The
 design files are never copied into the result.
 
@@ -43,6 +47,11 @@ MCU_MIN_FIT = 0.9                # share of package positions present as pad num
 MCU_MAX_EXTRA_PADS = 2           # pads beyond the package positions (exposed pad)
 NC_PAD = "NC"                    # ATDF pad name of a position that has no usable pin on this SoC
 NC_MARK = "NC@"                  # internal marker: MCU footprint position that is NC on this SoC
+
+MAX_PAIR_DISTANCE = 40.0         # mm, two halves of one mikroBUS socket (pitch is 22.9 mm)
+MAX_SET_DISTANCE = 150.0         # mm, the four Arduino headers of one shield
+NON_MCU_ROLES = ("ID", "IOREF", "VIN")      # pins that are not expected to reach an MCU pad
+NOT_SIGNAL_ROLES = ("GND", "VCC", "3V3", "5V", "ID", "VIN", "IOREF", "RESET", "AREF")
 
 POWER_RE = re.compile(
     r"^(GND\w*|AGND|DGND|VCC\w*|VDD\w*|VBUS\w*|\+?\d+V\d*\w*|P\d+V\d+\w*|\d+V\d+\w*|NC)$", re.I)
@@ -80,6 +89,7 @@ class Connector:
     traces: dict[str, Trace]
     component: Component | None = None
     zephyr_binding: str | None = None
+    origin: dict[str, str] = field(default_factory=dict)   # merged connectors: pin key -> "J900.1"
 
 
 @dataclass
@@ -187,7 +197,8 @@ class Tracer:
         if not t.pads and t.unavailable:
             return t                          # reaches only pads that this SoC does not have
         if not t.pads:
-            others = [d for d in self.nl.components_on_net(net) if d not in (connector, self.mcu)]
+            own = set(connector.split("/"))
+            others = [d for d in self.nl.components_on_net(net) if d not in own and d != self.mcu]
             multi = [d for d in others if len(self.nl.pads_of(d)) > 2]
             if multi:
                 t.gap = ("routed through part with more than 2 pads: "
@@ -242,6 +253,141 @@ def assign_names(centres: dict[str, tuple[float, float]], layers: dict[str, str]
     return out
 
 
+# --- merged connectors (P8.12) -----------------------------------------------------
+
+@dataclass
+class Composite:
+    """A connector made of several PCB parts, already merged into the pin keys of its type."""
+    type: str
+    parts: list[str]
+    pins: dict[str, str | None]            # merged pin key -> net
+    origin: dict[str, str]                 # merged pin key -> "J900.1" (part, pad)
+    score: float
+
+    @property
+    def designator(self) -> str:
+        return "/".join(self.parts)
+
+
+def join_split_names(texts: list[Text]) -> list[Text]:
+    """Texts plus joined copies for names the silkscreen writes on two lines ("mikro" over "BUS")."""
+    short = [t for t in texts if t.layer.endswith("silk") and 2 <= len(t.text.strip()) <= 10
+             and t.text.strip().isalpha()]
+    extra: list[Text] = []
+    for a in short:
+        for b in short:
+            if a is b or a.layer != b.layer or abs(a.x - b.x) > 3.0 or not 0 < a.y - b.y <= 6.0:
+                continue                     # a is the upper line, b the lower one
+            joined = a.text.strip() + b.text.strip()
+            if ANY_NAME.match(joined) and not ANY_NAME.match(a.text.strip()) \
+                    and not ANY_NAME.match(b.text.strip()):
+                extra.append(Text(joined, (a.x + b.x) / 2, (a.y + b.y) / 2, a.layer, a.height, a.rotation))
+    return list(texts) + extra
+
+
+def _pin_map(netlist: BoardNetlist, des: str) -> dict[str, str | None]:
+    return {p.number: p.net for p in _significant(netlist, des)}
+
+
+def _is_row(pins: dict, n: int) -> bool:
+    return set(pins) == {str(i) for i in range(1, n + 1)}
+
+
+def find_mikrobus(netlist: BoardNetlist, candidates: list[str]) -> list[Composite]:
+    """Pairs of 1x8 headers of the same footprint that form a mikroBUS socket (3.3 V row + 5 V row)."""
+    from dt_explorer.connectors import mikrobus
+    ct = plugins.get_connector_type("mikrobus")
+    rows = [d for d in candidates if _is_row(_pin_map(netlist, d), 8)]
+    found: list[tuple[float, float, Composite]] = []
+    for i, a in enumerate(rows):
+        for b in rows[i + 1:]:
+            ca, cb = netlist.components[a], netlist.components[b]
+            dist = math.hypot(ca.x - cb.x, ca.y - cb.y)
+            if ca.footprint != cb.footprint or ca.layer != cb.layer or dist > MAX_PAIR_DISTANCE:
+                continue
+            merged = mikrobus.merge_rows(_pin_map(netlist, a), _pin_map(netlist, b))
+            if merged is None:
+                continue
+            nets, origin, order = merged
+            parts = [a, b]
+            score = ct.detect(nets, 16)
+            if score >= THRESHOLD:
+                found.append((score, dist, Composite(
+                    "mikrobus", [parts[order[0]], parts[order[1]]], nets,
+                    {k: f"{parts[int(idx)]}.{pad}" for k, (idx, pad) in origin.items()}, score)))
+    found.sort(key=lambda f: (-f[0], f[1], f[2].designator))
+    out, used = [], set()
+    for _s, _d, comp in found:
+        if used.isdisjoint(comp.parts):
+            out.append(comp)
+            used.update(comp.parts)
+    return out
+
+
+def find_arduino(netlist: BoardNetlist, candidates: list[str]) -> list[Composite]:
+    """Sets of the four 1xN headers (power, analog, digital low/high) of an Arduino Uno R3 shield."""
+    from dt_explorer.connectors import arduino_uno_r3 as ard
+    ct = plugins.get_connector_type("arduino_uno_r3")
+    kinds: dict[str, list[str]] = {k: [] for k in ard.HEADER_LABELS}
+    for d in candidates:
+        kind = ard.header_kind(_pin_map(netlist, d))
+        if kind:
+            kinds[kind].append(d)
+
+    def dist(a: str, b: str) -> float:
+        ca, cb = netlist.components[a], netlist.components[b]
+        return math.hypot(ca.x - cb.x, ca.y - cb.y)
+
+    out: list[Composite] = []
+    used: set[str] = set()
+    for power in kinds["power"]:
+        if power in used:
+            continue
+        parts = {"power": power}
+        for kind in ("analog", "digital_low", "digital_high"):
+            free = [d for d in kinds[kind] if d not in used and dist(power, d) <= MAX_SET_DISTANCE]
+            if not free:
+                break
+            parts[kind] = min(free, key=lambda d: (dist(power, d), d))
+        else:
+            nets, origin = ard.merge_headers({k: _pin_map(netlist, d) for k, d in parts.items()})
+            score = ct.detect(nets, len(nets))
+            if score >= THRESHOLD:
+                out.append(Composite("arduino_uno_r3", list(parts.values()), nets,
+                                     {k: f"{parts[kind]}.{pad}" for k, (kind, pad) in origin.items()}, score))
+                used.update(parts.values())
+    return out
+
+
+ARDUINO_WORD = re.compile(r"\barduino\b", re.I)
+HEADER_TEXT = re.compile(
+    r"^(?P<des>[A-Z]+\d+)\s+(?P<fn>power|analog|digital)(?:\s+(?P<lh>low|high))?\s*$", re.I)
+
+
+def arduino_evidence(netlist: BoardNetlist, comp: Composite) -> str | None:
+    """Board text that names these headers as Arduino ones, or None.
+
+    Needs a text with the word "Arduino" somewhere on the board and, for every header, a text
+    "<designator> Power|Analog|Digital Low|Digital High" that agrees with the function found from
+    the pin pattern.
+    """
+    from dt_explorer.connectors import arduino_uno_r3 as ard
+    word = next((t.text.strip() for t in netlist.texts if ARDUINO_WORD.search(t.text)), None)
+    if word is None:
+        return None
+    want = {des: ard.header_kind(_pin_map(netlist, des)) for des in comp.parts}
+    seen: dict[str, str] = {}
+    for t in netlist.texts:
+        m = HEADER_TEXT.match(t.text.strip())
+        if m and m["des"] in want:
+            fn = m["fn"].lower()
+            seen[m["des"]] = fn if fn != "digital" else "digital_" + (m["lh"] or "").lower()
+    if any(seen.get(d) != k for d, k in want.items()):
+        return None
+    return f"board text {word!r} and header texts " + ", ".join(
+        f"{d} {ard.HEADER_TITLES[k]}" for d, k in want.items())
+
+
 # --- step 5: pipeline -----------------------------------------------------------
 
 def _revision(text: str) -> str | None:
@@ -276,8 +422,18 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
                   and len(_significant(netlist, d)) >= MIN_CONNECTOR_PADS]
     candidates.sort(key=lambda d: (len(d), d))
 
+    composites = find_mikrobus(netlist, candidates)
+    taken = {d for c in composites for d in c.parts}
+    composites += find_arduino(netlist, [d for d in candidates if d not in taken])
+    by_des = {c.designator: c for c in composites}
+    for c in composites:
+        report.append(f"{c.designator}: merged {c.type} connector from {', '.join(c.parts)}")
+    taken = {d for c in composites for d in c.parts}
+
     found_conn: list[tuple[str, str, float, dict, dict]] = []
     for des in candidates:
+        if des in taken:
+            continue                          # part of a merged connector
         sig = _significant(netlist, des)
         pins = {p.number: p.net for p in sig}
         scores = detect_type(pins, len(pins))
@@ -288,18 +444,41 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
             continue
         found_conn.append((des, best_name, best_score, pins, {s[1]: s[0] for s in scores}))
 
-    centres = {d: _centre(netlist, d, netlist.components.get(d)) for d, *_ in found_conn}
-    layers = {d: netlist.components[d].layer for d, *_ in found_conn}
-    names = assign_names(centres, layers, netlist.texts)
+    for comp in composites:
+        found_conn.append((comp.designator, comp.type, comp.score, comp.pins, {comp.type: comp.score}))
+
+    centres, layers, merged_components = {}, {}, {}
+    for d, *_ in found_conn:
+        if d in by_des:
+            parts = by_des[d].parts
+            cs = [_centre(netlist, p, netlist.components.get(p)) for p in parts]
+            centres[d] = (sum(c[0] for c in cs) / len(cs), sum(c[1] for c in cs) / len(cs))
+            first = netlist.components[parts[0]]
+            layers[d] = first.layer
+            merged_components[d] = Component(d, first.footprint, "", centres[d][0], centres[d][1],
+                                             first.rotation, first.layer)
+        else:
+            centres[d] = _centre(netlist, d, netlist.components.get(d))
+            layers[d] = netlist.components[d].layer
+    names = assign_names(centres, layers, join_split_names(netlist.texts))
 
     connectors: list[Connector] = []
     for des, tname, score, pins, allscores in found_conn:
         ct = plugins.get_connector_type(tname)
         roles = ct.pin_roles()
-        traces = {pin: tracer.trace(des, pin, net) for pin, net in
-                  sorted(pins.items(), key=lambda kv: (len(kv[0]), kv[0]))}
+        comp = by_des.get(des)
+        order = list(pins.items()) if comp else sorted(pins.items(), key=lambda kv: (len(kv[0]), kv[0]))
+        traces = {pin: tracer.trace(des, pin, net) for pin, net in order}
         text = names.get(des)
         name = text.text.strip() if text else None
+        name_note, extra = None, []
+        if comp and tname == "arduino_uno_r3" and name is None:
+            name = "Arduino"
+            evidence = arduino_evidence(netlist, comp)
+            if evidence:
+                name_note = evidence
+            else:
+                extra.append("no text on the board names these headers Arduino")
         for pin, t in traces.items():
             role = roles.get(pin, "?")
             if t.via:
@@ -310,17 +489,19 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
                               f"not available on this MCU")
             if len(t.pads) > 1:
                 gaps.append(f"{des} pin {pin} ({role}): net {t.net} reaches several MCU pads: {', '.join(t.pads)}")
-            if role == "ID":
-                continue                      # ID chips are not on the MCU by design
+            if role in NON_MCU_ROLES:
+                continue                      # ID chips, IOREF and VIN are not on the MCU by design
             if t.gap and t.net and not POWER_RE.match(t.net):
                 gaps.append(f"{des} pin {pin} ({role}): net {t.net}: {t.gap}")
             elif t.gap == "pad has no net" and roles.get(pin) not in (None, "ID"):
                 gaps.append(f"{des} pin {pin} ({role}): {t.gap}")
 
-        status, reason = review(ct, name, score, pins, traces, roles)
+        status, reason = review(ct, name, score, pins, traces, roles, extra, name_note)
         connectors.append(Connector(des, tname, score, name, text.text if text else None,
-                                    status, reason, traces, netlist.components.get(des),
-                                    getattr(ct, "zephyr_binding", None)))
+                                    status, reason, traces,
+                                    merged_components.get(des) or netlist.components.get(des),
+                                    getattr(ct, "zephyr_binding", None),
+                                    dict(comp.origin) if comp else {}))
         report.append(f"{des}: type {tname} ({score}), name {name or '-'}, {status}: {reason}")
 
     connectors.sort(key=lambda c: (c.name or "~", c.designator))
@@ -332,9 +513,14 @@ def import_board(netlist: BoardNetlist, packages: list[Package], *, board: str,
 
 
 def review(ct, name: str | None, score: float, pins: dict, traces: dict[str, Trace],
-           roles: dict[str, str]) -> tuple[str, str]:
-    """HC-6: `reviewed` only when silkscreen name and signal pattern agree."""
-    problems = []
+           roles: dict[str, str], extra: list[str] | None = None,
+           name_note: str | None = None) -> tuple[str, str]:
+    """HC-6: `reviewed` only when silkscreen name and signal pattern agree.
+
+    `extra` are further problems found by the caller; `name_note` names the evidence for the name
+    when it is not a silkscreen text near the connector (Arduino shields).
+    """
+    problems = list(extra or [])
     pattern = NAME_PATTERNS.get(ct.name)
     if not name:
         problems.append("no silkscreen name near the connector")
@@ -348,13 +534,13 @@ def review(ct, name: str | None, score: float, pins: dict, traces: dict[str, Tra
         problems.append("GND pins " + "/".join(gnd) + " are not ground nets")
     if vcc and not any(is_vcc(pins.get(p) or "") for p in vcc):
         problems.append("VCC pin " + "/".join(vcc) + " is not a supply net")
-    signal = [p for p, r in roles.items() if r not in ("GND", "VCC", "3V3", "5V", "ID")]
+    signal = [p for p, r in roles.items() if r not in NOT_SIGNAL_ROLES and p in traces]
     reached = [p for p in signal if traces.get(p) and traces[p].pads]
     if signal and len(reached) / len(signal) < MIN_TRACED_FRACTION:
         problems.append(f"only {len(reached)}/{len(signal)} signal pins reach the MCU")
     if problems:
         return "suggested", "; ".join(problems)
-    return "reviewed", (f"silkscreen {name!r} fits type {ct.name}, score {score}, GND"
+    return "reviewed", (f"{name_note or f'silkscreen {name!r}'} fits type {ct.name}, score {score}, GND"
                         f"{'/VCC' if vcc else ''} pins as in the standard, "
                         f"{len(reached)}/{len(signal)} signal pins traced to the MCU")
 
@@ -382,6 +568,8 @@ def build_yaml(res: ImportResult, *, board: str, soc: str | None, source_package
                 entry["via"] = t.via
             if t.gap and t.net and not POWER_RE.match(t.net):
                 entry["gap"] = t.gap
+            if pin in c.origin:
+                entry["part"] = c.origin[pin]
             pins[pin] = entry
         item = {
             "name": c.name, "designator": c.designator, "type": c.type,

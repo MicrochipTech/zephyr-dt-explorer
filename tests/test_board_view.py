@@ -125,3 +125,70 @@ def test_connector_svg(tmp_path):
     assert svg.count('rx="0"') == 1                      # pin 1 marked by square corners
     assert bv._rows_of(["1", "2", "3", "4", "5", "6"]) == [["1", "3", "5"], ["2", "4", "6"]]
     assert bv._rows_of(["1", "2", "3"]) == [["1", "2", "3"]]
+
+
+# --- P8.12: mikroBUS and Arduino Uno R3 connectors ---------------------------------------------
+
+MB_ROLES = ["AN", "RST", "CS", "SCK", "MISO", "MOSI", "3V3", "GND",
+            "PWM", "INT", "RX", "TX", "SCL", "SDA", "5V", "GND"]
+
+
+def _mikrobus_conn(tmp_path):
+    pins = {str(i + 1): {"role": r, "pad": None if r in ("3V3", "5V", "GND") else f"P{i:02d}", "net": f"n{i}"}
+            for i, r in enumerate(MB_ROLES)}
+    d = {"schema_version": 1, "board": "brd_m", "mcu": {"soc": "soc1"},
+         "connectors": [{"name": "mikroBUS", "designator": "J900/J901", "type": "mikrobus", "pins": pins}]}
+    return bd.load_board("brd_m", _write(tmp_path, d)).connector("mikroBUS")
+
+
+def _arduino_conn(tmp_path):
+    from dt_explorer.connectors import arduino_uno_r3 as ard
+    roles = ard.ROLES
+    keys = [k for _kind, ks in ard.HEADER_ROWS for k in ks]
+    pins = {k: {"role": roles[k], "pad": None if roles[k] in ("3V3", "5V", "GND", "VIN", "IOREF") else f"P{i}",
+                "net": f"n{i}"} for i, k in enumerate(keys)}
+    d = {"schema_version": 1, "board": "brd_a2", "mcu": {"soc": "soc1"},
+         "connectors": [{"name": "Arduino", "type": "arduino_uno_r3", "pins": pins}]}
+    return bd.load_board("brd_a2", _write(tmp_path, d)).connector("Arduino")
+
+
+def test_mikrobus_is_drawn_as_two_rows_of_eight(tmp_path):
+    conn = _mikrobus_conn(tmp_path)
+    assert bv._layout(conn) == [("Left row (3.3 V)", [str(i) for i in range(1, 9)]),
+                                ("Right row (5 V)", [str(i) for i in range(9, 17)])]
+    sts = bv.pin_states(conn, _usage(P00=["spi"]))
+    svg = bv.connector_svg(conn, sts)
+    assert svg.count('class="bpin"') == 16 and "Left row (3.3 V)" in svg and "Right row (5 V)" in svg
+    for role in ("AN", "RST", "CS", "SCK", "MISO", "MOSI", "PWM", "INT", "RX", "TX", "SCL", "SDA", "3V3", "5V"):
+        assert f">{role}<" in svg
+    assert svg.count('rx="0"') == 2                       # pin 1 of each header is square
+    assert sts["1"]["state"] == "used" and sts["2"]["state"] == "free"
+    assert sts["7"]["state"] == sts["8"]["state"] == sts["15"]["state"] == "other"   # 3V3, GND, 5V: no pad expected
+
+
+def test_arduino_is_drawn_as_four_header_rows(tmp_path):
+    conn = _arduino_conn(tmp_path)
+    layout = bv._layout(conn)
+    assert [cap for cap, _k in layout] == ["Power", "Analog", "Digital low", "Digital high"]
+    assert [len(k) for _c, k in layout] == [7, 6, 8, 10]
+    sts = bv.pin_states(conn, None)
+    svg = bv.connector_svg(conn, sts, selected="D13")
+    assert svg.count('class="bpin"') == 31 and 'stroke-width="2.4"' in svg
+    assert "Arduino:D13" in svg and ">SCK<" in svg and ">SDA<" in svg and ">RX<" in svg
+    for key in ("3V3", "5V", "GND", "GND2", "GND3", "VIN", "IOREF"):
+        assert sts[key]["state"] == "other", key
+    assert sts["A0"]["state"] == "free" and sts["RESET"]["state"] == "free"
+
+
+def test_unknown_pins_of_a_multi_header_connector_are_still_drawn(tmp_path):
+    conn = _mikrobus_conn(tmp_path)
+    conn.pins["X1"] = bd.ConnPin("X1", "GPIO", "P99")
+    layout = bv._layout(conn)
+    assert layout[-1] == ("Other pins", ["X1"])
+    assert bv.connector_svg(conn, bv.pin_states(conn, None)).count('class="bpin"') == 17
+
+
+def test_other_types_keep_their_layout(tmp_path):
+    dirs = _write(tmp_path, _board("brd_a", pads={"3": "P10"}))
+    conn = bd.load_board("brd_a", dirs).connector("J1")
+    assert bv._layout(conn) is None

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from html import escape
 
+from ..connectors import arduino_uno_r3 as _ard
 from ..core import board_desc as bd
 from ..core import pins
 
@@ -28,6 +29,14 @@ LABELS = {"free": "free", "used": "used", "conflict": "conflict (more than one u
 BG, BODY, TEXT, DIM, SELECT = "#1b1f27", "#262c38", "#d8dee9", "#8791a5", "#ffffff"
 
 CELL_W, BOX_H, GAP_Y, LABEL_H, MARGIN = 78.0, 46.0, 10.0, 22.0, 16.0
+ROW_EXTRA = 38.0     # caption above and role label below a row of a multi-header connector
+
+
+SUPPLY_ROLES = ("3V3", "5V", "VIN", "IOREF")     # roles of mikroBUS / Arduino supply pins (no pad expected)
+
+
+def _is_signal(role: str) -> bool:
+    return bd.is_signal_role(role) and role.upper() not in SUPPLY_ROLES
 
 
 def pin_states(conn: bd.Connector, usage: pins.PinUsage | None,
@@ -37,7 +46,7 @@ def pin_states(conn: bd.Connector, usage: pins.PinUsage | None,
     for key, p in conn.pins.items():
         users: list[dict] = []
         if not p.pad:
-            state = "other" if not bd.is_signal_role(p.role) else "unavailable"
+            state = "other" if not _is_signal(p.role) else "unavailable"
         else:
             uses = usage.uses.get(p.pad, []) if usage is not None else []
             users = [{"path": u.node, "use": f"{u.source}: {u.function}" + (f" ({u.state})" if u.state else "")}
@@ -58,6 +67,28 @@ def _rows_of(keys: list[str]) -> list[list[str]]:
     return [keys]
 
 
+def _layout(conn: bd.Connector) -> list[tuple[str, list[str]]] | None:
+    """(caption, pin keys) per drawn row for connector types that are several headers; None otherwise.
+
+    mikroBUS: two 1x8 rows (pins 1..8 with the 3.3 V pin, pins 9..16 with the 5 V pin). Arduino Uno R3:
+    the four headers power, analog, digital low, digital high. Pins the file has but the layout does
+    not know go to a last row so that nothing is hidden.
+    """
+    if conn.type == "mikrobus":
+        spec = [("Left row (3.3 V)", [str(i) for i in range(1, 9)]),
+                ("Right row (5 V)", [str(i) for i in range(9, 17)])]
+    elif conn.type == "arduino_uno_r3":
+        spec = [(_ard.HEADER_TITLES[k], list(keys)) for k, keys in _ard.HEADER_ROWS]
+    else:
+        return None
+    rows = [(cap, [k for k in keys if k in conn.pins]) for cap, keys in spec]
+    known = {k for _c, keys in rows for k in keys}
+    rest = [k for k in conn.pins if k not in known]
+    if rest:
+        rows.append(("Other pins", rest))
+    return [(cap, keys) for cap, keys in rows if keys]
+
+
 def _tooltip(conn: bd.Connector, key: str, st: dict) -> str:
     lines = [f"{conn.name} pin {key}" + (f"  {st['role']}" if st["role"] else "")
              + (f"  pad {st['pad']}" if st["pad"] else "") + f"  ({st['state']})"]
@@ -67,14 +98,45 @@ def _tooltip(conn: bd.Connector, key: str, st: dict) -> str:
     return "\n".join(lines)
 
 
+def _cell(conn: bd.Connector, key: str, st: dict, x: float, y: float, selected: str | None,
+          role_y: float, square: bool) -> str:
+    """One clickable pin box: key (top left), SoC pad (bold), connector role (above or below)."""
+    fill, stroke = COLORS[st["state"]]
+    sel = key == selected
+    w = CELL_W - 8
+    dash = ' stroke-dasharray="4 3"' if st["state"] == "unavailable" else ""
+    rx = 0 if square else 8                      # pin 1 has square corners
+    role = escape(bd.short_role(st["role"]))
+    pad = escape(st["pad"] or "-")
+    kk = escape(f"{conn.name}:{key}", quote=True)
+    return (
+        f'<g class="bpin" data-pin="{kk}" onclick="emitEvent(\'board_pin\', \'{kk}\')">'
+        f'<title>{escape(_tooltip(conn, key, st))}</title>'
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{BOX_H}" rx="{rx}" fill="{fill}" '
+        f'stroke="{SELECT if sel else stroke}" stroke-width="{2.4 if sel else 1}"{dash}/>'
+        f'<text x="{x + 6:.1f}" y="{y + 13:.1f}" font-size="10" fill="{TEXT}" opacity="0.75">{escape(key)}</text>'
+        f'<text x="{x + w / 2:.1f}" y="{y + 32:.1f}" text-anchor="middle" font-size="14" '
+        f'font-weight="bold" fill="{TEXT}">{pad}</text>'
+        f'<text x="{x + w / 2:.1f}" y="{role_y:.1f}" text-anchor="middle" font-size="11" fill="{DIM}">{role}</text>'
+        f'</g>')
+
+
 def connector_svg(conn: bd.Connector, states: dict[str, dict], selected: str | None = None) -> str:
     """SVG text of one connector. `selected` is a pin key."""
     keys = list(conn.pins)
-    rows = _rows_of(keys)
-    ncol = max(len(r) for r in rows) if rows else 1
+    layout = _layout(conn)
+    if layout:                                   # several headers: one captioned row per header
+        rows = [r for _c, r in layout]
+        ncol = max(len(r) for r in rows)
+        W = ncol * CELL_W + 2 * MARGIN
+        pitch = BOX_H + ROW_EXTRA
+        H = 2 * MARGIN + len(rows) * pitch
+    else:
+        rows = _rows_of(keys)
+        ncol = max(len(r) for r in rows) if rows else 1
+        W = ncol * CELL_W + 2 * MARGIN
+        H = 2 * MARGIN + 2 * LABEL_H + len(rows) * BOX_H + (len(rows) - 1) * GAP_Y
     two = len(rows) == 2
-    W = ncol * CELL_W + 2 * MARGIN
-    H = 2 * MARGIN + 2 * LABEL_H + len(rows) * BOX_H + (len(rows) - 1) * GAP_Y
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} {H:.0f}" width="100%" '
            f'style="max-width:{W * 1.25:.0f}px; background:{BG}; font-family: Consolas, monospace" '
            f'data-connector="{escape(conn.name, quote=True)}">',
@@ -82,29 +144,20 @@ def connector_svg(conn: bd.Connector, states: dict[str, dict], selected: str | N
            f'<rect x="{MARGIN / 2}" y="{MARGIN / 2}" width="{W - MARGIN:.1f}" '
            f'height="{H - MARGIN:.1f}" rx="6" fill="{BODY}" stroke="{DIM}"/>']
     for ri, row in enumerate(rows):
-        y = MARGIN + LABEL_H + ri * (BOX_H + GAP_Y)
+        if layout:
+            y = MARGIN + 16 + ri * pitch
+            out.append(f'<text x="{MARGIN + 4}" y="{y - 5:.1f}" font-size="11" fill="{TEXT}" '
+                       f'opacity="0.8">{escape(layout[ri][0])}</text>')
+        else:
+            y = MARGIN + LABEL_H + ri * (BOX_H + GAP_Y)
         for ci, key in enumerate(row):
-            st = states[key]
-            fill, stroke = COLORS[st["state"]]
-            sel = key == selected
-            x = MARGIN + ci * CELL_W + 4
-            w = CELL_W - 8
-            dash = ' stroke-dasharray="4 3"' if st["state"] == "unavailable" else ""
-            rx = 0 if key == "1" else 8                  # pin 1 has square corners
-            role = escape(bd.short_role(st["role"]))
-            ry = y + BOX_H + 14 if (two and ri == 1) else y - 6
-            pad = escape(st["pad"] or "-")
-            kk = escape(f"{conn.name}:{key}", quote=True)
-            out.append(
-                f'<g class="bpin" data-pin="{kk}" onclick="emitEvent(\'board_pin\', \'{kk}\')">'
-                f'<title>{escape(_tooltip(conn, key, st))}</title>'
-                f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{BOX_H}" rx="{rx}" fill="{fill}" '
-                f'stroke="{SELECT if sel else stroke}" stroke-width="{2.4 if sel else 1}"{dash}/>'
-                f'<text x="{x + 6:.1f}" y="{y + 13:.1f}" font-size="10" fill="{TEXT}" opacity="0.75">{escape(key)}</text>'
-                f'<text x="{x + w / 2:.1f}" y="{y + 32:.1f}" text-anchor="middle" font-size="14" '
-                f'font-weight="bold" fill="{TEXT}">{pad}</text>'
-                f'<text x="{x + w / 2:.1f}" y="{ry:.1f}" text-anchor="middle" font-size="11" fill="{DIM}">{role}</text>'
-                f'</g>')
+            if layout:
+                role_y = y + BOX_H + 14
+                square = conn.type == "mikrobus" and key in ("1", "9")
+            else:
+                role_y = y + BOX_H + 14 if (two and ri == 1) else y - 6
+                square = key == "1"
+            out.append(_cell(conn, key, states[key], MARGIN + ci * CELL_W + 4, y, selected, role_y, square))
     out.append("</svg>")
     return "".join(out)
 

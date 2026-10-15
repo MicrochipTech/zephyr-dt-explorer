@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 
+from typing import Mapping
+
 from ..core.plugins import API_VERSION, register_connector
 from . import fraction, hint_matches, is_gnd, is_vcc, normalize
 
@@ -21,12 +23,67 @@ _SPECIAL = {"D0": "UART_RX", "D1": "UART_TX", "D10": "SPI_SS", "D11": "SPI_MOSI"
 ROLES = {
     **{f"A{i}": "ANALOG" for i in range(6)},
     **{f"D{i}": _SPECIAL.get(f"D{i}", "GPIO") for i in range(16)},
-    "3V3": "3V3", "5V": "5V", "VIN": "VIN", "GND": "GND", "IOREF": "IOREF",
-    "RESET": "RESET", "AREF": "AREF",
+    "3V3": "3V3", "5V": "5V", "VIN": "VIN", "GND": "GND", "GND2": "GND", "GND3": "GND",
+    "IOREF": "IOREF", "RESET": "RESET", "AREF": "AREF",
 }
 _SIGNALS = [k for k in ROLES if k[0] in "AD" and k[1:].isdigit()]
 _HINT_PINS = {"D0": "RX", "D1": "TX", "D11": "MOSI", "D12": "MISO", "D13": "SCK",
               "D14": "SDA", "D15": "SCL"}
+
+# The four headers of the shield footprint; pin 1 of each header is the first entry. The label of a
+# header pin is the pin key of the merged connector (None = pin without a function in the standard).
+HEADER_LABELS = {
+    "power": [None, "IOREF", "RESET", "3V3", "5V", "GND", "GND2", "VIN"],
+    "analog": [f"A{i}" for i in range(6)],
+    "digital_low": [f"D{i}" for i in range(8)],
+    "digital_high": [f"D{i}" for i in range(8, 14)] + ["GND3", "AREF", "D14", "D15"],
+}
+HEADER_TITLES = {"power": "Power", "analog": "Analog", "digital_low": "Digital low",
+                 "digital_high": "Digital high"}
+HEADER_ROWS = [  # row layout for drawing: (kind, keys) in the order of the shield
+    ("power", ["IOREF", "RESET", "3V3", "5V", "GND", "GND2", "VIN"]),
+    ("analog", HEADER_LABELS["analog"]),
+    ("digital_low", HEADER_LABELS["digital_low"]),
+    ("digital_high", HEADER_LABELS["digital_high"]),
+]
+
+
+def header_kind(pins: Mapping) -> str | None:
+    """Which of the four headers a 1xN part is, from its pad -> net map; None if it is none of them.
+
+    Power: 8 pins, GND on pins 6 and 7, a supply net on pin 5. Analog: 6 pins. Digital high: 10 pins.
+    Digital low: 8 pins without any supply or ground net.
+    """
+    nets = {str(k).strip(): (str(v).strip().upper() if v else "") for k, v in pins.items()}
+    n = len(nets)
+    if set(nets) != {str(i) for i in range(1, n + 1)}:
+        return None
+    supply = [v for v in nets.values() if is_gnd(v) or is_vcc(v)]
+    if n == 8 and is_gnd(nets["6"]) and is_gnd(nets["7"]) and is_vcc(nets["5"]):
+        return "power"
+    if n == 8 and not supply:
+        return "digital_low"
+    if n == 6 and not supply:
+        return "analog"
+    if n == 10 and is_gnd(nets["7"]) and sum(map(bool, supply)) == 1:
+        return "digital_high"
+    return None
+
+
+def merge_headers(headers: Mapping[str, Mapping]) -> tuple[dict[str, str | None], dict[str, tuple[str, str]]]:
+    """Merge the four headers (kind -> pad -> net) into label -> net, plus label -> (kind, header pin).
+
+    Missing headers simply leave their labels out; `detect()` scores the result.
+    """
+    nets: dict[str, str] = {}
+    origin: dict[str, tuple[str, str]] = {}
+    for kind, pins in headers.items():
+        by_pad = {str(k).strip(): v for k, v in pins.items()}
+        for i, label in enumerate(HEADER_LABELS[kind], 1):
+            if label is not None and str(i) in by_pad:
+                nets[label] = by_pad[str(i)]
+                origin[label] = (kind, str(i))
+    return nets, origin
 
 
 @register_connector
