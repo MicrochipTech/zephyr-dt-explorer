@@ -604,7 +604,8 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.15 | done | 9e4a5d5 → master |
 | P8.16 | done | a09a65a → master |
 | P8.17 | done | 051c73d → master |
-| P8.18 | running | |
+| P8.18 | done (PASS, findings) | ba5a417 |
+| P8.18b | running | |
 | P8.19 | done (findings) | 73cfcbd |
 | P8.19b | done | b090b47 → master |
 | P8.19c | done (PASS) | 9acde91 |
@@ -748,6 +749,20 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 - Dep: P8.10b, P8.11, P8.19b. Scope: `docs/evidence/P8.18.md`.
 - Accept: `basic/blinky_pwm`, `drivers/adc/adc_dt` and one I2C sensor sample configured with the tool on SAME54
   (RTOS4) and ported to main pic32cx_sg41_cult; verify rc 0 on both; full build of each links.
+
+**P8.18b Fixes from the sample acceptance.**
+- Dep: P8.18. Scope: `core/port_report.py`, `ui/port.py` (option + report display), `core/board_nodes.py`,
+  `ui/board_nodes.py`, README.md, `docs/GUI.md`, tests (+ UI tests).
+- Do: (B2) Board nodes accept a PWM controller that the same draft enables; (B3) the port understands the `&{/} { … }`
+  form Board nodes writes (carries LEDs/aliases/chosen); (L1) Board nodes can add `zephyr,user` with `io-channels` (and
+  generic phandle-array entries) so `adc_dt` needs no hand edit; (decision in CONFIGURATOR.md) the port carries the
+  app's configuration by default and lists source-board configuration as "not ported (the target board's own
+  applies)", with an option "Include source board configuration" for the previous behaviour; (clocks) emit the
+  `&clock { gclkperiph/mclkperiph … }` entries the port already reports for instances the target board does not clock.
+- Accept: re-run the three P8.18 samples' port step: SG41 overlays contain only the sample's own configuration (no
+  tcc0/GMAC/ADC pad overrides from the SAME54 board), blinky_pwm's PWM LED + `pwm-led0` alias arrive, adc_dt needs no
+  hand edit, clocks emitted, all three verify rc 0 and link on SG41; the 8-port matrix with the option on gives the
+  P6.2b/P8.10b results; suite green.
 
 **P8.19 Acceptance: the user's SG41 scenario.** (addendum to input 11)
 - Dep: P8.7, P8.9, P8.12, P8.14, P8.15. Scope: `docs/evidence/P8.19.md`.
@@ -903,4 +918,5 @@ surprising, and anything you were unsure about.
 | P8.10b | [P8.10b.md](evidence/P8.10b.md) | consumer cells rewritten from the target controller's specifier names (lab1 → SG41: `&pwm_led0 { pwms = <&tcc0 2 20000000 0>; }`); `&usb0` listed as untranslatable; translatable nodes without a recipe listed as "translation exists, not ported" (rtc, dac); child `rename: name@unit` (DAC channel@0/@1) and `default:` (ADC prescaler 4) in translations; 9-run matrix verify rc 0. Port UI docs for the new lines → P8.20. 702 passed |
 | P8.19c | [P8.19c.md](evidence/P8.19c.md) | **PASS without hand corrections:** fresh SG41 blinky copy + UART SERCOM7 + bme280@76 on the board's sercom6 + GMAC/PHY (recipe API); overlay one marked block, sercom6 only with the bme280 child, current-speed prefilled, Apply hint `-p always`, no CONFIG_NET_TEST, dtx_devices only bme280; full build links (devices 49/89/91/92/112, dtx and eth/mdio init in nm); second Apply (57600) → still one block, rebuild links; Changes tab 10 dtx-badged + main.c. Builder follow-up: Kconfig suggestions skip the board's own children (no CONFIG_EEPROM for board EEPROMs) and are sorted (no reordering diff). Remaining note: GMAC identical to the board shows nothing in the overlay (backlog: "unchanged from the board" hint) |
 | P8.20 | [P8.20.md](evidence/P8.20.md) | README/GUI.md cover every phase 8 element (grep PASS, 64 image refs exist): Log/Changes tabs, PWM/ADC/GMAC, Other compatible, child devices, board nodes, append + `-p always`, Generate code, port consumer/untranslatable/not ported/remapped/version note; 12 live + 15 reused shots; CONFIGURATOR: DraftChild replaces "Child nodes follow later", phase 8 marked done with evidence links. Found: header wraps again at 1500 px since "Board nodes…" → backlog; other element crops in make_screenshots.py still assume a one-row header |
+| P8.18 | [P8.18.md](evidence/P8.18.md) | **PASS:** blinky_pwm (tcc3 WO0 PB16 + pwm-leds + alias), adc_dt (adc1 AIN6/7 PB04/PB05), bme280 (sercom5 PA23/PA22 + bme280@76) configured on SAME54 and ported to SG41: verify rc 0 and full builds link on both (6 builds). One hand addition (L1: `zephyr,user { io-channels }` not creatable). Bugs: B1 chosen prescaler replaced by the recipe default (regression from P8.19b) → builder fixed in render.py with a test that fails without it; B2 PWM LED only on already-enabled controllers; B3 port ignores `&{/}` blocks; port also carries the source board's configuration (tcc0/GMAC/adc pads) onto the target; clock entries only reported → card P8.18b + decision |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

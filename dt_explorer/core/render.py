@@ -207,14 +207,16 @@ def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, l
     group = None
     pairs = _signals(node, ctx) if node.pins and pins_changed else []
     sigs = [s for _, s in pairs]
+    derived: set = set()                                    # keys the recipe derives from the pads win
     if recipe is not None and pairs:
         assignment = {role: sig.role for role, sig in pairs}
         try:
-            props.update(recipe.derived_props(assignment))
+            dp = recipe.derived_props(assignment)
         except ValueError as exc:
             raise RenderError(f"{label}: {exc}") from exc
-    derived = set(props)
-    for k, v in node.vendor_props.items():
+        props.update(dp)
+        derived = set(dp)
+    for k, v in node.vendor_props.items():                  # a chosen value beats a recipe default
         if k not in derived and (base is None or k not in base.vendor_props or base.vendor_props[k] != v):
             props[k] = v
     children = node.children

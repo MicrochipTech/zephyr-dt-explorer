@@ -349,3 +349,26 @@ def test_children_keep_the_cells_the_node_already_has():
     assert text.count("#address-cells") == 1 and text.count("#size-cells") == 1
     nameless = DraftNode(cls="i2c", instance="SERCOM7", compatible="x", label="s", children=[DraftChild("n")])
     assert "#address-cells" not in render_overlay(nameless, RenderContext())     # no unit address, no cells
+
+
+def test_chosen_vendor_value_beats_recipe_default():
+    """P8.18 B1: a recipe default (e.g. PWM prescaler 8) must not replace the value the draft chose."""
+    from dt_explorer.core.draft import DraftNode
+    from dt_explorer.core.render import RenderContext, render_overlay
+
+    class _Recipe:
+        api_version = 1
+        name = "fake_defaults"
+        compatibles = ["vnd,fake-pwm"]
+        def default_props(self, compatible):
+            return {"prescaler": 8}
+        def derived_props(self, assignment):
+            return {}
+
+    from dt_explorer.core import plugins
+    plugins.register("recipe", _Recipe())
+    node = DraftNode(cls="pwm", label="pwm9", compatible="vnd,fake-pwm", vendor_props={"prescaler": 1})
+    out = render_overlay(node, RenderContext())
+    assert "prescaler = <1>;" in out and "prescaler = <8>;" not in out
+    node.vendor_props = {}
+    assert "prescaler = <8>;" in render_overlay(node, RenderContext())
