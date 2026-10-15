@@ -11,7 +11,7 @@ The window has three areas:
 | Area | Content |
 |---|---|
 | **Header** (top) | Build selection, reload, New build…, Full build, Port to board…, Legend |
-| **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Draft** (pending configurator changes) |
+| **Left panel** | Tabs: **Nodes** (the devicetree), **Include tree** (the source files), **Pins**, **Package** (the chip's pins), **Board** (the connectors), **Draft** (pending configurator changes) |
 | **Right panel** | Details of whatever is selected on the left; the overview when nothing is selected |
 
 ---
@@ -77,7 +77,7 @@ changing the app. **Cancel build** stops it.
 
 **Port to board…** takes the app of the current build and shows what it would look like on another
 board of the same app: the overlay and `.conf` lines for the target, and a report of what could not be
-carried over. The source build is not changed, and the dialog writes nothing into the app.
+carried over. The source build is not changed. Nothing is written into the app until you press **Apply to app…** and confirm (below).
 
 - **Target build**: a build of the same app for another board (the list shows only builds of a different
   board). **Create target build…** opens New build… for it; a cmake-only build is enough. Or type a build
@@ -96,15 +96,17 @@ The result has these parts:
 | 3. Node references in src/ that the target does not resolve | Each `DT_NODELABEL(...)` / `DT_ALIAS(...)` of the app that the target lacks, with a suggestion |
 | 4. Pins not available on the target SoC | Pins that the source uses but the target package does not have |
 | 5. Nodes without translation and not representable children | Nodes that have to be carried over by hand, and child nodes that the draft cannot represent yet |
+| 5b. App-defined nodes of the app overlay | Nodes that the app's overlay defines, and whether each is carried over to the target (`carried:`) |
+| 7. Connector roles of the used pads | For each connector pin that the port uses: the pin's role and pad on both boards, e.g. `EXT1 pin 16 (MOSI): PB27 on same54_xpro → PB24 on pic32cx_sg41_cult`, with the node that uses it. A pin is `not available` when its net does not reach the SoC. Needs a board description for both boards; without one the section is left out |
 
   Below the sections, **Fast check on the target build** lists the findings of the same check as in the
   Draft tab (section 11) on the ported overlay.
 
 ![Port report](img/port_report.png)
 
-The example ports lab1 (SAME54 Xplained Pro) to the PIC32CX SG61 test build in `_soltest`. The report
-lists the SERCOMs that have no counterpart there, the `DT_NODELABEL(my_led0)` of the app that the target
-does not define (with the alias suggestion), and the PB26/PB27/PB29 pins that are not on the TQFP128 package.
+The example ports lab0 (SAME54 Xplained Pro) to the PIC32CX SG41 Curiosity Ultra test build of lab0 (typed into the "or a build folder path" field, since it is not in the workspace). The first picture shows section 1 with three `conflict` nodes: `&sercom2` (its TX/RX pads PB25/PB24 are used by `&sercom0`, which the target board enables), `&sercom4` (the target board enables it as the UART console, so an SPI port would take it over) and `&sercom7` (SDA/SCL PD08/PD09 are used by `&sercom6`). Each conflict has a `suggestion:` line; the port does not remap pins itself. The second picture shows section 7 with the connector roles, and section 3 flags `DT_ALIAS(button0)` as missing because `/buttons/button_0` is not carried over yet.
+
+![Port result with conflicts and connector roles](img/port_result.png)
 
 - **Verify with west**: runs Zephyr's own check of the port on the target: a cmake-only build of the target
   board into a scratch folder with the target overlay and `.conf` (about 30 s). The target build is not
@@ -112,6 +114,35 @@ does not define (with the alias suggestion), and the PB26/PB27/PB29 pins that ar
   shown under the log.
 
 ![Verify with west on the target](img/port_verify.png)
+
+#### Conflicts with the target board
+
+When a node of the source would collide with the target board, the port does not emit it. Section 1 then shows a `conflict:` line per reason, a `not emitted; …` line and a `suggestion:` line. The status line counts them (`3 node(s) in conflict with the target board`). There are three kinds: (a) the target board enables the same node with another `compatible` (the target's `chosen` and `aliases` are named); (b) a pad the port needs is used by another enabled node of the target build; (c) a pad is not on the target package. A `DT_NODELABEL(...)` or `DT_ALIAS(...)` in `src/` that points at a conflicting node is listed in section 3 instead of resolving silently.
+
+The suggestions are text only. They name the target pads at the same connector pins, the instances that could mux those pads for the same roles, and the pads already in use. Choose instance and pads with **Configure…** in the Draft workflow (section 10); the port itself does not remap pins.
+
+#### Apply to app…
+
+**Apply to app…** appears below the fast check and **Verify with west**. It is the only action in this dialog that writes files, and it asks before it does:
+
+![Apply to app button](img/port_apply_button.png)
+
+1. **Plan** (shown after the click), one block per board file of the port result:
+   - **NEW**: the file does not exist in the app yet; it is written by **Write files**.
+   - **EXISTS**: the file exists and differs. The diff (existing file → port result) is shown; nothing is written unless **Replace the existing …** is ticked.
+   - **identical** (grey): the existing file already has this content; nothing is written.
+   - **SKIP (COMMENTS ONLY)**: the port result holds only comments, e.g. a `.conf` with no Kconfig lines; it is not written.
+2. **Write files** writes the files that are not skipped, and shows the result. The next step is the hint `west build -b <target board> <app>` (or **New build…** for a new build folder).
+
+![Apply plan for a new file](img/apply_plan_new.png)
+
+![Apply plan for an existing file, diff](img/apply_plan_diff.png)
+
+![Replace box ticked](img/apply_replace_ticked.png)
+
+![Result after Write files](img/apply_written.png)
+
+The file names follow Zephyr's board-file rules: `boards/<board>.overlay` and `boards/<board>.conf` when the target's `board.yml` lists exactly one SoC (true for both boards here), otherwise `boards/<board>_<qualifiers>` with `/` replaced by `_`. Zephyr finds these files on its own, so `west build -b <board>` uses them without extra options. Only `<app>/boards/` is written. The source build and `src/` are not touched, and applying to the source board itself is refused. The four plan and result pictures are from a test run on a copy of lab1 in the temp folder, because the button itself writes into the app.
 
 ---
 
@@ -346,6 +377,23 @@ the top left of a BGA; the numbering runs counter-clockwise.
 
 ---
 
+### 9.1 Left panel — tab **Board**
+
+![Board tab](img/board_same54.png)
+
+The connectors of the board as they sit on it. Each connector is drawn with its pins in two rows (odd pins above, even pins below, pin 1 at the top left). The example is the SAME54 Xplained Pro of lab1 (`apps/lab1/build_same54_xpro`): EXT1 uses SPI (MOSI, MISO, SCK) and the DAC, EXT2 and EXT3 use the I2C instance on PD08/PD09.
+
+- **Connector heading**: name, designator (e.g. `J401`), connector type, and the status of the entry, `reviewed` or `suggested`.
+- **Pin**: number, the role printed above or below it (e.g. `MOSI`, `SDA`), and the SoC pad behind it (e.g. `PB27`).
+- **Colour**: green = used by the devicetree, orange = conflict (more than one user), purple = draft (not built yet), grey = free, dark blue = supply / ID, and a dark tile = no SoC pad traced. The counts above the connectors give the totals (here `used: 8`).
+- **Click a pin**: below the board it shows the pin, its role and pad, the state, the nodes that use it (click a node to open it in the Nodes tab) and the possible functions of the pad. A pin that no node uses says so.
+
+The view needs a board description, `dt_explorer/boards/<board>.yaml`, for the build's board. Without one the tab says `No board description for '<board>'`. The same tab works for the other boards that have a description, e.g. the PIC32CX SG41 Curiosity Ultra build below.
+
+![Board tab of the SG41 Curiosity Ultra build](img/board_sg41_cult.png)
+
+---
+
 ## 10. Configurator — **Configure…** dialog
 
 ![Configure dialog](img/configure_dialog.png)
@@ -434,7 +482,7 @@ Every view can be opened directly, for example from slides or lab instructions:
 | `node` | `node=/my_led@41008000` | Select this node |
 | `macros=1` | | Expand the generated-macro section |
 | `bprops=1` | | Expand the table of all binding properties |
-| `tab` | `tab=pins` | Start on a tab: `include`, `pins`, `package` or `draft` (default: Nodes) |
+| `tab` | `tab=pins` | Start on a tab: `include`, `pins`, `package`, `board` or `draft` (default: Nodes) |
 | `file` | `file=zephyr\dts\arm\atmel\same5x.dtsi` | Select this file in the include tree |
 | `src`, `line` | `src=apps\lab3\boards\same54_xpro.overlay&line=20` | Open the source viewer |
 

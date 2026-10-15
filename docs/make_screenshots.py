@@ -32,6 +32,14 @@ REUSED = {
     "draft_verify_fail.png":  "P4.1_fail.png",         # Draft tab, Verify with west, rc 1
     "draft_write_dialog.png": "P4.1_write_dialog.png", # Write to app confirmation
     "port_verify.png":        "P5.4_verify.png",       # Port dialog, Verify with west on the target
+    # Port to board… > Apply to app…: the plan, the diff and the write run only on a button press (Apply is not
+    # clicked here: it would write into apps\). Copied from the P5.6 copy-run evidence (apps\lab1 copy in %TEMP%).
+    "apply_plan_new.png":     "P5.6_plan_new.png",          # plan: boards/sam_e54_xpro.overlay NEW
+    "apply_plan_diff.png":    "P5.6_plan_exists_diff.png",  # plan: existing file differs, diff shown
+    "apply_replace_ticked.png": "P5.6_replace_ticked.png",  # diff with "Replace the existing ..." ticked
+    "apply_written.png":      "P5.6_written.png",           # result after Write files, with the west hint
+    # Board tab of the SG41 CUlt build (root = the sg41 build folder); P7.4 run, no writes
+    "board_sg41_cult.png":    "P7.4_sg41_cult.png",
 }
 CUT_OLD_HEADER = {"draft_verify_ok.png", "draft_verify_fail.png"}   # Draft tab shots with the old header
 WS = Path(os.environ.get("DTX_RTOS4_WS", r"C:\Masters\26020_RTOS4\zephyrproject"))
@@ -56,6 +64,7 @@ SHOTS = {  # name -> (query, width, height)
                      + "&bprops=1", 1500, 1200),
     "node_nobinding": ("build=apps/lab3/build_same54_xpro&node="
                        + quote("/soc/sercom@43000c00/eeprom@5e", safe=""), 1500, 700),
+    "board_same54": (LAB1 + "&tab=board", 1500, 1000),
     "pins_tab":     (LAB1 + "&tab=pins", 1500, 1000),
     "package_tab":  (LAB1 + "&tab=package", 1500, 1000),
 }
@@ -163,9 +172,18 @@ def extra_ui_shots(base):
         pg.screenshot(path=IMG / "edit_pins_dialog.png")
         pg.locator("#cfg-dialog").get_by_role("button", name="Cancel").click()
 
-        pg.goto(f"{base}?{LAB1}")
+        # Source lab0 and target = the SG41 CUlt build of lab0 from the P6.2 run (outside the workspace, so typed
+        # into "or a build folder path"). It gives the conflict lines and suggestions of P6.3 in the report.
+        target = os.environ.get("DTX_PORT_TARGET", str(Path(tempfile.gettempdir()) / "dtx_p62_lab0_pic32cx_sg41_cult"))
+        pg.goto(f"{base}?build=apps/lab0/build_same54_xpro")
         pg.locator("#port-open").click()
         pg.locator("#port-dialog").wait_for(state="visible")
+        if Path(target).is_dir():
+            pg.locator(".q-dialog [aria-label=Clear]").first.click()     # empty the dropdown, so the screenshot shows one target
+            pg.get_by_label("or a build folder path").fill(target)
+            pg.keyboard.press("Tab")
+        else:
+            print("WARNING: target build not found, the dropdown default is used:", target)
         pg.wait_for_timeout(800)
         pg.screenshot(path=IMG / "port_dialog.png")
         pg.locator("#port-run").click()
@@ -174,9 +192,14 @@ def extra_ui_shots(base):
                              timeout=300000)
         pg.wait_for_timeout(800)
         pg.locator("#port-report").screenshot(path=IMG / "port_report.png")
+        pg.locator("#port-dialog").screenshot(path=IMG / "port_result.png")
+        pg.locator("#port-apply").scroll_into_view_if_needed()     # the "Apply to app…" button, scrolled into view; not clicked
+        pg.wait_for_timeout(300)
+        pg.locator("#port-dialog").screenshot(path=IMG / "port_apply_button.png")
         pg.locator("#port-close").click()
         br.close()
-        print(name, (IMG / f"{name}.png").exists())
+        for name in ("port_dialog", "port_report", "port_result", "port_apply_button"):
+            print(name, (IMG / f"{name}.png").exists())
 
 
 def copy_reused():
