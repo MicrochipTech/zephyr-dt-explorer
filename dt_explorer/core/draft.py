@@ -137,6 +137,8 @@ class Draft:
         nodes = []
         for node in self.nodes:
             n = asdict(node)
+            n["props"] = _enc(node.props)               # asdict() would turn a Ref into {"label": ...}
+            n["vendor_props"] = _enc(node.vendor_props)
             n["children"] = [c.to_dict() for c in node.children]
             nodes.append({k: n[k] for k in _NODE_ORDER})
         return {"version": self.version, "build": self.build, "nodes": nodes}
@@ -150,6 +152,8 @@ class Draft:
         for n in d.get("nodes", []):
             n = dict(n)
             n["use"] = Use(**(n.get("use") or {}))
+            n["props"] = _dec(n.get("props") or {})
+            n["vendor_props"] = _dec(n.get("vendor_props") or {})
             n["children"] = [DraftChild.from_dict(c) for c in n.get("children") or []]   # absent in version 1
             nodes.append(DraftNode(**n))
         # a version 1 file is migrated on load: saving it writes the current version

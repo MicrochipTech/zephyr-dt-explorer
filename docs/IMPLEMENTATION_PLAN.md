@@ -590,7 +590,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.3 | done | 75e8539 |
 | P8.4 | done | 5973097 |
 | P8.5 | done | 31faf5d → master |
-| P8.6 | open | |
+| P8.6 | done | a8a99af → master |
 | P8.7 | open | |
 | P8.8 | open | |
 | P8.9 | done | 63540ae |
@@ -858,4 +858,5 @@ surprising, and anything you were unsure about.
 | P8.13b | [P8.13b.md](evidence/P8.13b.md) | append is the default for an existing file (Draft tab and port dialog): marked block `/* dt_explorer draft begin <date> */ … end */`, re-apply replaces only the block, identical → skip; conf lines appended once in a marked block, duplicates skipped; replace behind the tick with its own diff. lab1 copy: my_led kept + sercom1 I2C appended, full build links, `__device_dts_ord_3` (my_led) and `_40` (sercom1) in nm; #include inside the block works (cpp). 457 passed |
 | P8.9 | [P8.9.md](evidence/P8.9.md) | GMAC recipe (old `atmel,sam0-gmac`/`atmel,sam-mdio`, g1 `microchip,gmac-g1-eth`/`-mdio`): two draft nodes (MAC with `phy-handle`, MDIO with `ethernet-phy@0` child); main SG41: 8 RMII pads automatic (PA12–15, PA17–19, PC20), MDC/MDIO PC22/PC23 chosen (PB14/15 used by TC5 PWM), render + validate + Verify rc 0; Kconfig NETWORKING, NET_L2_ETHERNET, ETH_DRIVER + g1 driver/MDIO symbols (prompted only); lab1 lift → render compare 2/2. Agent stopped once (§4: lift could not hold node-level phandles; test_lift fixture lacks GMAC) → builder widened the scope to core/lift.py + tests/test_lift.py. 521 passed |
 | P8.15 | [P8.15.md](evidence/P8.15.md) | Changes tab (tab=changes): git status --porcelain of the app folder, diffs in the source viewer (untracked as whole-file added), `dtx` badge on tool-written files, Refresh on demand with time/branch/HEAD; no repo / no git → message; read-only git commands only (spy test). The RTOS4 apps are not in a git repo. 514 passed |
+| P8.6 | [P8.6.md](evidence/P8.6.md) | "Add child device…" for I2C/SPI: compatibles by `on-bus` (bus-aware binding lookup for bme280 -i2c/-spi), address/CS index, generic props, GPIO pads (int/reset/cs-gpios); board children shown read-only; Kconfig incl. child drivers (CONFIG_BME280). lab1_leer copy: SERCOM1 I2C + bme280@76 and SERCOM5 SPI + bmi160@0 with cs-gpios → validate clean, Verify rc 0; checks `bus_address_duplicate`, `spi_cs_missing`, pinctrl+GPIO on one pad → errors, each shown to disappear when fixed. 507 passed. Builder fix: `Draft.to_dict/from_dict` encode node-level `Ref` values (asdict() stored them as {"label": …}) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
