@@ -594,7 +594,8 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.7 | done | 5a881e4 → master |
 | P8.8 | done | 66a4ba0 + b497106 |
 | P8.9 | done | 63540ae |
-| P8.10 | running | |
+| P8.10 | done | d6147f0 |
+| P8.10b | running | |
 | P8.11 | done | fc3e933 → master |
 | P8.12 | done | 2396f4b → master |
 | P8.13 | done | 50d1ad1 → master |
@@ -679,6 +680,17 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 - Accept: TC, TCC, ADC, GMAC (and the others P8.3 marks translatable) translate and load in main's edtlib against
   pic32cx_sg41; CAN and USB are listed as untranslatable in the port report.
 
+**P8.10b Port: consumer cells and untranslatable SoC nodes.**
+- Dep: P8.10. Scope: `core/port_report.py`, `core/translate.py` (child rename/reg + default for missing source
+  properties only), `dt_explorer/translations/` (use the new features), tests.
+- Why (P8.10): consumers' `pwms` cells are not rewritten when `#pwm-cells` goes 2→3 (blinky_pwm / pwm-leds would
+  break); enabled SoC nodes without a recipe (e.g. `usb0`) are not looked up in the translations, so USB/CAN never
+  appear as untranslatable; a child cannot be renamed (DAC `channel_0` → `channel@0`); a property the source lacks
+  cannot be defaulted (ADC `prescaler`).
+- Accept: lab1 → SG41: the board's `pwm-leds` consumer of `tcc0` gets three cells in the overlay (or is reported with
+  the exact fix when the consumer is not ported); `usb0` listed as untranslatable with the reason; DAC children renamed;
+  ADC prescaler defaulted when missing; verify rc 0; suite green.
+
 **P8.11 Check rules: pin function and channel clashes.** (input 6)
 - Dep: P8.6, P8.8. Scope: `core/validate.py`, tests.
 - Accept: analog pin used as digital (and vice versa) → warning; two ADC channels on one input or two PWM users of one
@@ -733,7 +745,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 - Accept: lab1 → SG41: EXT1 SPI remapped where a free instance exists, otherwise still `conflict`; verify rc 0.
 
 **P8.18 Acceptance: Zephyr samples.** (input 7)
-- Dep: P8.10, P8.11. Scope: `docs/evidence/P8.18.md`.
+- Dep: P8.10b, P8.11, P8.19b. Scope: `docs/evidence/P8.18.md`.
 - Accept: `basic/blinky_pwm`, `drivers/adc/adc_dt` and one I2C sensor sample configured with the tool on SAME54
   (RTOS4) and ported to main pic32cx_sg41_cult; verify rc 0 on both; full build of each links.
 
@@ -884,4 +896,5 @@ surprising, and anything you were unsure about.
 | P8.8 | [P8.8.md](evidence/P8.8.md) | PWM recipe (TCC WO0–7, TC WO0–1; `#pwm-cells` 2 old / 3 g1; prescaler suggested) and ADC recipe (AIN roles → `channel@N` with `zephyr,input-positive`; g1 prescaler required): SAME54 tcc1/tc2 + adc1 and SG41 tcc2/tc1 + adc1 render, validate, Verify rc 0; lift of same54_xpro tcc0/adc0 compares equal. P8.8 broke 9 tests and showed integration gaps → builder widened the card: P8.8b fixes the tests, offers "Other compatible (generic form)" (TC counter), hides `#…-cells`, prefers the node's own compatible family in all recipes (SG41 → g1 first, also SERCOM), picks the role-matching signal on multi-signal pads (ADC0 on SAME54 now renders, Verify rc 0). 602 passed |
 | P8.11 | [P8.11.md](evidence/P8.11.md) | rules: `analog_digital_pad` (ADC channel input pad used digitally, warning), `adc_channel_duplicate` (error), `pwm_channel_duplicate` (error, e.g. second user of tcc0 channel 2 next to the board's pwm_led_0), `interrupt_line_shared` (interrupt GPIOs on one EXTINT line, warning); each positive/corrected and broken once (tests fail). One existing test's pad moved PB15 → PB12 because the new warning is intended (builder accepted). Classification tables with ATDF group names live in validate.py → backlog (move to the provider). 641 passed |
 | P8.19 | [P8.19.md](evidence/P8.19.md) | SG41 blinky copy (git baseline) + UART SERCOM7 (PC12/PC13) + bme280@76 on the board's I2C SERCOM6 (mikroBUS SDA/SCL) + GMAC/PHY (already on the board); Apply, Generate code, CMakeLists confirm, prj.conf via browser; final build links (devices 49/118/89–92, dtx functions in nm), Changes tab 17 files (16 dtx-badged). **Needed 2 hand corrections** → tool bugs: Kconfig walk follows negated deps (`CONFIG_NET_TEST=y` disables Ethernet); UART without `current-speed` fails in C; second Apply of a new file duplicates the draft (no markers on first write); plus re-emitted board I2C node with EEPROMs, codegen modules for board children (EEPROM as sensor), Apply hint lacks `-p always` → fix card P8.19b, re-run P8.19c |
+| P8.10 | [P8.10.md](evidence/P8.10.md) | 11 new translation entries (TC counter/PWM, TCC PWM, ADC, DAC, GMAC, MDIO, RTC, WDT, DMAC, TRNG; counts = table rows) loaded in main's edtlib against pic32cx_sg41; CAN/USB/GMAC wrapper `no_target`; negative tests (`#pwm-cells` 2, no prescaler, no refsel) fail in edtlib; lab1 → SG41: adc0 identical, tcc0/gmac/mdio emitted (were no_translation), verify rc 0; fixed unquoted base-group names split at commas. Gaps → card P8.10b: consumer `pwms` cells, uncovered SoC nodes not looked up (usb0), child rename, defaults for missing props. 668 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
