@@ -604,7 +604,9 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.16 | done | a09a65a → master |
 | P8.17 | done | 051c73d → master |
 | P8.18 | open | |
-| P8.19 | open | |
+| P8.19 | done (findings) | 73cfcbd |
+| P8.19b | running | |
+| P8.19c | open | |
 | P8.20 | open | |
 
 **P8.1 Log tab and log file.** (input 14)
@@ -741,6 +743,23 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
   GMAC + PHY with the tool; Apply writes `boards/…overlay/.conf`, `prj.conf` lines and `dtx_devices/`; full build
   links; the Changes tab lists exactly the written files; not tested on hardware.
 
+**P8.19b Fixes from the SG41 scenario.**
+- Dep: P8.19. Scope: `core/kconfig_suggest.py`, `recipes/atmel_sam0_sercom.py`, `core/apply.py`, `ui/draft_tab.py`,
+  `ui/port.py` (Apply hint only), `core/codegen.py`, `core/render.py` and/or `ui/configure.py` (only for item 5),
+  their tests (+ UI tests).
+- Do: (1) the Kconfig dependency walk follows only positive dependencies (no symbols under `!`), so `ethernet-phy` no
+  longer suggests `CONFIG_NET_TEST=y`; a regression test with ETH_DRIVER; (2) UART drafts always carry `current-speed`
+  (default 115200, both ports; the field is shown as required); (3) the first Apply of a new file writes the marked
+  block too, so a second Apply replaces it instead of appending a copy; (4) the Apply result says to build with
+  `-p always` when the build folder was configured before the overlay existed (or always mention it); (5) editing an
+  enabled bus node (Edit pins / Add child) emits only what the draft changes or adds — board-defined children and
+  unchanged board properties are not re-emitted; (6) codegen generates modules only for draft-added devices (not for
+  board children) and classes a device as sensor only if its driver uses the sensor API.
+- Accept: each item has a test that fails without the fix; suite green.
+
+**P8.19c Acceptance re-run of the SG41 scenario.** Scope: `docs/evidence/P8.19c.md`, screenshots. Same scenario as P8.19,
+with no hand corrections: the build links with exactly what the tool wrote.
+
 **P8.20 Phase 8 docs and CONFIGURATOR sync.** *light*
 - Dep: all other phase 8 cards. Scope: README.md, `docs/GUI.md`, `docs/CONFIGURATOR.md` (status notes),
   `docs/make_screenshots.py`, `docs/img/`.
@@ -864,4 +883,5 @@ surprising, and anything you were unsure about.
 | P8.14 | [P8.14.md](evidence/P8.14.md) | "Generate code": `dtx_devices/` (CMakeLists, include/dtx_devices.h with dtx_devices_init(), dtx_bme280_76.h/.c with read/get/init; channels from the driver's channel_get incl. header-defined DT_DRV_COMPAT fallback), header + checksum per file; CMakeLists `add_subdirectory(dtx_devices)` only after diff + confirm; prj.conf block (`plan/apply_prj_conf`); lab1_leer copy with a test main.c links, `west build -p always` too; hand-edited file → nothing written, diff shown; src/ untouched. Builder fixes for the 3 red tests: stale `{"label"}` assertion in test_ui_child; `kconfig_suggest` sets other workspaces' `devicetree` modules aside while loading Kconfig (order-dependent `_LocalProps`). Full suite 591 passed |
 | P8.8 | [P8.8.md](evidence/P8.8.md) | PWM recipe (TCC WO0–7, TC WO0–1; `#pwm-cells` 2 old / 3 g1; prescaler suggested) and ADC recipe (AIN roles → `channel@N` with `zephyr,input-positive`; g1 prescaler required): SAME54 tcc1/tc2 + adc1 and SG41 tcc2/tc1 + adc1 render, validate, Verify rc 0; lift of same54_xpro tcc0/adc0 compares equal. P8.8 broke 9 tests and showed integration gaps → builder widened the card: P8.8b fixes the tests, offers "Other compatible (generic form)" (TC counter), hides `#…-cells`, prefers the node's own compatible family in all recipes (SG41 → g1 first, also SERCOM), picks the role-matching signal on multi-signal pads (ADC0 on SAME54 now renders, Verify rc 0). 602 passed |
 | P8.11 | [P8.11.md](evidence/P8.11.md) | rules: `analog_digital_pad` (ADC channel input pad used digitally, warning), `adc_channel_duplicate` (error), `pwm_channel_duplicate` (error, e.g. second user of tcc0 channel 2 next to the board's pwm_led_0), `interrupt_line_shared` (interrupt GPIOs on one EXTINT line, warning); each positive/corrected and broken once (tests fail). One existing test's pad moved PB15 → PB12 because the new warning is intended (builder accepted). Classification tables with ATDF group names live in validate.py → backlog (move to the provider). 641 passed |
+| P8.19 | [P8.19.md](evidence/P8.19.md) | SG41 blinky copy (git baseline) + UART SERCOM7 (PC12/PC13) + bme280@76 on the board's I2C SERCOM6 (mikroBUS SDA/SCL) + GMAC/PHY (already on the board); Apply, Generate code, CMakeLists confirm, prj.conf via browser; final build links (devices 49/118/89–92, dtx functions in nm), Changes tab 17 files (16 dtx-badged). **Needed 2 hand corrections** → tool bugs: Kconfig walk follows negated deps (`CONFIG_NET_TEST=y` disables Ethernet); UART without `current-speed` fails in C; second Apply of a new file duplicates the draft (no markers on first write); plus re-emitted board I2C node with EEPROMs, codegen modules for board children (EEPROM as sensor), Apply hint lacks `-p always` → fix card P8.19b, re-run P8.19c |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
