@@ -113,3 +113,40 @@ def test_other_files_untouched(tmp_path):
 def test_missing_app_dir(tmp_path):
     with pytest.raises(ap.ApplyError):
         ap.plan_apply(tmp_path / "nope", "b", OVL, CONF)
+
+
+# ---- draft_plan (Draft tab "Apply to app", P8.13) ------------------------------------------------
+def _own_board(monkeypatch, target="same54_xpro/same54p20a", single=True):
+    monkeypatch.setattr(ap, "target_of", lambda build: (target, single))
+
+
+def test_draft_plan_new_files(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    plan = ap.draft_plan(tmp_path / "build", OVL, CONF, app_dir=tmp_path)
+    assert plan.stem == "same54_xpro"
+    assert [(f.kind, f.action) for f in plan.files] == [("overlay", "new"), ("conf", "new")]
+    res = ap.apply(plan)
+    assert (tmp_path / "boards" / "same54_xpro.overlay").read_text() == OVL
+    assert (tmp_path / "boards" / "same54_xpro.conf").read_text() == CONF
+    assert len(res.written) == 2
+
+
+def test_draft_plan_existing_own_overlay_is_refused_with_draft_diff(tmp_path, monkeypatch):
+    _own_board(monkeypatch)
+    (tmp_path / "boards").mkdir()
+    own = tmp_path / "boards" / "same54_xpro.overlay"
+    OWN = "/ { own; };\n"
+    own.write_text(OWN)
+    plan = ap.draft_plan(tmp_path / "build", OVL, "", app_dir=tmp_path)
+    fp = plan.file("overlay")
+    assert fp.action == "exists" and "(draft)" in fp.diff and "(port result)" not in fp.diff
+    assert plan.file("conf").comment_only
+    res = ap.apply(plan)
+    assert res.refused == [own] and own.read_text() == OWN
+    res = ap.apply(plan, overwrite={"overlay"})
+    assert res.overwritten == [own] and own.read_text() == OVL
+
+
+def test_draft_plan_multi_soc_uses_long_name(tmp_path, monkeypatch):
+    _own_board(monkeypatch, "alpha/soc/cpu0", False)
+    assert ap.draft_plan(tmp_path / "b", OVL, CONF, app_dir=tmp_path).stem == "alpha_soc_cpu0"

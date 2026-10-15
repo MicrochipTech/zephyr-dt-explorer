@@ -9,6 +9,7 @@ import queue
 
 from nicegui import run, ui
 
+from ..core import apply as apply_mod
 from ..core import verify as verify_mod
 from ..core.render import RenderError
 
@@ -191,13 +192,16 @@ def _render_verify(session, overlay_text: str, conf_text: str) -> None:
     vbtn.on_click(run_verify)
 
     with ui.row().classes("items-center gap-2"):
-        ui.label("Write to app").classes("font-bold")
+        ui.label("Write to app (extra files)").classes("font-bold")
         wbtn = ui.button("Write to app", icon="save").props("flat dense no-caps id=draft-write")
         wstatus = ui.label().classes("text-xs text-grey-5").props("id=draft-write-status")
     ui.label(f"Writes {verify_mod.OVERLAY_NAME} and {verify_mod.CONF_NAME} into the app folder ({app}). "
              "Zephyr only reads them if the app's CMakeLists.txt or your west command refers to them, "
              f"e.g. west build -- -DEXTRA_DTC_OVERLAY_FILE={verify_mod.OVERLAY_NAME} "
-             f"-DEXTRA_CONF_FILE={verify_mod.CONF_NAME}").classes("text-xs text-grey-5")
+             f"-DEXTRA_CONF_FILE={verify_mod.CONF_NAME}. "
+             "Use \"Apply to app\" below instead if the app should simply build with the draft.") \
+        .classes("text-xs text-grey-5")
+    _render_apply(build, overlay_text, conf_text)
 
     def do_write(dlg) -> None:
         dlg.close()
@@ -223,3 +227,94 @@ def _render_verify(session, overlay_text: str, conf_text: str) -> None:
         dlg.open()
 
     wbtn.on_click(ask_write)
+
+
+def apply_app_dir(build):
+    """App folder that "Apply to app" writes into (the build's APPLICATION_SOURCE_DIR)."""
+    return apply_mod.app_dir_of(build)
+
+
+def _render_apply(build, overlay_text: str, conf_text: str) -> None:
+    """'Apply to app': the draft as boards/<board>.overlay / .conf of the build's own board.
+
+    Same flow as in the port dialog: plan (new / exists + diff), explicit "replace" tick, write.
+    """
+    ui.separator()
+    with ui.row().classes("items-center gap-2"):
+        ui.label("Apply to app").classes("font-bold")
+        abtn = ui.button("Apply to app…", icon="save").props("flat dense no-caps id=draft-apply") \
+            .props('title="write boards/<board>.overlay and .conf for the board of this build; '
+                   'new files only, an existing file is shown as a diff"')
+    ui.label("Writes the draft as boards/<board>.overlay and boards/<board>.conf for the board of this build. "
+             "Zephyr picks these files up by itself, so a plain west build -b <board> uses the draft with no "
+             "extra options (unlike \"Write to app\" above). Only new files are created; if the app already has "
+             "such a file (its own board overlay), you see a diff and nothing changes unless you tick "
+             "\"Replace\".").classes("text-xs text-grey-5")
+    box = ui.column().classes("w-full gap-2").props("id=draft-apply-box")
+
+    def show_plan() -> None:
+        box.clear()
+        try:
+            app = apply_app_dir(build)
+            plan = apply_mod.draft_plan(build, overlay_text, conf_text, app_dir=app)
+        except apply_mod.ApplyError as exc:
+            with box:
+                ui.label(f"Cannot apply: {exc}").classes("text-sm text-red-4").props("id=draft-apply-error")
+            return
+        checks: dict[str, ui.checkbox] = {}
+        with box:
+            ui.label(f"App: {plan.app_dir}   board: {plan.board_target}").classes("text-xs font-mono") \
+                .props("id=draft-apply-app")
+            for fp in plan.files:
+                with ui.column().classes("w-full gap-1").props(f"id=draft-apply-{fp.kind}"):
+                    color = {"new": "text-green-4", "exists": "text-orange-4"}.get(fp.action, "text-grey-5")
+                    ui.label(f"{fp.action.upper()}: {fp.path}").classes(f"text-sm font-mono {color}")
+                    if fp.comment_only:
+                        ui.label(f"The {fp.kind} is empty or holds only comments (nothing to apply); "
+                                 "it is not written.").classes("text-xs text-grey-5")
+                    if fp.note:
+                        ui.label(fp.note).classes("text-xs text-orange-4")
+                    if fp.identical:
+                        ui.label("The existing file already has this content.").classes("text-xs text-grey-5")
+                    if fp.diff:
+                        ui.label("Diff: existing file -> draft. This is the app's own file: replacing it drops "
+                                 "whatever the draft does not contain. Nothing is written unless you tick the "
+                                 "box.").classes("text-xs text-orange-4")
+                        ui.code(fp.diff, language="diff").classes("w-full text-xs") \
+                            .props(f"id=draft-apply-diff-{fp.kind}")
+                        checks[fp.kind] = ui.checkbox(f"Replace the existing {fp.path.name}") \
+                            .props(f"dense id=draft-apply-replace-{fp.kind}")
+            writable = [f for f in plan.files if not (f.comment_only or f.identical)]
+            res_label = ui.label().classes("text-sm font-mono").props("id=draft-apply-result")
+            res_label.style("white-space: pre-wrap")
+            res_label.set_visibility(False)
+            with ui.row().classes("items-center gap-2"):
+                go = ui.button("Write files", icon="check").props("no-caps id=draft-apply-confirm")
+                go.set_enabled(bool(writable))
+                ui.button("Cancel", icon="close", on_click=box.clear).props("flat no-caps id=draft-apply-cancel")
+            if not writable:
+                ui.label("Nothing to write.").classes("text-sm text-grey-5")
+
+            def do_write() -> None:
+                ow = {k for k, c in checks.items() if c.value}
+                try:
+                    res = apply_mod.apply(plan, overwrite=ow)
+                except (apply_mod.ApplyError, OSError) as exc:
+                    res_label.text = f"Write failed: {exc}"
+                    res_label.classes(replace="text-sm font-mono text-red-4")
+                    res_label.set_visibility(True)
+                    return
+                lines = res.lines()
+                if res.written or res.overwritten:
+                    lines.append(f"Next: west build -b {plan.board_target} {plan.app_dir}")
+                res_label.text = "\n".join(lines)
+                res_label.classes(replace="text-sm font-mono " + ("text-green-4" if res.written or res.overwritten
+                                                                  else "text-orange-4"))
+                res_label.set_visibility(True)
+                go.set_enabled(False)
+                ui.notify("Board files written." if res.written or res.overwritten else "Nothing was written.")
+
+            go.on_click(do_write)
+
+    abtn.on_click(show_plan)
+

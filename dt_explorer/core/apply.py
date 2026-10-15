@@ -164,8 +164,10 @@ def _norm(text: str) -> str:
 
 # ---- plan and apply ------------------------------------------------------------------------------
 def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, *,
-               single_soc: bool = True, source_board: str | None = None) -> ApplyPlan:
-    """What ``apply`` would do. Reads the app folder, writes nothing."""
+               single_soc: bool = True, source_board: str | None = None,
+               new_label: str = "port result") -> ApplyPlan:
+    """What ``apply`` would do. Reads the app folder, writes nothing. `new_label` names the new content in
+    the diff header (the Draft tab passes ``"draft"``)."""
     app = Path(app_dir)
     if not app.is_dir():
         raise ApplyError(f"app folder not found: {app}")
@@ -197,7 +199,7 @@ def plan_apply(app_dir: Path | str, target_board: str, overlay: str, conf: str, 
             if not fp.identical:
                 fp.diff = "".join(difflib.unified_diff(
                     old.splitlines(keepends=True), new.splitlines(keepends=True),
-                    fromfile=f"{fp.path} (existing)", tofile=f"{fp.path.name} (port result)"))
+                    fromfile=f"{fp.path} (existing)", tofile=f"{fp.path.name} ({new_label})"))
                 if fp.diff and not fp.diff.endswith("\n"):
                     fp.diff += "\n"
         plan.files.append(fp)
@@ -241,3 +243,14 @@ def plan_lines(plan: ApplyPlan) -> list[str]:
         if fp.diff:
             out += ["      " + ln for ln in fp.diff.rstrip("\n").splitlines()]
     return out
+
+
+def draft_plan(build_dir: Path | str, overlay: str, conf: str, *, app_dir: Path | str | None = None) -> ApplyPlan:
+    """Plan for writing a draft as the board files of the build's OWN board (Draft tab "Apply to app").
+
+    The app is the build's ``APPLICATION_SOURCE_DIR`` unless `app_dir` is given (tests apply to a copy).
+    There is no source board: the files belong to the board the build was configured for.
+    """
+    board, single = target_of(build_dir)
+    app = Path(app_dir) if app_dir is not None else app_dir_of(build_dir)
+    return plan_apply(app, board, overlay, conf, single_soc=single, new_label="draft")

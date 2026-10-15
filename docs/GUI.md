@@ -468,6 +468,20 @@ files only if the app's `CMakeLists.txt` or your west command refers to them, fo
 
 ![Write to app confirmation](img/draft_write_dialog.png)
 
+### 11.2 Apply to app… (the build's own board)
+
+**Apply to app…** (below Write to app, `id=draft-apply`) writes the draft as `boards/<board>.overlay` and
+`boards/<board>.conf` of the app, for the board this build was configured for. Zephyr picks these files up by itself, so
+a plain `west build -b <board> <app>` uses the draft without extra options. This is the difference to **Write to app**,
+which writes `dt_explorer.overlay`/`.conf` that you must hand to west yourself. The file name follows Zephyr's rule
+(the short name `<board>` for a single-SoC board, else `<board>_<soc>…`), the same as in the port dialog.
+
+The button first shows a plan, per file `NEW`, `EXISTS`, `IDENTICAL` or a note that the `.conf` is empty. Only new files
+are written. If the app already has the file (apps usually have their own `boards/<board>.overlay`), you see a diff
+existing file -> draft and nothing changes unless you tick **Replace the existing …**; replacing drops everything the
+draft does not contain. **Write files** (`id=draft-apply-confirm`) then writes; the result lines end with the west
+command for the next build. `src/` and other files are never touched.
+
 The Draft tab opens by itself after Save. Use `tab=draft` in a link to open it directly.
 
 ---
