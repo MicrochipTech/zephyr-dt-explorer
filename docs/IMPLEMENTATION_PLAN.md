@@ -375,7 +375,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.3 | done | cb820bd → master |
 | P5.4 | open | |
 | P5.6 | open | |
-| P5.7 | open | |
+| P5.7 | done | fcea955 → master |
 | P5.5 | open | |
 
 **P5.0 Research: binding pairs `atmel,sam0-*` ↔ `microchip,*-g1`.** *light* (read-only research).
@@ -561,4 +561,5 @@ surprising, and anything you were unsure about.
 | P1.7 | [P1.7.md](evidence/P1.7.md) | 9 geometry tests (pin 1 left/top, 32 per side, pin 33 first on bottom, BGA A1 top-left, TFBGA120 15×15 rows A–R without I/O/Q); screenshots TQFP128/TFBGA120 checked by the builder (pin 100 = PB24, PC18 conflict orange). Builder follow-up: conftest keeps built-in plugins that were first imported during a test; full suite 281 passed, 4 skipped |
 | P6.1 | [P6.1.md](evidence/P6.1.md) | lab1 (86 nodes, v4.3.0) and main pic32cx_sg41_cult hello_world (111 nodes, 4.5.0-rc1) open together in both orders; lab1 still equals its golden; no `devicetree*` left in sys.modules/sys.path; validate() works on both. `kconfig_suggest.py` still patches sys.path itself (main builds not covered there). Full suite 286 passed, 0 skipped (all three env vars). Builder re-run of test_model_host passed |
 | P3.5 | [P3.5.md](evidence/P3.5.md) | Playwright on lab1: SERCOM1 → I2C, SDA PC22, SCL PC23, 100 kHz → snippet with `#address-cells`/`#size-cells` (render now emits binding `const` props), CONFIG_I2C + CONFIG_I2C_SAM0, check 0 errors (PC18 info only), PC22/PC23 purple in the package view; negative: SERCOM0 on PB24/PA05 → 2 pin_conflict errors + IOSET warning. 301 passed. Also fixed: tab clicks delivered strings (Pins/Package were empty on click). Builder: screenshot checked; test_render/test_translate now load edtlib via EdtlibHost (passed only in suite order before). Cosmetic: base-binding props `sq-size`/`cq-size` appear as I2C fields → P3.6 |
+| P5.7 | [P5.7.md](evidence/P5.7.md) | lab1 console SERCOM2 moved PB25/PB24 → PA09/PA08 (PA12/13 taken by GMAC); validate 0 errors; west cmake-only rc 0, scratch zephyr.dts `pinctrl-0 = <&sercom2_uart_edit>` with pinmux 0x3290/0x3280, board group unused. Override: group renamed `<label>_<cls>_edit` in ui/configure.py (render.py unchanged). **Finding:** parallel agents shared `apps\lab1\.dt_explorer` (one agent's draft broke another's validate) → evidence runs must redirect drafts to scratch. Builder re-run 21 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
