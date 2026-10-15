@@ -595,7 +595,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.9 | open | |
 | P8.10 | open | |
 | P8.11 | open | |
-| P8.12 | open | |
+| P8.12 | done | 2396f4b → master |
 | P8.13 | open | |
 | P8.14 | open | |
 | P8.15 | open | |
@@ -831,4 +831,5 @@ surprising, and anything you were unsure about.
 | P6.3 | [P6.3.md](evidence/P6.3.md) | all 8 lab ports to SG41/SG61 verify rc 0 (SG41 was rc 1); skipped nodes are `conflict` with one line per reason (target uses the instance as another compatible incl. chosen console; pad used by another target node, e.g. SG61 `&sercom6` on PD08/PD09; pad not on package, e.g. SG61 PB27) plus a connector-based suggestion ("spi on EXT1 of the target: MOSI PB24, MISO PC25; no pad for SCK → SERCOM0 …"); code refs to conflicting nodes reported; lab1 → sam_e54_xpro overlay unchanged. Found: `BuildModel.west_top` must come from `WEST_TOPDIR` for cross-workspace builds → builder fixed it in core/build.py (goldens unchanged, full suite 381 passed) |
 | P6.2b | [P6.2b.md](evidence/P6.2b.md) | all 8 lab ports to SG41/SG61 verify rc 0, no silent drops, every conflict with reason + suggestion (SG41: sercom2/4/7 conflict with board sercom0/console/sercom6; SG61: sercom2 emitted, sercom4/7 conflict, PB26/27/29 not on package). lab3 → main sam_e54_xpro: sercom3/4/7 emitted, mytemp0/my_http0 carried, applied to a copy; build fails only on Zephyr 4.5 HTTP-server API renames in the app's main.c (app API drift, not a tool issue); with the two renames in a throw-away copy it links (sercom3 g1 I2C device in the image) → closes the P5.5 lab3 exception. Cosmetic: report section 3 says `DT_ALIAS(sercom3) [missing]` although the overlay adds the alias → phase 8 input. Not tested on hardware (HC-4) |
 | P7.5 | [P7.5.md](evidence/P7.5.md) | README/GUI.md: Board tab, report sections 5b and 7, conflicts, Apply to app… (grep PASS in both); 3 new live shots, Apply/verify shots reused; make_screenshots.py takes `DTX_PORT_TARGET` for the port shots. **Version 1 complete.** |
+| P8.12 | [P8.12.md](evidence/P8.12.md) | SG41/SG61 CUlt YAMLs +277 lines each (only additions): `mikroBUS` J900/J901 (MOSI PB24, MISO PC25, RX PC13, TX PC12, SCL PD08, SDA PD09 = EXT1/EXT2 pads; SCK no pad, NetJ900_4) and `Arduino` J500/J501/J504/J503 (A0–A5, D0–D15; AREF/RESET gaps); SAME54 Xpro has neither; board view renders both, EXT SVG identical. **Note:** Arduino marked `reviewed: builder` on a mechanical-layer "Arduino" text plus agreeing header texts (no silkscreen text) — looser than HC-6's silkscreen wording; tighten if wanted. 398 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
