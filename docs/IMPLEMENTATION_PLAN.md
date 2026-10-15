@@ -487,7 +487,9 @@ Status values: `open`, `running`, `done`, `blocked`.
 |---|---|---|
 | P6.0 | done | f084991 |
 | P6.1 | done | b993082 |
-| P6.2 | open | |
+| P6.2 | done (findings) | 532396b |
+| P6.3 | running | |
+| P6.2b | open | |
 
 **P6.0 Research: two Zephyr versions in one process.** *light*, PS.
 - Dep: –. Scope: `docs/research/edtlib_versions.md`.
@@ -505,6 +507,24 @@ Status values: `open`, `running`, `done`, `blocked`.
 - Dep: P6.1, P5.4b, P5.2b. Scope: `docs/evidence/P6.2.md`.
 - Accept: lab0–lab3 verify for both boards; the SG61 report lists exactly the uses of PB26–PB29 /
   PC04 in the source (none expected for the labs; check with a synthetic draft that uses EXT1 SPI).
+
+**P6.3 Port conflicts with the target board.**
+- Dep: P6.2. Scope: `dt_explorer/core/port_report.py`, `tests/test_port_report.py`, `dt_explorer/ui/port.py`
+  (report display only).
+- Why (P6.2): the port keeps the source board's instance and pads. On pic32cx_sg41_cult the board uses `&sercom4` as
+  console UART, so the ported SPI overlay left `current-speed` and `zephyr,console` on it and Zephyr rejected it; on
+  SG61 `&sercom4` was dropped silently (PB27 not on the package) with a misleading message; on SG61 the board's
+  `sercom6` I2C already uses PD08/PD09.
+- Do: before emitting a node, compare with the target board: (a) the target node is enabled with a different
+  class/compatible, or (b) a ported pad is used by another enabled target node, or (c) a pad is not on the target
+  package → status `conflict` (not emitted), report line with the reason and the target user; never drop a node
+  without a section-1 line; chosen/aliases are not moved. Suggestion only: from section 7, the target pads at the
+  same connector pins and the instances that can mux them for the same roles (via provider/recipe), e.g.
+  "EXT1 SPI on the target: PC24/PB24/PC25 → SERCOMx … (choose with Configure…)". No automatic remap (phase 8).
+- Accept: the eight P6.2 ports produce overlays that Zephyr accepts (verify rc 0) with every skipped node listed as
+  `conflict` with its reason; lab1 → sam_e54_xpro unchanged; suite green.
+
+**P6.2b Acceptance re-run after P6.3.** Scope: `docs/evidence/P6.2b.md`. Same matrix as P6.2.
 
 ### Phase 7: board view (branch, parallel after P1.2)
 
@@ -636,4 +656,5 @@ surprising, and anything you were unsure about.
 | P5.2b | [P5.2b.md](evidence/P5.2b.md) | lab1 sercom4 SPI / sercom7 I2C translate and load in main's edtlib against pic32cx_sg41 dtsi; v4.3.0 still `no_target`; counts sam0-i2c 39/39, sam0-spi 41/41, g1-i2c 37+5 target-only, g1-spi 39+3; dipo/dopo identical on both sides. 355 passed. Builder follow-up: `port_report._translation_for` prefers a `no_target` entry when the target workspace lacks the binding (v4.3.0 dtsi names `sercom-g1-i2c` without YAML); lab1 → sam_e54_xpro again: sercom4/sercom7 `no_target`, no g1-i2c/spi in the overlay |
 | P7.4 | [P7.4.md](evidence/P7.4.md) | Board tab (tab=board) with EXT headers coloured by use; report section 7 on lab1 → main sg41: "EXT1 pin 16 (MOSI): PB27 on same54_xpro → PB24 on pic32cx_sg41_cult", EXT1 pin 18 SCK not available (NetJ602_18), EXT3 has no counterpart; optional board `title:` in the loader (YAMLs have none yet). Agent found `port_build` to SG41 failing in the g1 formatter (`find_header` knew only SAME5x paths) → builder fix: header found by file name below hal_microchip dt-bindings; lab1 → sg41 now ports SPI/I2C, fast check shows a real conflict: the SG41 board uses sercom4 as UART (`current-speed` left over when the overlay turns it into SPI) → P6.2 records it. Board tab docs → next docs card |
 | P5.6 | [P5.6.md](evidence/P5.6.md) | apply on a lab1 copy wrote `boards/sam_e54_xpro.overlay` (conf comments-only → skipped); `west build -b sam_e54_xpro` without options rc 0 (94 s), `Found devicetree overlay: …/sam_e54_xpro.overlay`, my_led `__device_dts_ord_3` in nm; second apply: identical → no-op, different → refused with diff (UI: overwrite only via checkbox); real lab1 unchanged. Naming per Zephyr extensions.cmake (short name only for single-SoC boards). Incidents: agent ran `taskkill /IM py.exe` (killed the builder preview, restarted) and amended its commit twice (history checked: linear, nothing lost) |
+| P6.2 | [P6.2.md](evidence/P6.2.md) | 8 cmake-only target builds of the unmodified labs on main: all rc 0 (≈ 83 s). Port with 354710c: SG41 verify rc 1 for all labs (board uses `&sercom4` as console UART; ported SPI leaves `current-speed`), SG61 verify rc 0 only because `&sercom4` was dropped silently (PB27 not on package). SG61 pin report: exactly PB26/PB27/PB29 for every lab (same54_xpro.dts itself enables sercom4 SPI there), SG41 none. Also: PD08/PD09 conflict with SG61 board `sercom6`; SDA/SCL swapped at the CUlt connector; lab3 `DT_ALIAS(sercom3)` missing. → fix card P6.3, re-run P6.2b |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

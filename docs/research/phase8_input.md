@@ -46,3 +46,9 @@ Decide in phase 8: GMAC + PHY child as its own recipe (RMII pin roles, `phy-hand
 generic form. The user prefers it usable without hand-picking every RMII pin.
 
 The Kconfig view (7f94422 entry) may stay in the backlog.
+
+## Found at P6.2 (builder)
+
+12. Connector-aware remap when porting between different boards: map each used pad through the
+    connector pin (report section 7) to the target pad, pick an instance that can mux those pads for
+    the same roles, and emit that instead of the source instance. P6.3 only suggests it.
