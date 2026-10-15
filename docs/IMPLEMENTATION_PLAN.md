@@ -595,7 +595,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.8 | done | 66a4ba0 + b497106 |
 | P8.9 | done | 63540ae |
 | P8.10 | done | d6147f0 |
-| P8.10b | running | |
+| P8.10b | done | 29c1508 |
 | P8.11 | done | fc3e933 → master |
 | P8.12 | done | 2396f4b → master |
 | P8.13 | done | 50d1ad1 → master |
@@ -604,7 +604,7 @@ and writes to copies under %TEMP% and never to `taskkill /IM`.
 | P8.15 | done | 9e4a5d5 → master |
 | P8.16 | done | a09a65a → master |
 | P8.17 | done | 051c73d → master |
-| P8.18 | open | |
+| P8.18 | running | |
 | P8.19 | done (findings) | 73cfcbd |
 | P8.19b | done | b090b47 → master |
 | P8.19c | running | |
@@ -898,4 +898,5 @@ surprising, and anything you were unsure about.
 | P8.19 | [P8.19.md](evidence/P8.19.md) | SG41 blinky copy (git baseline) + UART SERCOM7 (PC12/PC13) + bme280@76 on the board's I2C SERCOM6 (mikroBUS SDA/SCL) + GMAC/PHY (already on the board); Apply, Generate code, CMakeLists confirm, prj.conf via browser; final build links (devices 49/118/89–92, dtx functions in nm), Changes tab 17 files (16 dtx-badged). **Needed 2 hand corrections** → tool bugs: Kconfig walk follows negated deps (`CONFIG_NET_TEST=y` disables Ethernet); UART without `current-speed` fails in C; second Apply of a new file duplicates the draft (no markers on first write); plus re-emitted board I2C node with EEPROMs, codegen modules for board children (EEPROM as sensor), Apply hint lacks `-p always` → fix card P8.19b, re-run P8.19c |
 | P8.10 | [P8.10.md](evidence/P8.10.md) | 11 new translation entries (TC counter/PWM, TCC PWM, ADC, DAC, GMAC, MDIO, RTC, WDT, DMAC, TRNG; counts = table rows) loaded in main's edtlib against pic32cx_sg41; CAN/USB/GMAC wrapper `no_target`; negative tests (`#pwm-cells` 2, no prescaler, no refsel) fail in edtlib; lab1 → SG41: adc0 identical, tcc0/gmac/mdio emitted (were no_translation), verify rc 0; fixed unquoted base-group names split at commas. Gaps → card P8.10b: consumer `pwms` cells, uncovered SoC nodes not looked up (usb0), child rename, defaults for missing props. 668 passed |
 | P8.19b | [P8.19b.md](evidence/P8.19b.md) | six fixes, each with a test that fails without it: Kconfig walk skips negated deps (no CONFIG_NET_TEST for ethernet-phy); UART `current-speed` default 115200 via recipe `default_props` (field required); first Apply of a new file writes the marked block (Draft tab and port flow); Apply result says `west build -p always`; edited enabled bus node renders only the difference (SG41 `&sercom6 { bme280_76 … }`); codegen skips board children, sensor class only with a sensor-API driver. 7 existing apply tests now expect marked blocks; full suite 690 passed + 2 re-run (one intended assertion change, one Playwright timeout under load) |
+| P8.10b | [P8.10b.md](evidence/P8.10b.md) | consumer cells rewritten from the target controller's specifier names (lab1 → SG41: `&pwm_led0 { pwms = <&tcc0 2 20000000 0>; }`); `&usb0` listed as untranslatable; translatable nodes without a recipe listed as "translation exists, not ported" (rtc, dac); child `rename: name@unit` (DAC channel@0/@1) and `default:` (ADC prescaler 4) in translations; 9-run matrix verify rc 0. Port UI docs for the new lines → P8.20. 702 passed |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
