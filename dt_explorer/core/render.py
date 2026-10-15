@@ -25,6 +25,16 @@ Result for one node (parts that do not apply are left out)::
 
     / { chosen { zephyr,console = &<label>; }; aliases { my-uart = &<label>; }; };
 
+Child nodes of a draft node (``DraftNode.children``) are written inside the node override, after its
+properties, with their labels, compatible, ``reg`` (hex) and properties; ``#address-cells = <1>`` and
+``#size-cells = <0>`` are added when the node has children with a unit address and neither the
+properties nor the binding give them::
+
+    &<label> {
+        ...
+        <child label>: <name>@<unit> { compatible = "..."; reg = <0x5e>; };
+    };
+
 For a whole ``Draft`` the pinctrl groups share one ``&pinctrl`` block, then come the node
 overrides, then one ``/`` block.
 """
@@ -36,8 +46,8 @@ from pathlib import Path
 
 from . import plugins
 from .device import DeviceModel, Signal
-from .draft import Draft, DraftNode
-from .translate import Ref, render_node
+from .draft import Draft, DraftChild, DraftNode
+from .translate import Ref, render_node, render_property
 
 
 class RenderError(ValueError):
@@ -128,6 +138,38 @@ def _indent(text: str, tabs: int) -> str:
     return "\n".join(pad + ln if ln else ln for ln in text.splitlines())
 
 
+def _prop_line(name: str, value) -> str | None:
+    if name == "reg" and isinstance(value, list) and value and all(
+            isinstance(v, int) and not isinstance(v, bool) for v in value):
+        return "reg = <" + " ".join(hex(int(v)) for v in value) + ">;"
+    return render_property(name, value)
+
+
+def render_child(child: DraftChild) -> str:
+    """One child node as devicetree text (children nested, one tab per level)."""
+    head = " ".join([f"{lab}:" for lab in child.labels] + [child.node_name])
+    lines: list[str] = []
+    if child.compatible:
+        lines.append(render_property("compatible", list(child.compatible)))
+    for name, value in child.props.items():
+        if name == "compatible":
+            continue
+        line = _prop_line(name, value)
+        if line:
+            lines.append(line)
+    body = "".join(f"\t{ln}\n" for ln in lines)
+    kids = "\n\n".join(_indent(render_child(c), 1) for c in child.children)
+    if kids:
+        body += ("\n" if lines else "") + kids + "\n"
+    return f"{head} {{\n{body}}};"
+
+
+def _with_children(text: str, children: list[DraftChild]) -> str:
+    """Insert the child nodes before the closing ``};`` of a node override."""
+    kids = "\n\n".join(_indent(render_child(c), 1) for c in children)
+    return text[:-2].rstrip("\n") + "\n\n" + kids + "\n};"
+
+
 def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, list[str], list[str]]:
     """(pinctrl group node or None, node override, chosen lines, alias lines)."""
     label = _node_label(node)
@@ -151,6 +193,9 @@ def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, l
     for k, v in node.vendor_props.items():
         if k not in derived:
             props[k] = v
+    if any(c.unit is not None for c in node.children):      # a child with a unit address needs the cells
+        props.setdefault("#address-cells", 1)
+        props.setdefault("#size-cells", 0)
     if sigs:
         fmt = _formatter(ctx)
         name = f"{label}_{node.cls}_default"
@@ -159,6 +204,8 @@ def _render_one(node: DraftNode, ctx: RenderContext) -> tuple[str | None, str, l
         props["pinctrl-0"] = [[Ref(name)]]
         props["pinctrl-names"] = "default"
     text = render_node(f"&{label}", props)
+    if node.children:
+        text = _with_children(text, node.children)
     chosen = [f"{c} = &{label};" for c in node.use.chosen]
     aliases = [f"{a} = &{label};" for a in node.use.aliases]
     return group, text, chosen, aliases

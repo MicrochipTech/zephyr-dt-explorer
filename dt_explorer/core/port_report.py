@@ -39,7 +39,7 @@ from . import pins as pins_mod
 from . import plugins
 from .build import BuildModel, compat_ident, origin_kind
 from .buildinfo import BuildInfo, parse_config, read_build_info
-from .draft import BindingIndex, Draft, DraftNode, Use
+from .draft import BindingIndex, Draft, DraftChild, DraftNode, Use
 from .kconfig_suggest import KconfigLoadError, KconfigSuggestion, load_kconfig, suggest_kconfig
 from .lift import LiftReport, lift_build
 from .render import RenderContext, RenderError, _signals, render_overlay
@@ -514,6 +514,97 @@ def _plan_text(plan: _RemapPlan, dn, hint: str) -> str:
     return text + f"; no remap: {why} ({hint})"
 
 
+# ---- child nodes of a ported bus: they go with the draft node ---------------------------------------
+def _map_refs(value, mapping: dict[str, str]):
+    """`value` with every ``Ref`` label replaced through `mapping` (labels not in it stay)."""
+    if isinstance(value, Ref):
+        return Ref(mapping.get(value.label, value.label))
+    if isinstance(value, list):
+        return [_map_refs(v, mapping) for v in value]
+    return value
+
+
+def _refs_in(value) -> list[str]:
+    if isinstance(value, Ref):
+        return [value.label]
+    if isinstance(value, list):
+        return [x for v in value for x in _refs_in(v)]
+    return []
+
+
+def _child_desc(c: DraftChild) -> str:
+    return " ".join([*(f"{x}:" for x in c.labels), c.node_name])
+
+
+def _port_children(dn: DraftNode, t, tnode, cov_path: str, src: BuildModel, tgt: BuildModel,
+                   ported_labels: dict[str, str], all_child_labels: set[str]):
+    """Children of the draft node `dn` for the target node `tnode`.
+
+    Returns (children to emit, commit). ``commit(rep, res)`` records what was decided: carried
+    children in ``rep.carried``, refused ones in ``rep.not_carried``, children that the target has
+    already in the notes of `res`. It returns the source paths decided here (the app-overlay carry
+    skips them) and the labels that the emitted children define.
+    """
+    if not dn.children:
+        return [], lambda rep, res: (set(), set())
+    translate = getattr(t, "translate_children", None)
+    kids, lines = translate(dn.children) if translate else ([replace(c) for c in dn.children], [])
+    tgt_labels = set(tgt.edt.label2node)
+    mapping = {k: v for k, v in ported_labels.items() if k != v}
+    have_names = {n.name for n in tnode.children.values()}
+    have_units = {n.name.partition("@")[2]: n.name for n in tnode.children.values() if "@" in n.name}
+    out: list[DraftChild] = []
+    verdicts: list[tuple[str, DraftChild, str, str]] = []       # (carried | not_carried | exists, child, path, why)
+    for c in kids:
+        path = f"{cov_path}/{c.node_name}"
+        why = ""
+        status = "not_carried"
+        if c.node_name in have_names:
+            status = "exists"
+            why = f"{c.node_name} already exists in &{_label(tnode) or tnode.path} of the target; it stays as it is"
+        elif c.unit is not None and c.unit in have_units:
+            why = f"unit address {c.unit} is used by {have_units[c.unit]} in the target node"
+        else:
+            walk = list(c.walk())
+            clash = next((x for w in walk for x in w.labels if x in tgt_labels), None)
+            if clash:
+                why = f"label {clash} already exists in the target devicetree"
+            else:
+                mine = {x for w in walk for x in w.labels}
+                for w in walk:
+                    miss = next((r for v in w.props.values() for r in _refs_in(v)
+                                 if r not in mine and r not in all_child_labels
+                                 and mapping.get(r, r) not in tgt_labels), None)
+                    if miss:
+                        why = f"references &{miss}, which does not exist in the target devicetree"
+                        break
+        if not why:
+            status = "carried"
+            for w in c.walk():
+                w.props = {k: _map_refs(v, mapping) for k, v in w.props.items()}
+            out.append(c)
+        verdicts.append((status, c, path, why))
+
+    def commit(rep, res):
+        decided: set[str] = set()
+        labels: set[str] = set()
+        res.lines += lines
+        for status, c, path, why in verdicts:
+            origin = (getattr(src, "origins", None) or {}).get(path)
+            source, line = (origin.file, origin.line) if origin is not None else ("?", 0)
+            decided.add(path)
+            if status == "carried":
+                rep.carried.append(Carried(_child_desc(c), path, "node", source, line))
+                labels.update(x for w in c.walk() for x in w.labels)
+            elif status == "exists":
+                res.notes.append(f"child {why}")
+            else:
+                rep.not_carried.append(NotCarried(_child_desc(c), path, "node", source, line, why))
+        return decided, labels
+
+    return out, commit
+
+
 # ---- app-defined nodes: carried verbatim from the app overlay -------------------------------------
 @dataclass
 class Carried:
@@ -714,7 +805,9 @@ def _overlay_files(src: BuildModel) -> list[Path]:
 
 def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: PortReport,
                      ported_labels: dict[str, str],
-                     remapped: dict[str, str] | None = None) -> tuple[list[str], set[str], set[str]]:
+                     remapped: dict[str, str] | None = None,
+                     decided_children: set[str] = frozenset(),
+                     child_labels: set[str] = frozenset()) -> tuple[list[str], set[str], set[str]]:
     """Copy what the app overlay defines and no translation covers into the target overlay.
 
     Returns (overlay pieces, source paths that were handled, labels that the carried text defines).
@@ -756,6 +849,9 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
                 continue
             path = ("/" + it.name) if parent == "/" else f"{parent}/{it.name}"
             origin = origins.get(path)
+            if path in decided_children:                    # a child of a ported bus: written with the draft node
+                add(it, path, wrapper, source, covered=True)
+                continue
             defined_here = (origin is None and path not in src.by_path) or \
                 (origin is not None and origin_kind(origin.file) == "overlay")
             if not defined_here:                                         # existing node that the overlay edits
@@ -828,7 +924,7 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
     changed = True
     while changed:                      # references must exist in the target or be defined by carried text
         changed = False
-        avail = tgt_labels | {x for c in todo if not c.reason for x in c.defined}
+        avail = tgt_labels | child_labels | {x for c in todo if not c.reason for x in c.defined}
         dropped = {x: c for c in todo if c.reason for x in c.defined}
         for c in todo:
             if c.reason:
@@ -941,6 +1037,9 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
     tgt_pkg = pins_mod.default_package(tgt_dev) if tgt_dev is not None else None
     has_binding = lambda c: tgt_index.find(c) is not None          # noqa: E731
     remapped_labels: dict[str, str] = {}            # source label -> target label of nodes moved to another instance
+    all_child_labels = {x for d in draft.nodes for c in d.children for w in c.walk() for x in w.labels}
+    decided_children: set[str] = set()              # source paths of children that the draft path decided
+    emitted_child_labels: set[str] = set()
 
     # Pads and register bases of the nodes that this port carries over on their own instance: a remapped node
     # must not take them. Remapped nodes add theirs as they are decided.
@@ -1096,15 +1195,20 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                 res.notes += _clock_notes(src_node, t)
             res.notes.append("the target board does not enable this node: the overlay enables it")
 
+        kids, commit_kids = _port_children(dn, t, tnode, cov.path if cov else res.source_path, src, tgt,
+                                           ported_labels, all_child_labels)
         tdn = DraftNode(cls=dn.cls, roles=list(dn.roles) if pins else [], props={}, use=Use(chosen, aliases),
                         instance=_instance_name(tgt_dev, tnode, dn.instance), pins=pins,
-                        vendor_props=vendor, compatible=t.target, label=tlabel)
-        needs = bool(vendor or pins or chosen or aliases or not okay or
+                        vendor_props=vendor, compatible=t.target, label=tlabel, children=kids)
+        needs = bool(vendor or pins or chosen or aliases or not okay or kids or
                      (tnode.compats and tnode.compats[0] != t.target))
         ported_compats.append((dn.compatible, t.target))
         for pad in dn.pins.values():
             ported_pads.setdefault(pad, []).append(f"&{tlabel}")
         if not needs:
+            d_, l_ = commit_kids(rep, res)
+            decided_children |= d_
+            emitted_child_labels |= l_
             res.status = "identical"
             res.notes.append("the target board already configures this node the same way; nothing to emit")
             ported_draft.nodes.append(tdn)
@@ -1121,6 +1225,9 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             text = _strip_status(text)
             if pins:
                 text = _rename(text, f"{tlabel}_{dn.cls}_default", f"{tlabel}_{dn.cls}_edit")
+        d_, l_ = commit_kids(rep, res)
+        decided_children |= d_
+        emitted_child_labels |= l_
         ported_draft.nodes.append(tdn)
         ported_labels[dn.label or tlabel] = tlabel
         if remap_lines:
@@ -1130,7 +1237,9 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
 
     # ---- other nodes of the source build that were written by the board or the app ------------
     step("carrying app-defined nodes ...")
-    carried_pieces, handled, carried_labels = _carry_app_nodes(src, tgt, lift, rep, ported_labels, remapped_labels)
+    carried_pieces, handled, carried_labels = _carry_app_nodes(src, tgt, lift, rep, ported_labels, remapped_labels,
+                                                                   decided_children, emitted_child_labels)
+    carried_labels |= emitted_child_labels
     pieces += carried_pieces
     for u in lift.uncovered:
         if u.origin in ("soc", "module") or u.path in handled:
@@ -1140,6 +1249,19 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                                      "no recipe or translation covers it; carry it over by hand", tn is not None))
     for nr in lift.not_representable:
         rep.not_representable.append(f"{nr.path}  {nr.what}: {nr.reason}")
+    reported = {x.path for x in rep.not_carried} | {x.path for x in rep.carried} | decided_children
+    for dn, res in zip(draft.nodes, rep.nodes):             # children of a bus that is not ported and enabled
+        if res.status in ("emitted", "identical", "remapped") or not dn.children:
+            continue
+        why = (res.lines or res.notes or [""])[0]
+        for c in dn.children:
+            path = f"{res.source_path}/{c.node_name}"
+            if path in reported:
+                continue
+            origin = (getattr(src, "origins", None) or {}).get(path)
+            rep.not_carried.append(NotCarried(
+                _child_desc(c), path, "node", origin.file if origin else "?", origin.line if origin else 0,
+                f"bus &{dn.label} is not ported and enabled on the target [{res.status}]" + (f": {why}" if why else "")))
 
     # ---- node references in src/ ----------------------------------------------------------------
     step("checking node references in src/ ...")

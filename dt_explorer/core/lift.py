@@ -10,7 +10,11 @@ the board settings of the node become one ``DraftNode``:
 * neutral properties: written by the board or the app and declared in the class base binding;
   vendor properties: the other properties written by the board or the app, minus what the recipe
   derives again from the roles;
-* use: the ``chosen`` entries and aliases that point at the node.
+* use: the ``chosen`` entries and aliases that point at the node;
+* children: the child nodes of the node (bus devices such as ``eeprom@5e``, ``channel@0``) that the board
+  or the app wrote become ``DraftChild`` objects, recursively, with compatible, labels and the properties
+  that are not from the SoC description. A child property a draft cannot hold (a path, a reference to a node
+  without a label) is listed as not representable.
 
 Only what the board or the application wrote counts. A property, chosen entry or alias that comes
 from the SoC description (the origin comments of ``zephyr.dts``) belongs to the platform, not to
@@ -32,10 +36,11 @@ from pathlib import Path
 from . import plugins
 from .build import BuildModel, origin_kind
 from .buildinfo import BuildInfo, read_build_info
-from .draft import (CLASS_BASES, BindingIndex, Draft, DraftNode, Use, detect_class,
+from .draft import (CLASS_BASES, BindingIndex, Draft, DraftChild, DraftNode, Use, detect_class,
                     neutral_properties, split_properties)
 from .pins import _controller_compats, _formatter_for, _source_names
 from .render import RenderContext
+from .translate import Ref
 
 PLATFORM_ORIGINS = ("soc", "module")      # origin kinds that are not a board or app setting
 _SIMPLE_TYPES = ("int", "array", "uint8-array", "string", "string-array", "boolean")
@@ -75,6 +80,7 @@ class LiftReport:
     covered: list[CoveredNode] = field(default_factory=list)
     uncovered: list[UncoveredNode] = field(default_factory=list)
     not_representable: list[NotRepresentable] = field(default_factory=list)
+    children: list[str] = field(default_factory=list)       # source paths of the child nodes in the draft
     pinctrl_compatible: str | None = None
     pinctrl_label: str = "pinctrl"
     existing_compatibles: dict[str, str] = field(default_factory=dict)   # label -> platform compatible
@@ -97,6 +103,8 @@ class LiftReport:
         out.append(f"uncovered enabled nodes ({len(self.uncovered)}; by origin {dict(by_origin)}):")
         for u in self.uncovered:
             out.append(f"  {u.path}  {u.compatible}  [{u.origin}]  {u.reason}")
+        out.append(f"child nodes in the draft ({len(self.children)}):")
+        out += [f"  {p}" for p in self.children]
         out.append(f"not representable ({len(self.not_representable)}):")
         for n in self.not_representable:
             out.append(f"  {n.path}  {n.what}: {n.reason}")
@@ -157,6 +165,76 @@ def _raw_value(node, name: str):
     except Exception:  # noqa: BLE001 - dtlib raises its own error type
         return None
     return None
+
+
+def _label_of(node):
+    return node.labels[0] if getattr(node, "labels", None) else None
+
+
+def _child_value(prop, node, name: str):
+    """Draft value of a property of a child node, or None when a draft cannot hold it.
+
+    Phandles become ``Ref`` (by the first label of the target node), a phandle array becomes
+    ``[[Ref, cell, ...], ...]``. Properties without a binding are read from dtlib.
+    """
+    if prop is None:
+        dt_prop = getattr(getattr(node, "_node", None), "props", {}).get(name)
+        kind = getattr(getattr(dt_prop, "type", None), "name", "").upper()
+        try:
+            if kind == "PHANDLE":
+                lab = _label_of(dt_prop.to_node())
+                return [Ref(lab)] if lab else None
+            if kind == "PHANDLES":
+                labs = [_label_of(n) for n in dt_prop.to_nodes()]
+                return [Ref(x) for x in labs] if all(labs) else None
+        except Exception:  # noqa: BLE001 - dtlib raises its own error type
+            return None
+        return _raw_value(node, name)
+    if prop.type == "phandle":
+        lab = _label_of(prop.val)
+        return [Ref(lab)] if lab else None
+    if prop.type == "phandles":
+        labs = [_label_of(n) for n in prop.val]
+        return [Ref(x) for x in labs] if all(labs) else None
+    if prop.type == "phandle-array":
+        out = []
+        for entry in prop.val:
+            ctrl = getattr(entry, "controller", None)
+            lab = _label_of(ctrl) if ctrl is not None else None
+            if not lab:
+                return None
+            out.append([Ref(lab), *(int(v) for v in (entry.data or {}).values())])
+        return out
+    return _value(prop)
+
+
+def _lift_children(model: BuildModel, node, report: LiftReport) -> list[DraftChild]:
+    """Child nodes of `node` that the board or the app wrote, recursively, as ``DraftChild``."""
+    out: list[DraftChild] = []
+    for child in node.children.values():
+        origin = model.origins.get(child.path)
+        written = {k: v for k, v in (origin.props if origin else {}).items()
+                   if _kind(v) not in PLATFORM_ORIGINS}
+        sub = _lift_children(model, child, report)
+        if not written and not sub:
+            continue
+        props: dict = {}
+        for name in written:
+            if name in ("compatible", "phandle"):       # phandle numbers are made by dtc from the labels
+                continue
+            v = _child_value(child.props.get(name), child, name)
+            if v is None:
+                report.not_representable.append(NotRepresentable(
+                    child.path, name, "a child property that a draft cannot hold (type, or a reference to a "
+                                      "node without a label)"))
+                continue
+            props[name] = v
+        base, _, unit = child.name.partition("@")
+        out.append(DraftChild(name=base, unit=unit if "@" in child.name else None,
+                              compatible=list(child.compats or []), labels=list(child.labels),
+                              props=props, children=sub))
+        report.children.append(child.path)
+    return out
 
 
 def _default_state(node):
@@ -297,17 +375,16 @@ def lift_build(build: Path | str | BuildModel, info: BuildInfo | None = None) ->
         inst = Counter(instances).most_common(1)[0][0] if instances else None
         if len(set(instances)) > 1:
             notes.append(f"pins belong to several instances: {sorted(set(instances))}")
-        children = sorted(c.name for c in node.children.values())
-        if children:
-            report.not_representable.append(NotRepresentable(
-                node.path, "child nodes", f"{children} stay in the source build (draft has no children yet)"))
+        children = _lift_children(model, node, report)
 
         draft.nodes.append(DraftNode(
             cls=cls, roles=list(roles), props=neutral, use=_use(model, node), instance=inst,
-            pins=dict(roles), vendor_props=vendor, compatible=compat, label=label))
+            pins=dict(roles), vendor_props=vendor, compatible=compat, label=label, children=children))
         report.covered.append(CoveredNode(node.path, label, compat, cls, recipe.name, dict(roles), notes))
         compat_info = (origin.props.get("compatible") if origin else None)
         if label and (compat_info is None or _kind(compat_info) in PLATFORM_ORIGINS):
             report.existing_compatibles[label] = compat
 
+    lifted = set(report.children)                   # a child that the draft holds is not "uncovered"
+    report.uncovered = [u for u in report.uncovered if u.path not in lifted]
     return draft, report

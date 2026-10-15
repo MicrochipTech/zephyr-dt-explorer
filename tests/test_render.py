@@ -269,3 +269,31 @@ def test_sercom2_overlay_equals_board_block(rtos4_ws, rtos4_build, tmp_path):
     print("base + overlay edt :", rendered)
     assert reset != original, "reset DTS must differ from the original, or the compare proves nothing"
     assert rendered == original
+
+
+def test_children_are_written_inside_the_node_override():
+    from dt_explorer.core.draft import DraftChild
+    from dt_explorer.core.translate import Ref
+    phy = DraftChild("ethernet-phy", "0", ["ethernet-phy"], ["phy"], {"reg": [0]})
+    n = DraftNode(cls="i2c", instance="SERCOM7", compatible="atmel,sam0-i2c", label="sercom7", children=[
+        DraftChild("eeprom", "5e", ["atmel,24mac402"], ["eeprom", "ee2"],
+                   {"reg": [0x5e], "status": "okay", "leds": [[Ref("led0"), 3, 1]], "ref": [Ref("a")],
+                    "name": "x", "flag": True}, [phy])])
+    text = render_overlay(n, RenderContext())
+    assert text == (
+        '&sercom7 {\n\tstatus = "okay";\n\tcompatible = "atmel,sam0-i2c";\n'
+        '\t#address-cells = <1>;\n\t#size-cells = <0>;\n\n'
+        '\teeprom: ee2: eeprom@5e {\n\t\tcompatible = "atmel,24mac402";\n\t\treg = <0x5e>;\n'
+        '\t\tstatus = "okay";\n\t\tleds = <&led0 3 1>;\n\t\tref = <&a>;\n\t\tname = "x";\n\t\tflag;\n\n'
+        '\t\tphy: ethernet-phy@0 {\n\t\t\tcompatible = "ethernet-phy";\n\t\t\treg = <0x0>;\n\t\t};\n\t};\n};\n')
+
+
+def test_children_keep_the_cells_the_node_already_has():
+    from dt_explorer.core.draft import DraftChild
+    n = DraftNode(cls="i2c", instance="SERCOM7", compatible="atmel,sam0-i2c", label="sercom7",
+                  vendor_props={"#address-cells": 1, "#size-cells": 0},
+                  children=[DraftChild("t", "4f", [], [], {"reg": [0x4f]})])
+    text = render_overlay(n, RenderContext())
+    assert text.count("#address-cells") == 1 and text.count("#size-cells") == 1
+    nameless = DraftNode(cls="i2c", instance="SERCOM7", compatible="x", label="s", children=[DraftChild("n")])
+    assert "#address-cells" not in render_overlay(nameless, RenderContext())     # no unit address, no cells

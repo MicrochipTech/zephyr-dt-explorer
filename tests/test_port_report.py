@@ -22,7 +22,7 @@ from dt_explorer.core.device import DeviceModel, Instance, Package, Signal
 from dt_explorer.core.draft import Draft, DraftNode, Use
 from dt_explorer.core.kconfig_suggest import KconfigSuggestion
 from dt_explorer.core.lift import CoveredNode, LiftReport, NotRepresentable, UncoveredNode
-from dt_explorer.core.translate import translations_from_dict
+from dt_explorer.core.translate import Ref, translations_from_dict
 
 
 # ---- helpers without any model ---------------------------------------------------------------
@@ -671,3 +671,59 @@ def test_second_conflict_cannot_take_the_instance_of_the_first(world, monkeypatc
     world.tgt.by_path["/t/u2"] = t_u2
     by = _by_label(world)
     assert by["u1"].status == "remapped" and by["u2"].status == "conflict"
+
+
+# ---- child nodes go with their bus (P8.4) -------------------------------------------------------------
+def _children_world(world):
+    from dt_explorer.core.draft import DraftChild
+    kid = lambda name, unit, labels=(), props=None, kids=(): DraftChild(     # noqa: E731
+        name, unit, ["acme,dev"], list(labels), {"reg": [int(unit, 16)], **(props or {})}, list(kids))
+    d = world.draft.nodes
+    d[1].children = [                                                     # u1: enabled by the port
+        kid("sens", "4f", ["sens0"], {"mode": "fast"}, [kid("sub", "0")]),
+        kid("old", "70"),                                                 # the target has it already
+        kid("other", "70", ["o2"]),                                       # ... and a unit address clash
+        kid("lost", "71", ["l1"], {"ref": [Ref("nolabel")]}),             # reference the target lacks
+        kid("clash", "72", ["u0"]),                                       # label of the target
+        kid("peer", "73", ["p1"], {"ref": [Ref("sens0")]})]               # refers to a sibling: fine
+    d[3].children = [kid("sens", "4f", ["isens"])]                        # i0: bus without target binding
+    world.tgt.by_path["/t/u1"].children = {"old@70": NS(name="old@70")}
+    world.lift.children[:] = ["/s/u1/sens@4f", "/s/u1/sens@4f/sub@0"]
+
+
+def test_children_of_a_ported_bus_are_written_inside_it(world):
+    _children_world(world)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    rep, ov = res.report, res.overlay
+    assert "\tsens0: sens@4f {\n\t\tcompatible = \"acme,dev\";\n\t\treg = <0x4f>;\n\t\tmode = \"fast\";" in ov
+    assert "\t\tsub@0 {" in ov and "p1: peer@73 {" in ov and "ref = <&sens0>;" in ov
+    assert "#address-cells = <1>;" in ov                                  # the bus gets the cells for its children
+    assert ov.index("sens0: sens@4f") > ov.index("&u1 {") and ov.index("sens0: sens@4f") < ov.index("p1: peer@73")
+    assert [n.node_name for n in res.draft.nodes[1].children] == ["sens@4f", "peer@73"]
+    carried = {c.desc: c for c in rep.carried}
+    assert "sens0: sens@4f" in carried and carried["sens0: sens@4f"].path == "/s/u1/sens@4f"
+    nc = {n.desc: n.reason for n in rep.not_carried}
+    assert nc["o2: other@70"] == "unit address 70 is used by old@70 in the target node"
+    assert nc["l1: lost@71"] == "references &nolabel, which does not exist in the target devicetree"
+    assert nc["u0: clash@72"] == "label u0 already exists in the target devicetree"
+    by = {n.label: n for n in rep.nodes}
+    assert any("old@70 already exists in &u1" in x for x in by["u1"].notes)
+    assert not any("old@70" in k for k in nc)                              # not a loss: the target keeps its own
+    assert "o2:" not in ov and "l1:" not in ov
+
+
+def test_children_of_a_bus_that_is_not_ported_are_reported(world):
+    _children_world(world)
+    rep = pr.port_build(world.src, world.tgt, check=False).report
+    nc = {n.desc: n for n in rep.not_carried}
+    assert nc["isens: sens@4f"].reason.startswith("bus &i0 is not ported and enabled on the target [no_target]")
+    assert nc["isens: sens@4f"].path == "/s/i0/sens@4f"
+
+
+def test_app_overlay_child_of_a_ported_bus_is_written_once(world):
+    _children_world(world)
+    _overlay_world(world, "&u1 {\n\tsens0: sens@4f { compatible = \"acme,dev\"; reg = <0x4f>; };\n};\n")
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert res.overlay.count("sens@4f") == 1                               # no second copy from the carry path
+    assert [c.desc for c in res.report.carried].count("sens0: sens@4f") == 1
+    assert not any(n.desc == "sens0: sens@4f" for n in res.report.not_carried)

@@ -18,7 +18,8 @@ from typing import Iterable
 
 import yaml
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2          # 2: nodes carry `children` (DraftChild); version 1 files are read as nodes without children
+READABLE_VERSIONS = (1, 2)
 
 # Base binding file name -> class. Table-driven; extend with register_class().
 CLASS_BASES: dict[str, str] = {
@@ -41,6 +42,70 @@ class Use:
 
 
 @dataclass
+class DraftChild:
+    """A child node inside a draft node: a bus device (``eeprom@5e``), an ADC ``channel@0``, a PHY ...
+
+    Plain data, recursive (``children``). `props` hold the values in the model of ``core/translate.py``
+    (bool, int, str, list of str / int, ``Ref`` for a phandle, list of ``[Ref, cell, ...]`` for a phandle
+    array); in JSON a ``Ref`` is ``{"ref": "<label>"}``. ``compatible`` and the unit address are fields of
+    their own, so `props` hold the rest (``reg``, ``status``, ...). A child with no `props` and no
+    `compatible` is still a node.
+    """
+    name: str                                           # node name without unit address: "eeprom"
+    unit: str | None = None                             # unit address as written in the node name: "5e"
+    compatible: list[str] = field(default_factory=list) # compatible strings, most specific first
+    labels: list[str] = field(default_factory=list)     # node labels: ["mytemp0"]
+    props: dict = field(default_factory=dict)
+    children: list["DraftChild"] = field(default_factory=list)
+
+    @property
+    def node_name(self) -> str:
+        return f"{self.name}@{self.unit}" if self.unit is not None else self.name
+
+    def walk(self):
+        """This child and all its descendants, depth first."""
+        yield self
+        for c in self.children:
+            yield from c.walk()
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "unit": self.unit, "compatible": list(self.compatible),
+                "labels": list(self.labels), "props": _enc(self.props),
+                "children": [c.to_dict() for c in self.children]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "DraftChild":
+        return cls(name=d["name"], unit=d.get("unit"), compatible=list(d.get("compatible") or []),
+                   labels=list(d.get("labels") or []), props=_dec(d.get("props") or {}),
+                   children=[cls.from_dict(c) for c in d.get("children") or []])
+
+
+def _enc(v):
+    """Property value -> JSON-safe value (`Ref` becomes ``{"ref": label}``, `Sym` a plain int)."""
+    from .translate import Ref
+    if isinstance(v, Ref):
+        return {"ref": v.label}
+    if isinstance(v, bool) or v is None or isinstance(v, (str, float)):
+        return v
+    if isinstance(v, int):
+        return int(v)
+    if isinstance(v, dict):
+        return {k: _enc(x) for k, x in v.items()}
+    return [_enc(x) for x in v]
+
+
+def _dec(v):
+    from .translate import Ref
+    if isinstance(v, dict):
+        if set(v) == {"ref"}:
+            return Ref(v["ref"])
+        return {k: _dec(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_dec(x) for x in v]
+    return v
+
+
+@dataclass
 class DraftNode:
     # portable intent
     cls: str                                            # "uart" | "i2c" | "spi" | ...
@@ -53,10 +118,12 @@ class DraftNode:
     vendor_props: dict = field(default_factory=dict)    # derived again by the target recipe
     compatible: str | None = None                       # compatible of the realised node
     label: str | None = None                            # devicetree node label
+    # child nodes written inside this node (bus devices, channels, a PHY); portable with the node
+    children: list[DraftChild] = field(default_factory=list)
 
 
 _NODE_ORDER = ["cls", "roles", "props", "use", "instance", "pins", "vendor_props",
-               "compatible", "label"]
+               "compatible", "label", "children"]
 
 
 @dataclass
@@ -66,22 +133,27 @@ class Draft:
     version: int = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        d = asdict(self)
         # stable key order: version, build, nodes; fixed field order per node
-        return {"version": d["version"], "build": d["build"],
-                "nodes": [{k: n[k] for k in _NODE_ORDER} for n in d["nodes"]]}
+        nodes = []
+        for node in self.nodes:
+            n = asdict(node)
+            n["children"] = [c.to_dict() for c in node.children]
+            nodes.append({k: n[k] for k in _NODE_ORDER})
+        return {"version": self.version, "build": self.build, "nodes": nodes}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Draft":
         v = d.get("version")
-        if v != SCHEMA_VERSION:
-            raise ValueError(f"unsupported draft schema version {v!r} (expected {SCHEMA_VERSION})")
+        if v not in READABLE_VERSIONS:
+            raise ValueError(f"unsupported draft schema version {v!r} (expected one of {READABLE_VERSIONS})")
         nodes = []
         for n in d.get("nodes", []):
             n = dict(n)
             n["use"] = Use(**(n.get("use") or {}))
+            n["children"] = [DraftChild.from_dict(c) for c in n.get("children") or []]   # absent in version 1
             nodes.append(DraftNode(**n))
-        return cls(build=d.get("build", ""), nodes=nodes, version=v)
+        # a version 1 file is migrated on load: saving it writes the current version
+        return cls(build=d.get("build", ""), nodes=nodes, version=SCHEMA_VERSION)
 
 
 # ---- persistence ---------------------------------------------------------------

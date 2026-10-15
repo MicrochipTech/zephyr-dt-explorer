@@ -71,3 +71,49 @@ def test_bad_version(tmp_path):
     p.write_text('{"version": 99, "build": "b", "nodes": []}')
     with pytest.raises(ValueError):
         D.load_draft(tmp_path, "b")
+
+
+# ---- child nodes (P8.4) ------------------------------------------------------------------------------
+def with_children() -> D.Draft:
+    from dt_explorer.core.translate import Ref
+    d = sample()
+    phy = D.DraftChild("ethernet-phy", "0", ["ethernet-phy"], ["phy"], {"reg": [0], "status": "okay"})
+    d.nodes[0].children = [
+        D.DraftChild("eeprom", "5e", ["atmel,24mac402"], ["eeprom"], {"reg": [0x5e]}),
+        D.DraftChild("mdio", None, [], [], {"leds": [[Ref("led0"), 1, 0]], "ref": [Ref("a"), Ref("b")],
+                                           "flag": True, "name": "x"}, [phy])]
+    return d
+
+
+def test_children_round_trip_including_phandles(tmp_path):
+    d = with_children()
+    app, build = tmp_path / "app", tmp_path / "app" / "build_x"
+    p = D.save_draft(d, app, build)
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    assert raw["version"] == 2
+    mdio = raw["nodes"][0]["children"][1]
+    assert mdio["props"]["leds"] == [[{"ref": "led0"}, 1, 0]] and mdio["children"][0]["name"] == "ethernet-phy"
+    assert D.load_draft(app, build) == d
+    first = p.read_bytes()
+    D.save_draft(D.load_draft(app, build), app, build)
+    assert p.read_bytes() == first
+
+
+def test_child_walk_and_node_name():
+    d = with_children()
+    names = [c.node_name for ch in d.nodes[0].children for c in ch.walk()]
+    assert names == ["eeprom@5e", "mdio", "ethernet-phy@0"]
+
+
+def test_version_1_file_loads_without_children(tmp_path):
+    v1 = {"version": 1, "build": "build_x", "nodes": [{
+        "cls": "uart", "roles": ["TX"], "props": {"current-speed": 9600}, "use": {"chosen": [], "aliases": []},
+        "instance": "inst2", "pins": {"TX": "P1"}, "vendor_props": {}, "compatible": "v,uart", "label": "u"}]}
+    p = D.draft_path(tmp_path, "build_x")
+    p.parent.mkdir()
+    p.write_text(json.dumps(v1), encoding="utf-8")
+    d = D.load_draft(tmp_path, "build_x")
+    assert d.nodes[0].children == [] and d.nodes[0].label == "u" and d.version == 2
+    D.save_draft(d, tmp_path, "build_x")                      # saving migrates the file to version 2
+    assert json.loads(p.read_text(encoding="utf-8"))["version"] == 2
+    assert json.loads(p.read_text(encoding="utf-8"))["nodes"][0]["children"] == []

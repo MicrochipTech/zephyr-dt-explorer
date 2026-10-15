@@ -40,6 +40,11 @@ YAML schema (``schema_version: 1``)
         use: [<group>, ...]           # optional
         note: <free text>
         target_only: {<prop>: <note>} # target props that have no source counterpart
+        children:                     # optional; rules for child nodes (see below)
+          - match: {compatible: <c>, name: <n>}   # one or both; a child matches when all given keys match
+            target: <compatible>      # optional; the child's new compatible (default: unchanged)
+            drop_node: <reason>       # optional; the child has no counterpart and is not carried
+            <rules>
         <rules>
 
 ``<rules>`` is ``keep: [<prop>, ...]`` plus ``properties: {<prop>: <action>}``.
@@ -57,11 +62,20 @@ Exactly one action per property:
 
 A property present in the input but not listed is reported and left out of the
 result; it is never dropped silently.
+
+Child nodes
+-----------
+A draft node can carry child nodes (``draft.DraftChild``: bus devices, channels, a PHY).
+``Translation.translate_children`` passes them through unchanged (a child's own compatible
+usually stays) unless a ``children:`` rule matches: then its properties are translated with
+the rule's ``<rules>`` (``reg`` and ``status`` are kept unless a rule says otherwise; a
+changed ``reg`` also changes the unit address) and its compatible becomes ``target``.
+The same rules apply to the grandchildren.
 """
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -74,7 +88,9 @@ SCHEMA_VERSION = 1
 _ACTIONS = ("rename", "transform", "drop", "derive")
 _TRANSFORMS = ("hook", "map", "const")
 _ENTRY_KEYS = {"source", "target", "no_target", "emit_compatible", "use", "note",
-               "target_only", "keep", "properties"}
+               "target_only", "keep", "properties", "children"}
+_CHILD_KEYS = {"match", "target", "drop_node", "keep", "properties", "use"}
+_MATCH_KEYS = {"compatible", "name"}
 _DOC_KEYS = {"schema_version", "name", "hooks", "tables", "groups", "translations"}
 
 
@@ -154,6 +170,46 @@ def _parse_rules(body: dict, where: str) -> dict[str, Rule]:
     return rules
 
 
+@dataclass
+class ChildRule:
+    """How a translation treats the child nodes that match."""
+    match: dict[str, str]                # "compatible" and/or "name" (node name without unit address)
+    target: str | None = None            # new compatible; None keeps the child's own
+    drop_node: str | None = None         # reason; the child has no counterpart
+    rules: dict[str, Rule] = field(default_factory=dict)
+
+    def matches(self, child: Any) -> bool:
+        if "compatible" in self.match and self.match["compatible"] not in child.compatible:
+            return False
+        return "name" not in self.match or self.match["name"] == child.name
+
+
+def _parse_child_rules(entries: Any, groups: dict[str, dict[str, Rule]], where: str) -> list[ChildRule]:
+    if entries is None:
+        return []
+    if not isinstance(entries, list):
+        raise TranslationError(f"{where}: 'children' must be a list")
+    out: list[ChildRule] = []
+    for j, e in enumerate(entries):
+        w = f"{where}.children[{j}]"
+        if not isinstance(e, dict) or "match" not in e:
+            raise TranslationError(f"{w}: needs 'match'")
+        bad = set(e) - _CHILD_KEYS
+        if bad:
+            raise TranslationError(f"{w}: unknown keys {sorted(bad)}")
+        m = e["match"]
+        if not isinstance(m, dict) or not m or set(m) - _MATCH_KEYS:
+            raise TranslationError(f"{w}: 'match' needs compatible and/or name")
+        rules: dict[str, Rule] = {}
+        for g in e.get("use", []) or []:
+            if g not in groups:
+                raise TranslationError(f"{w}: unknown group {g!r}")
+            rules.update(groups[g])
+        rules.update(_parse_rules(e, w))
+        out.append(ChildRule(dict(m), e.get("target"), e.get("drop_node"), rules))
+    return out
+
+
 # The translation object ---------------------------------------------------------
 
 @dataclass
@@ -170,6 +226,42 @@ class Translation:
     target_only: dict[str, str] = field(default_factory=dict)
     tables: dict[str, Any] = field(default_factory=dict)
     hooks: dict[str, Callable] = field(default_factory=dict)
+    child_rules: list[ChildRule] = field(default_factory=list)
+
+    def translate_children(self, children: list, ctx: dict | None = None) -> tuple[list, list[str]]:
+        """Return (children of the target node, report lines).
+
+        `children` are ``draft.DraftChild`` objects; they are copied, not changed. A child that no
+        rule matches passes through unchanged; a matching rule with ``drop_node`` removes it (and its
+        descendants) with a report line.
+        """
+        out: list = []
+        lines: list[str] = []
+        for c in children:
+            rule = next((r for r in self.child_rules if r.matches(c)), None)
+            if rule is None:
+                kept = replace(c, props=dict(c.props), compatible=list(c.compatible), labels=list(c.labels))
+            elif rule.drop_node is not None:
+                lines.append(f"child {c.node_name} dropped ({self.source} -> {self.target}): {rule.drop_node}")
+                continue
+            else:
+                helper = Translation(
+                    source=(c.compatible[0] if c.compatible else c.name), target=None,
+                    rules={"reg": Rule("keep"), "status": Rule("keep"), **rule.rules}, name=self.name,
+                    emit_compatible=False, tables=self.tables, hooks=self.hooks)
+                props, extra = helper.translate(dict(c.props), ctx)
+                lines += [f"child {c.node_name}: {x}" for x in extra]
+                unit = c.unit
+                reg = props.get("reg")
+                if (unit is not None and isinstance(reg, list) and reg and isinstance(reg[0], int)
+                        and "reg" in rule.rules and rule.rules["reg"].action != "keep"):
+                    unit = f"{int(reg[0]):x}"
+                kept = replace(c, props=props, unit=unit, labels=list(c.labels),
+                               compatible=[rule.target] if rule.target else list(c.compatible))
+            sub, sub_lines = self.translate_children(kept.children, ctx)
+            out.append(replace(kept, children=sub))
+            lines += sub_lines
+        return out, lines
 
     def translate(self, props: dict, ctx: dict | None = None) -> tuple[dict, list[str]]:
         """Return (target props, report lines). ``ctx`` is passed on to the hooks."""
@@ -309,8 +401,9 @@ def translations_from_dict(doc: dict, base_dir: Path | None = None,
             name=f"{set_name}:{entry['source']}", no_target=no_target,
             emit_compatible=entry.get("emit_compatible", True),
             note=entry.get("note", ""), target_only=dict(entry.get("target_only") or {}),
-            tables=tables, hooks=hook_fns)
-        for p, r in rules.items():
+            tables=tables, hooks=hook_fns,
+            child_rules=_parse_child_rules(entry.get("children"), groups, where))
+        for p, r in [*rules.items(), *(x for cr in t.child_rules for x in cr.rules.items())]:
             if r.action == "derive":
                 t._hook(r.arg)
             elif r.action == "transform":
@@ -359,6 +452,8 @@ def render_property(name: str, value: Any, symbolic: bool = True) -> str | None:
         return f"{name};"
     if isinstance(value, str):
         return f'{name} = "{value}";'
+    if isinstance(value, Ref):
+        return f"{name} = <&{value.label}>;"
     if isinstance(value, int):
         return f"{name} = <{_cell(value, symbolic)}>;"
     if value and all(isinstance(v, str) for v in value):

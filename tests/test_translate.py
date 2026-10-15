@@ -650,3 +650,66 @@ def test_binding_pair_table_rows_equal_property_counts(rtos4_ws, main_ws, capsys
         print(f"\n{label}: source properties {len(src)} = table rows {len(names)}; target properties {len(tgt)} = "
               f"mapped {len(mapped)} + target-only {len(tonly)}; unmapped source rows "
               f"{sum(1 for r in rows if r[3].startswith('—'))} (drop/derive without target)")
+
+
+# ---- child nodes (P8.4) ------------------------------------------------------------------------------
+def _kids():
+    from dt_explorer.core.draft import DraftChild
+    return [DraftChild("eeprom", "5e", ["old,eeprom"], ["ee"], {"reg": [0x5e], "size": 256, "old-prop": 1}),
+            DraftChild("channel", "2", [], [], {"reg": [2], "gain": "G1"},
+                       [DraftChild("sub", "0", ["old,sub"], [], {"reg": [0], "x": 1})]),
+            DraftChild("gone", "9", ["old,gone"], [], {"reg": [9]})]
+
+
+def test_children_pass_through_unchanged_without_rules():
+    t = _one({"source": "a,b", "target": "c,d"})
+    kids = _kids()
+    out, lines = t.translate_children(kids)
+    assert out == kids and out is not kids and lines == []
+    out[0].props["size"] = 1                                   # a copy: the draft's own child is not touched
+    assert kids[0].props["size"] == 256
+
+
+def test_child_rules_translate_by_compatible_and_name_and_drop():
+    t = _one({"source": "a,b", "target": "c,d", "children": [
+        {"match": {"compatible": "old,eeprom"}, "target": "new,eeprom", "keep": ["size"],
+         "properties": {"old-prop": {"rename": "new-prop"}}},
+        {"match": {"name": "channel"}, "keep": ["gain"]},
+        {"match": {"compatible": "old,sub"}, "target": "new,sub", "properties": {"x": {"drop": "gone in the target"}}},
+        {"match": {"compatible": "old,gone"}, "drop_node": "no counterpart"}]})
+    out, lines = t.translate_children(_kids())
+    assert [c.node_name for c in out] == ["eeprom@5e", "channel@2"]
+    ee = out[0]
+    assert ee.compatible == ["new,eeprom"] and ee.labels == ["ee"] and ee.unit == "5e"
+    assert ee.props == {"reg": [0x5e], "size": 256, "new-prop": 1}          # reg is kept without a rule
+    assert out[1].compatible == [] and out[1].props == {"reg": [2], "gain": "G1"}
+    assert out[1].children[0].compatible == ["new,sub"] and out[1].children[0].props == {"reg": [0]}
+    assert any("child gone@9 dropped" in x and "no counterpart" in x for x in lines)
+    assert any("child sub@0" in x and "gone in the target" in x for x in lines)
+
+
+def test_child_rule_that_changes_reg_changes_the_unit_address():
+    t = _one({"source": "a,b", "target": "c,d", "children": [
+        {"match": {"name": "channel"}, "properties": {"reg": {"transform": {"const": [6]}}}}]})
+    out, _ = t.translate_children(_kids()[1:2])
+    assert out[0].unit == "6" and out[0].props["reg"] == [6]
+
+
+def test_unlisted_child_property_is_reported_and_left_out():
+    t = _one({"source": "a,b", "target": "c,d", "children": [{"match": {"name": "eeprom"}, "keep": ["size"]}]})
+    out, lines = t.translate_children(_kids()[:1])
+    assert "old-prop" not in out[0].props and any("unlisted property 'old-prop'" in x for x in lines)
+
+
+@pytest.mark.parametrize("bad", [
+    {"children": {"match": {}}},                                   # not a list
+    {"children": [{"target": "x"}]},                               # no match
+    {"children": [{"match": {}}]},                                 # empty match
+    {"children": [{"match": {"size": 1}}]},                        # unknown match key
+    {"children": [{"match": {"name": "n"}, "bogus": 1}]},          # unknown key
+    {"children": [{"match": {"name": "n"}, "use": ["nope"]}]},     # unknown group
+    {"children": [{"match": {"name": "n"}, "properties": {"p": {"transform": {"hook": "nope"}}}}]},
+])
+def test_malformed_child_rules_are_rejected(bad):
+    with pytest.raises(TranslationError):
+        _one({"source": "a,b", "target": "c,d", **bad})

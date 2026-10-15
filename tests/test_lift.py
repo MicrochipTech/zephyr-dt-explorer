@@ -142,9 +142,25 @@ def board_names(model, path):
     return [n for n, p in (o.props if o else {}).items() if origin_kind(p.file) not in PLATFORM]
 
 
-def summary(edt, model, label: str, names: list[str]) -> dict:
+def child_summary(edt_node, model, lifted) -> dict:
+    """Children that the draft holds: compatible, labels, the properties written by the board or app, recursively.
+
+    The property names come from the original build's origins, the values from `edt_node` (original or rebuilt).
+    """
+    out = {}
+    for name, c in edt_node.children.items():
+        if c.path not in lifted:
+            continue
+        names = [n for n in board_names(model, c.path) if n not in ("compatible", "phandle")]
+        out[name] = {"compatible": list(c.compats), "labels": sorted(c.labels),
+                     "props": {n: (bytes(c._node.props[n].value) if n in c._node.props else None) for n in names},
+                     "children": child_summary(c, model, lifted)}
+    return out
+
+
+def summary(edt, model, label: str, names: list[str], lifted=()) -> dict:
     node = edt.label2node[label]
-    out = {"compatible": list(node.compats), "status": node.status}
+    out = {"compatible": list(node.compats), "status": node.status, "children": child_summary(node, model, lifted)}
     for name in names:
         if name in ("compatible", "status"):
             continue
@@ -163,7 +179,7 @@ def summary(edt, model, label: str, names: list[str]) -> dict:
 
 
 def strip_node(text: str, label: str, names: list[str], uses: list[str], groups: list[str],
-               base_compat: str, keep: tuple = ()) -> str:
+               base_compat: str, keep: tuple = (), children: bool = True) -> str:
     """zephyr.dts text with the board settings of one node removed (back to the SoC defaults)."""
     from test_render import _strip_block
     lines = text.splitlines()
@@ -184,6 +200,11 @@ def strip_node(text: str, label: str, names: list[str], uses: list[str], groups:
         i += 1
         while lines[i] != indent + "};":
             ln = lines[i]
+            if children and re.match(rf"^{re.escape(indent)}\t[^\t/].*\{{\s*$", ln):   # a child node: whole block goes
+                while lines[i] != indent + "\t};":
+                    i += 1
+                i += 1
+                continue
             stmt = re.match(rf"^{re.escape(indent)}\t([^\s\t=;{{]+)\s*[=;]", ln)
             if stmt and stmt.group(1) in drop:
                 while ";" not in lines[i].split("/*")[0]:
@@ -243,17 +264,26 @@ def test_lift_renders_back_to_original_nodes(rtos4_ws, rtos4_build, tmp_path, re
             base = strip_node(zdts, node.label, names, uses, groups, "atmel,sam0-sercom")
             base = _strip_aliases(base, aliases)
             overlay = render_overlay(node, ctx)
+            for kid in node.children:       # the children are really gone from the base, so the compare is not vacuous
+                assert not re.search(rf"{re.escape(kid.node_name)}\s*\{{", base) and kid.node_name in overlay
             names_all = names + ["compatible", "status"]
-            original = summary(model.edt, model, node.label, names_all)
+            lifted = set(report.children)
+            original = summary(model.edt, model, node.label, names_all, lifted)
             # a node with children cannot be parsed without its #address-cells/#size-cells: the reset
             # state keeps them (so it still differs from the original), the rendered state does not
             has_children = bool(model.by_path[path].children)
             reset_base = strip_node(zdts, node.label, names, uses, groups, "atmel,sam0-sercom",
                                     keep=("#address-cells", "#size-cells") if has_children else ())
             reset_base = _strip_aliases(reset_base, aliases)
-            reset = summary(compile_edt(model, PINCTRL_INCLUDE + reset_base, tmp_path), model, node.label, names_all)
+            try:
+                reset = summary(compile_edt(model, PINCTRL_INCLUDE + reset_base, tmp_path), model, node.label,
+                                names_all, lifted)
+            except Exception as exc:    # noqa: BLE001 - without the children a reference to their label is dangling
+                reset = f"reset devicetree does not compile: {str(exc).splitlines()[-1]}"
             rendered = summary(compile_edt(model, PINCTRL_INCLUDE + base + "\n" + overlay, tmp_path),
-                               model, node.label, names_all)
+                               model, node.label, names_all, lifted)
+            print(f"{node.label}: {len(node.children)} child node(s) in the draft, "
+                  f"{sum(1 for _ in original['children'])} compared (compatible, labels, written properties)")
             ok = rendered == original
             results.append((node.label, ok))
             print(f"{node.label} ({node.compatible}): compare {'MATCH' if ok else 'DIFFERENT'}; "
@@ -275,7 +305,8 @@ def test_lift_renders_back_to_original_nodes(rtos4_ws, rtos4_build, tmp_path, re
         for node in draft.nodes:
             path, names, _u, _g = _strip_args(model, node)
             names_all = names + ["compatible", "status"]
-            same = summary(edt, model, node.label, names_all) == summary(model.edt, model, node.label, names_all)
+            same = (summary(edt, model, node.label, names_all, set(report.children))
+                    == summary(model.edt, model, node.label, names_all, set(report.children)))
             print(f"{node.label}: {'MATCH' if same else 'DIFFERENT'}")
             assert same
         print(f"result: {sum(ok for _, ok in results)}/{len(results)} nodes match per node, whole draft matches")
@@ -287,3 +318,40 @@ def _strip_aliases(text: str, aliases: list[str]) -> str:
         return text
     pat = re.compile(rf"^\s*({'|'.join(map(re.escape, aliases))})\s*=\s*[^;]*;.*$")
     return "\n".join(ln for ln in text.splitlines() if not pat.match(ln)) + "\n"
+
+
+def test_synthetic_children_are_lifted_into_the_draft(fake_model):
+    from dt_explorer.core.translate import Ref
+    pi = lambda n, f: PropInfo(n, "", f, 1)  # noqa: E731
+    board, soc = "zephyr\\boards\\acme\\b.dts", "zephyr\\dts\\arm\\acme\\soc.dtsi"
+    led = _node("/gpio/led", ["led0"], ["acme,led"])
+    sub = _node("/soc/uart@0/dev@4f/sub@0", [], [], {"reg": ("array", [0])})
+    dev = _node("/soc/uart@0/dev@4f", ["dev0", "dev_alias"], ["acme,dev"], {
+        "reg": ("array", [0x4f]), "res": ("int", 9), "mode": ("string", "fast"), "on": ("boolean", True),
+        "irq": ("phandle", led), "gp": ("phandle-array", [NS(controller=led, data={"pin": 3, "flags": 1})]),
+        "from-soc": ("int", 1), "node-path": ("path", object()), "bad-ref": ("phandle", _node("/x", [], []))},
+        children={"sub@0": sub})
+    dev.name, sub.name = "dev@4f", "sub@0"
+    uart = fake_model.edt.nodes[0]
+    uart.children = {"dev@4f": dev}
+    fake_model.origins.update({
+        dev.path: NodeOrigin(board, 7, {n: pi(n, soc if n == "from-soc" else board) for n in (
+            "compatible", "phandle", "reg", "res", "mode", "on", "irq", "gp", "from-soc", "node-path", "bad-ref")}),
+        sub.path: NodeOrigin(board, 9, {"reg": pi("reg", board)}),
+        "/soc/uart@0/soc-child": NodeOrigin(soc, 1, {"reg": pi("reg", soc)})})
+    uart.children["soc-child"] = _node("/soc/uart@0/soc-child", [], ["acme,x"], {"reg": ("array", [1])})
+    uart.children["soc-child"].name = "soc-child"
+
+    draft, report = lift_build(fake_model, BuildInfo(build_dir=fake_model.build))
+    kids = draft.nodes[0].children
+    assert [c.node_name for c in kids] == ["dev@4f"]                       # the SoC's own child is left out
+    c = kids[0]
+    assert (c.name, c.unit, c.compatible, c.labels) == ("dev", "4f", ["acme,dev"], ["dev0", "dev_alias"])
+    assert c.props == {"reg": [0x4f], "res": 9, "mode": "fast", "on": True,
+                       "irq": [Ref("led0")], "gp": [[Ref("led0"), 3, 1]]}   # phandle number, SoC prop: left out
+    assert c.children[0].node_name == "sub@0" and c.children[0].props == {"reg": [0]}
+    assert report.children == ["/soc/uart@0/dev@4f/sub@0", "/soc/uart@0/dev@4f"]
+    what = {(x.path, x.what) for x in report.not_representable}
+    assert ("/soc/uart@0/dev@4f", "node-path") in what and ("/soc/uart@0/dev@4f", "bad-ref") in what
+    assert not any(x.what == "child nodes" for x in report.not_representable)
+    assert Draft.from_dict(draft.to_dict()) == draft                       # JSON keeps the references
