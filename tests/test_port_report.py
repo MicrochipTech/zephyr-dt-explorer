@@ -782,7 +782,12 @@ def test_lab1_to_sg41_new_pairs_are_translated_in_the_real_port(rtos4_ws, main_w
     assert by["adc0"].status == "identical" and any("prescaler" in x for x in by["adc0"].lines)
     assert by["tcc0"].status == "emitted" and by["tcc0"].emitted == ["#pwm-cells"]
     assert by["tcc0"].translated["#pwm-cells"] == 3 and "#pwm-cells = <3>;" in res.overlay
-    assert any("third cell" in x for x in by["tcc0"].lines)                # the consumers' pwms are reported, not rewritten
+    assert any("third cell" in x for x in by["tcc0"].lines)                # the translation names the consumers' cells ...
+    (fix,) = res.report.consumers                                          # ... and the port rewrites the board's pwm-leds child
+    assert (fix.path, fix.prop, fix.status) == ("/pwmleds/pwm_led_0", "pwms", "override")
+    assert fix.new == "<&tcc0 2 20000000 0>" and "&pwm_led0 {\n\tpwms = <&tcc0 2 20000000 0>;\n};" in res.overlay
+    assert by["usb0"].status == "no_target" and by["usb0"].lines[0].startswith("untranslatable: no USB device node")
+    assert any("default 'prescaler'" in x for x in by["adc0"].lines) and "prescaler" in by["adc0"].same_in_target
     assert by["gmac"].emitted == ["phy-handle"] and "phy-handle = <&phy>;" in res.overlay
     assert any(x.startswith("mac-eeprom") and "nvmem-cells" in x for x in by["gmac"].lines)
     assert any("ethernet-phy@0" in x for x in by["mdio"].notes)            # the PHY child is the target board's own
@@ -795,3 +800,157 @@ def test_lab1_to_sg41_new_pairs_are_translated_in_the_real_port(rtos4_ws, main_w
         print(res.overlay)
         print("=== conf ===")
         print(res.conf)
+
+
+# ---- P8.10b: consumers of ported nodes, untranslatable SoC nodes ----------------------------------------------
+class _PropText:
+    def __init__(self, text): self.text = text
+    def __str__(self): return self.text
+
+
+def _consumer_world(world, label="led0", in_target=True, parent_in_target=True, extra="", cells=("channel", "period")):
+    """Source: /s/u1 is a ported controller whose specifier 'pwm' is [channel, period] in the source and
+    [channel, period, flags] in the target. /s/leds/<label>-node is an enabled consumer: pwms = <&u1 2 1000>."""
+    for n, names in ((world.src.by_path["/s/u1"], list(cells)), (world.tgt.by_path["/t/u1"], [*cells, "flags"])):
+        n._binding = NS(specifier2cells={"pwm": names, "other": ["a"]})
+    ctrl = world.src.by_path["/s/u1"]
+    entry = NS(controller=ctrl, data={"channel": 2, "period": 1000})
+    parent = _node("/s/leds", "leds", ["acme,leds"])
+    cons = _node(f"/s/leds/{label}-node", label, [], props={})
+    cons.name = f"{label}-node"
+    cons.parent = parent
+    cons.props = {"pwms": NS(val=[entry], type="phandle-array"), "label": NS(val="X", type="string")}
+    cons._node = NS(props={"pwms": _PropText("pwms = < &u1 0x2 0x3e8 >;"), "label": _PropText('label = "X";'),
+                           **({"gpios": _PropText("gpios = <&nolabel 1>;")} if extra else {})})
+    for n in (parent, cons):
+        world.src.edt.nodes.append(n)
+        world.src.edt.label2node[n.labels[0]] = n
+        world.src.by_path[n.path] = n
+    if parent_in_target:
+        tp = _node("/s/leds", "tleds", ["acme,leds"])           # the parent has the same path in the target
+        world.tgt.edt.nodes.append(tp)
+        world.tgt.edt.label2node["tleds"] = tp
+        world.tgt.by_path[tp.path] = tp
+    if in_target:
+        tc = _node("/s/leds/led-t", label, [], props={})
+        tc.props = {"pwms": NS(val=[NS(controller=world.tgt.by_path["/t/u1"], data={"channel": 5, "period": 1000,
+                                                                                   "flags": 0})], type="phandle-array")}
+        world.tgt.edt.nodes.append(tc)
+        world.tgt.edt.label2node[label] = tc
+        world.tgt.by_path[tc.path] = tc
+        return tc
+    return cons
+
+
+def test_consumer_of_a_ported_node_gets_the_target_cells_in_the_overlay(world):
+    _consumer_world(world)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert "&led0 {\n\tpwms = <&u1 2 1000 0>;\n};" in res.overlay             # third cell: the new cell is 0
+    (fix,) = res.report.consumers
+    assert (fix.path, fix.prop, fix.status, fix.old, fix.new) == (
+        "/s/leds/led0-node", "pwms", "override", "<&u1 2 1000>", "<&u1 2 1000 0>")
+    assert "cell 'flags' is new in the target: 0" in fix.detail
+    text = "\n".join(res.report.lines())
+    assert "consumer /s/leds/led0-node  pwms  [override]  <&u1 2 1000> -> <&u1 2 1000 0>" in text
+
+
+def test_consumer_override_is_skipped_when_the_target_already_has_the_value(world):
+    tc = _consumer_world(world)
+    tc.props["pwms"].val[0].data["channel"] = 2
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert "&led0" not in res.overlay and [c.status for c in res.report.consumers] == ["unchanged"]
+
+
+def test_consumer_not_in_the_target_is_carried_under_its_parent(world):
+    _consumer_world(world, in_target=False)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert [c.status for c in res.report.consumers] == ["carried"]
+    assert "&tleds {\n\tled0: led0-node {\n\t\tpwms = <&u1 2 1000 0>;\n\t\tlabel = \"X\";\n\t};\n};" in res.overlay
+
+
+def test_consumer_that_cannot_be_carried_is_reported_with_the_exact_fix(world):
+    _consumer_world(world, in_target=False, parent_in_target=False)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    (fix,) = res.report.consumers
+    assert fix.status == "report" and "pwms = <&u1 2 1000 0>;" in fix.detail and "parent /s/leds does not exist" in fix.detail
+    assert "led0" not in res.overlay
+
+
+def test_consumer_with_a_reference_the_target_lacks_is_reported_not_carried(world):
+    _consumer_world(world, in_target=False, extra="x")
+    (fix,) = pr.port_build(world.src, world.tgt, check=False).report.consumers
+    assert fix.status == "report" and "references nolabel" in fix.detail and "pwms = <&u1 2 1000 0>;" in fix.detail
+
+
+def test_consumer_in_carried_app_text_is_overridden_after_it(world):
+    _consumer_world(world, in_target=False, parent_in_target=False)
+    rep = pr.PortReport()
+    rep.nodes = [pr.NodeResult("u1", "/s/u1", "acme,uart", "beta,uart", "/t/u1", "emitted")]
+    rep.carried.append(pr.Carried("led0: led0-node", "/s/leds/led0-node", "node", "app.overlay", 3))
+    pieces = pr._rewrite_consumers(world.src, world.tgt, rep, {"u1": "u1"})
+    assert len(pieces) == 1 and "&{/s/leds/led0-node} {\n\tpwms = <&u1 2 1000 0>;\n};" in pieces[0]
+    assert [c.status for c in rep.consumers] == ["override_carried"]
+
+
+def test_consumer_with_unchanged_cells_or_a_node_that_is_not_ported_is_left_alone(world):
+    _consumer_world(world, cells=("channel", "period", "flags"))     # same names on both sides
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert res.report.consumers == [] and "led0" not in res.overlay
+    world.src.by_path["/s/u1"]._binding = NS(specifier2cells={"pwm": ["channel", "period"]})
+    world.lift.covered = [c for c in world.lift.covered if c.label != "u1"]
+    world.draft.nodes = [d for d in world.draft.nodes if d.label != "u1"]
+    assert pr.port_build(world.src, world.tgt, check=False).report.consumers == []   # controller not ported
+
+
+def test_map_specifier_by_name_then_by_position():
+    assert pr._map_specifier({"channel": 2, "period": 9}, ["channel", "period", "flags"]) == (
+        [2, 9, 0], ["cell 'flags' is new in the target: 0"])
+    cells, notes = pr._map_specifier({"channel": 2, "period": 9}, ["channel", "ns", "flags"])
+    assert cells == [2, 9, 0] and "cell 'period' becomes 'ns'" in notes
+    cells, notes = pr._map_specifier({"a": 1, "b": 2}, ["a"])
+    assert cells == [1] and "cell 'b' has no counterpart in the target and is dropped" in notes
+
+
+def _soc_world(world, origin_file="zephyr\\boards\\acme\\b.dts"):
+    """Enabled SoC nodes that no recipe lifts: one with a no_target registry entry, one with a target, one that
+    only the SoC description enables."""
+    for t in translations_from_dict({"schema_version": 1, "name": "extra", "translations": [
+            {"source": "acme,usb", "no_target": "beta has no USB device driver"},
+            {"source": "acme,rtc", "target": "beta,rtc", "keep": ["reg"]}]}):
+        plugins.register_translation(t)
+    for label, compat in (("usb0", "acme,usb"), ("rtc0", "acme,rtc"), ("quiet", "acme,usb")):
+        sn = _node(f"/s/{label}", label, [compat], addr={"usb0": 0x7000, "rtc0": 0x7100, "quiet": 0x7200}[label])
+        world.src.edt.nodes.append(sn)
+        world.src.edt.label2node[label] = sn
+        world.src.by_path[sn.path] = sn
+        world.lift.uncovered.append(UncoveredNode(sn.path, [label], compat, "soc", "no recipe"))
+    world.src.origins = {
+        "/s/usb0": NodeOrigin("zephyr\\dts\\acme.dtsi", 1, {"status": NS(file=origin_file)}),
+        "/s/rtc0": NodeOrigin("zephyr\\dts\\acme.dtsi", 1, {"status": NS(file=origin_file)}),
+        "/s/quiet": NodeOrigin("zephyr\\dts\\acme.dtsi", 1, {})}
+
+
+def test_enabled_soc_node_without_recipe_is_listed_as_untranslatable(world):
+    _soc_world(world)
+    res = pr.port_build(world.src, world.tgt, check=False)
+    by = {n.label: n for n in res.report.nodes}
+    assert by["usb0"].status == "no_target" and by["usb0"].lines == ["untranslatable: beta has no USB device driver"]
+    text = "\n".join(res.report.lines())
+    assert "&usb0  acme,usb -> -  [no_target]" in text and "untranslatable: beta has no USB device driver" in text
+    assert "&usb0" not in res.overlay
+    assert "acme,usb" in {r.source_compatible for r in res.report.kconfig}        # the Kconfig table says so too
+    assert "quiet" not in by                                                      # only the SoC description enables it
+
+
+def test_enabled_soc_node_with_a_translation_but_no_recipe_is_listed_as_not_ported(world):
+    _soc_world(world)
+    rep = pr.port_build(world.src, world.tgt, check=False).report
+    (u,) = [x for x in rep.unported if x.path == "/s/rtc0"]
+    assert "translation acme,rtc -> beta,rtc exists, not ported because no recipe lifts the node" in u.reason
+    assert not any(x.path == "/s/quiet" for x in rep.unported)
+
+
+def test_soc_node_that_only_the_soc_enables_stays_silent(world):
+    _soc_world(world, origin_file="zephyr\\dts\\acme.dtsi")
+    res = pr.port_build(world.src, world.tgt, check=False)
+    assert "usb0" not in {n.label for n in res.report.nodes} and not any(u.path == "/s/rtc0" for u in res.report.unported)

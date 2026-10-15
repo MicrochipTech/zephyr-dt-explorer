@@ -23,6 +23,14 @@ Pipeline (``port_build``), generic; vendor knowledge comes only from plugins and
    (with a suggestion and the alias entry for the overlay), pins that are not available on the target
    SoC, nodes without translation and child nodes that a draft cannot hold.
 
+Two steps follow the node loop. *Consumers*: when the target binding of a ported node names other specifier
+cells (``#pwm-cells`` 2 -> 3: channel, period, flags), every enabled source node that references it with cells is
+rewritten (``_rewrite_consumers``; "consumer" lines of section 1): overridden in the target overlay when the target build has the
+node, else carried or reported with the exact fix. *Untranslatable SoC nodes*: an enabled node that a board file
+or the app configures and no recipe lifts is looked up in the translation registry; a ``no_target`` entry gives a
+section-1 line ``untranslatable: <reason>``, an entry with a target is listed in section 5 as "translation exists,
+not ported" (translating needs the draft node with pads, roles and clocks that only a recipe produces).
+
 Nothing is written into the app. ``check`` (fast check) and ``verify.verify`` (Zephyr itself) run on the
 *target* build.
 """
@@ -43,7 +51,7 @@ from .draft import BindingIndex, Draft, DraftChild, DraftNode, Use
 from .kconfig_suggest import KconfigLoadError, KconfigSuggestion, load_kconfig, suggest_kconfig
 from .lift import LiftReport, lift_build
 from .render import RenderContext, RenderError, _signals, render_overlay
-from .translate import Ref, Sym, Translation
+from .translate import Ref, Sym, Translation, render_property
 from .validate import Finding, validate
 
 log = logging.getLogger("dt_explorer.port")
@@ -109,6 +117,19 @@ class PinIssue:
 
 
 @dataclass
+class ConsumerFix:
+    """A node of the source build that references a ported node with specifier cells (``pwms = <&ctrl 2 PERIOD>``)
+    whose cell layout changed in the target binding."""
+    path: str                           # consumer, source devicetree path
+    prop: str
+    controller: str                     # label of the ported node in the target
+    old: str                            # property value in the source, as text
+    new: str                            # rewritten value, as text
+    status: str                         # override | carried | override_carried | unchanged | report
+    detail: str = ""
+
+
+@dataclass
 class Unported:
     path: str
     labels: list[str]
@@ -130,6 +151,7 @@ class PortReport:
     label_refs: list[LabelRef] = field(default_factory=list)
     pin_issues: list[PinIssue] = field(default_factory=list)
     unported: list[Unported] = field(default_factory=list)
+    consumers: list[ConsumerFix] = field(default_factory=list)
     not_representable: list[str] = field(default_factory=list)
     carried: list[Carried] = field(default_factory=list)
     not_carried: list[NotCarried] = field(default_factory=list)
@@ -142,7 +164,7 @@ class PortReport:
         out: list[tuple[str, list[str]]] = []
         ls: list[str] = []
         for n in self.nodes:
-            head = f"&{n.label}  {n.source_compatible} -> {n.target_compatible or '-'}  [{n.status}]"
+            head = f"{'&' + n.label if n.label else n.source_path}  {n.source_compatible} -> {n.target_compatible or '-'}  [{n.status}]"
             ls.append(head)
             if n.emitted:
                 ls.append("    emitted: " + ", ".join(n.emitted))
@@ -150,6 +172,10 @@ class PortReport:
                 ls.append("    already so in the target board: " + ", ".join(n.same_in_target))
             ls += [f"    {x}" for x in n.lines]
             ls += [f"    note: {x}" for x in n.notes]
+        for c in self.consumers:
+            ls.append(f"consumer {c.path}  {c.prop}  [{c.status}]  {c.old} -> {c.new}")
+            if c.detail:
+                ls.append(f"    {c.detail}")
         out.append(("1. Nodes: translated and untranslatable properties", ls or ["no covered node in the source build"]))
         ks: list[str] = []
         for r in self.kconfig:
@@ -256,6 +282,13 @@ def _match_target(src_node, label: str | None, tgt: BuildModel):
             if _first_addr(n) == addr and n.compats and not n.path.startswith("/cpus"):
                 return n
     return None
+
+
+def _set_by_user(src, path: str) -> bool:
+    """True when a board, overlay or app file sets a property of the node (the board enabled or configured
+    it), as opposed to a node that only the SoC description enables."""
+    origin = (getattr(src, "origins", None) or {}).get(path)
+    return origin is not None and any(origin_kind(p.file) not in ("soc", "module") for p in origin.props.values())
 
 
 def _node_pads(usage, path: str) -> set[str]:
@@ -979,6 +1012,165 @@ def _carry_app_nodes(src: BuildModel, tgt: BuildModel, lift: LiftReport, rep: Po
     return pieces, handled, carried_labels
 
 
+# ---- consumers of ported nodes: specifier cells that changed ----------------------------------------
+def _specifier_names(node) -> dict[str, list[str]]:
+    """Cell names per specifier space of a controller node, from its binding (``pwm: [channel, period]``)."""
+    b = getattr(node, "_binding", None) or getattr(node, "binding", None)
+    spec = getattr(b, "specifier2cells", None) or {}
+    return {k: list(v) for k, v in spec.items()}
+
+
+def _map_specifier(data: dict, tnames: list[str]) -> tuple[list[int], list[str]]:
+    """Cells of one phandle-array entry in the target layout. A cell keeps its value under the same name;
+    cells whose name is gone fill the target names that are new, in order; a target name that nothing fills
+    gets 0 (the neutral value, e.g. flags). Returns (cells, notes)."""
+    cells: list = [None] * len(tnames)
+    notes: list[str] = []
+    for i, n in enumerate(tnames):
+        if n in data:
+            cells[i] = int(data[n])
+    rest = [(n, v) for n, v in data.items() if n not in tnames]
+    free = [i for i, c in enumerate(cells) if c is None]
+    for i, (n, v) in zip(free, rest):
+        cells[i] = int(v)
+        notes.append(f"cell '{n}' becomes '{tnames[i]}'")
+    for n, _v in rest[len(free):]:
+        notes.append(f"cell '{n}' has no counterpart in the target and is dropped")
+    for i in free[len(rest):]:
+        notes.append(f"cell '{tnames[i]}' is new in the target: 0")
+    return [0 if c is None else c for c in cells], notes
+
+
+def _entries_text(entries: list[list]) -> str:
+    return (render_property("x", entries) or "").removeprefix("x = ").removesuffix(";")
+
+
+def _node_text(header: str, body: list[str]) -> str:
+    return header + " {\n" + "".join(f"\t{b}\n" for b in body) + "};\n"
+
+
+def _carry_consumer(tgt: BuildModel, sn, pname: str, stmt: str, ported_labels: dict[str, str]) -> tuple[str | None, str]:
+    """The consumer is not in the target: (overlay piece, "") that writes the node under its parent, or
+    (None, reason) when that is not possible."""
+    parent = sn.parent.path if getattr(sn, "parent", None) is not None else None
+    ptn = tgt.by_path.get(parent) if parent else None
+    props = getattr(getattr(sn, "_node", None), "props", None)
+    if ptn is None:
+        return None, f"its parent {parent} does not exist in the target devicetree"
+    if ptn.status != "okay":
+        return None, f"its parent {parent} is disabled in the target devicetree"
+    if props is None:
+        return None, "the node text is not available"
+    tgt_labels = set(tgt.edt.label2node)
+    body = []
+    for k, p in props.items():
+        if k == pname:
+            body.append(stmt)
+            continue
+        text = str(p)
+        missing = [x for x in re.findall(r"&([A-Za-z_]\w*)", text) if ported_labels.get(x, x) not in tgt_labels]
+        if missing:
+            return None, f"property {k} references {missing[0]}, which the target devicetree does not have"
+        body.append(text)
+    labels = "".join(f"{x}: " for x in sn.labels if x not in tgt_labels)
+    node = _node_text(f"{labels}{sn.name}", body).rstrip("\n").replace("\n", "\n\t")
+    phead = f"&{_label(ptn)}" if ptn.labels else f"&{{{ptn.path}}}"
+    return (f"/* {sn.path}: not in the target board, carried with the target's cells */\n"
+            f"{phead} {{\n\t{node}\n}};\n"), ""
+
+
+def _rewrite_consumers(src: BuildModel, tgt: BuildModel, rep: PortReport, ported_labels: dict[str, str]) -> list[str]:
+    """Rewrite what other nodes of the source say about a ported node when its specifier cells changed.
+
+    A ported node whose binding names other cells in the target (a PWM controller: channel, period -> channel,
+    period, flags) breaks every enabled node that references it with cells (``pwms = <&ctrl 2 PERIOD>``). For
+    each such consumer the property is rewritten with the target's cell names (a cell that is new gets 0). The
+    consumer is overridden when the target build has it (same label, else same path); overridden after the
+    app-overlay text that this port carries; carried with the rewritten property when its parent exists in the
+    target and nothing it references is missing; otherwise reported with the exact line to add.
+    Returns the overlay pieces; the decisions are in ``rep.consumers``.
+    """
+    ctrls: dict[str, tuple] = {}            # source path -> (source node, target node, target label)
+    for r in rep.nodes:
+        if r.status in ("emitted", "identical", "remapped") and r.target_path and r.source_path in src.by_path:
+            tn = tgt.by_path.get(r.target_path)
+            if tn is not None:
+                ctrls[r.source_path] = (src.by_path[r.source_path], tn, _label(tn) or r.label)
+    if not ctrls:
+        return []
+    carried = [c.path for c in rep.carried]
+    pieces: list[str] = []
+    for sn in src.edt.nodes:
+        if sn.status != "okay" or sn.path in ctrls:
+            continue
+        changed: dict[str, tuple[list, str, list[str]]] = {}          # property -> (entries, old text, notes)
+        for pname, prop in sn.props.items():
+            if getattr(prop, "type", None) != "phandle-array":
+                continue
+            entries, old, notes, hit = [], [], [], False
+            for e in prop.val or []:
+                ctrl = getattr(e, "controller", None)
+                data = dict(getattr(e, "data", None) or {})
+                names, vals = list(data), [int(v) for v in data.values()]
+                lbl = (_label(ctrl) if ctrl is not None else None) or "?"
+                old.append([Ref(lbl), *vals])
+                if ctrl is not None and ctrl.path in ctrls:
+                    snode_c, tnode_c, tl = ctrls[ctrl.path]
+                    sspec, tspec = _specifier_names(snode_c), _specifier_names(tnode_c)
+                    base = next((k for k, v in sspec.items() if v == names), None)
+                    if base is None and len(sspec) == 1:
+                        base = next(iter(sspec))
+                    tnames = tspec.get(base) if base is not None else None
+                    if tnames is not None and tnames != names:
+                        cells, nts = _map_specifier(data, tnames)
+                        entries.append([Ref(tl), *cells])
+                        notes += nts
+                        hit = True
+                    else:
+                        entries.append([Ref(tl), *vals])
+                else:
+                    entries.append([Ref(ported_labels.get(lbl, lbl)), *vals])
+            if hit:
+                changed[pname] = (entries, _entries_text(old), notes)
+        if not changed:
+            continue
+        slabel = _label(sn)
+        tn = (tgt.edt.label2node.get(slabel) if slabel else None) or tgt.by_path.get(sn.path)
+        in_carried = any(sn.path == c or sn.path.startswith(c + "/") for c in carried)
+        for pname, (entries, old, notes) in changed.items():
+            fix = ConsumerFix(sn.path, pname, entries[0][0].label, old, _entries_text(entries), "report",
+                              "; ".join(notes))
+            rep.consumers.append(fix)
+            stmt = render_property(pname, entries)
+            sep = "; " if fix.detail else ""
+            if tn is not None:
+                cur = tn.props.get(pname)
+                if cur is not None and getattr(cur, "type", None) == "phandle-array" and _same_value(
+                        _edt_phandles(cur), entries):
+                    fix.status, fix.detail = "unchanged", fix.detail + sep + "the target board already has this value"
+                    continue
+                head = f"&{_label(tn)}" if tn.labels else f"&{{{tn.path}}}"
+                body = [stmt] + ([] if tn.status == "okay" else ['status = "okay";'])
+                fix.status = "override"
+                if tn.status != "okay":
+                    fix.detail += sep + f"{tn.path} is disabled in the target build: enabled"
+                pieces.append(f"/* {sn.path}: {pname} with the target's cells */\n" + _node_text(head, body))
+            elif in_carried:
+                fix.status = "override_carried"
+                pieces.append(f"/* {sn.path}: carried node, {pname} with the target's cells */\n"
+                              + _node_text(f"&{{{sn.path}}}", [stmt]))
+            else:
+                piece, why = _carry_consumer(tgt, sn, pname, stmt, ported_labels)
+                if piece is not None:
+                    fix.status = "carried"
+                    pieces.append(piece)
+                else:
+                    fix.detail += sep + (f"not carried: {why}. fix: in the target's node for {sn.path} "
+                                         f"(add the node first) write: {stmt}")
+
+    return pieces
+
+
 # ---- the pipeline ------------------------------------------------------------------------------
 def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel, *,
                check: bool = True, on_step=None) -> PortResult:
@@ -1241,12 +1433,36 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
                                                                    decided_children, emitted_child_labels)
     carried_labels |= emitted_child_labels
     pieces += carried_pieces
+    step("rewriting consumers of ported nodes ...")
+    pieces += _rewrite_consumers(src, tgt, rep, ported_labels)
+    untranslatable: list[NodeResult] = []
     for u in lift.uncovered:
-        if u.origin in ("soc", "module") or u.path in handled:
-            continue
+        if u.path in handled or (u.origin in ("soc", "module") and not _set_by_user(src, u.path)):
+            continue                        # a SoC node that only the SoC description enables is no decision of the board
+        sn = src.by_path.get(u.path)
         tn = tgt.by_path.get(u.path) or next((tgt.edt.label2node[x] for x in u.labels if x in tgt.edt.label2node), None)
+        tn_m = tn or (_match_target(sn, u.labels[0] if u.labels else None, tgt) if sn is not None else None)
+        t = _translation_for(u.compatible, list(tn_m.compats) if tn_m is not None else [], has_binding)
+        if t is not None and t.no_target is not None:
+            # a node that no recipe lifts but the translation registry knows has no counterpart at all
+            untranslatable.append(NodeResult(
+                u.labels[0] if u.labels else None, u.path, u.compatible, None, tn_m.path if tn_m is not None else None,
+                "no_target", lines=[f"untranslatable: {t.no_target.strip()}"],
+                notes=["not ported; the target build " + ("has a node of that label or address" if tn_m is not None
+                                                           else "has no node of that label or address")]))
+            continue
+        if t is not None and t.target:
+            # a translation exists, but translating needs the draft node (pads, roles, clocks) that a recipe lifts
+            rep.unported.append(Unported(
+                u.path, list(u.labels), u.compatible, u.origin,
+                f"translation {t.source} -> {t.target} exists, not ported because no recipe lifts the node into the "
+                "draft; configure it by hand in the target board file", tn is not None))
+            continue
+        if u.origin in ("soc", "module"):
+            continue
         rep.unported.append(Unported(u.path, list(u.labels), u.compatible, u.origin,
                                      "no recipe or translation covers it; carry it over by hand", tn is not None))
+    rep.nodes += untranslatable
     for nr in lift.not_representable:
         rep.not_representable.append(f"{nr.path}  {nr.what}: {nr.reason}")
     reported = {x.path for x in rep.not_carried} | {x.path for x in rep.carried} | decided_children

@@ -170,8 +170,7 @@ def dac_reference(props: dict, ctx: dict) -> tuple[dict, list[str]]:
     table = ctx["tables"]["dac_refsel"]
     ref = props["reference"]
     new = table.get(ref)
-    lines = ["children channel_0/channel_1: the target needs nodes named channel@0/channel@1 with reg = <0>/<1>; "
-             "the properties are translated, the node names and reg are not (not a property of the node)"]
+    lines = []
     if new is None:
         return {}, [f"reference: {ref!r} has no counterpart in {sorted(table)}; refsel (required on g1) not set"] + lines
     return {"refsel": new, "#address-cells": 1, "#size-cells": 0}, lines

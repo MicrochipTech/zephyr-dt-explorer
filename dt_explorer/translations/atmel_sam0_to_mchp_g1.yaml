@@ -426,7 +426,8 @@ translations:
     note: >
       The channel@N children are identical on both sides (adc-controller.yaml); the rule below lists their
       properties so that an unknown one is reported. prescaler is required on g1 and not set by the SoC dtsi
-      (the old SoC dtsi sets 4): it is kept when the source node has it, otherwise the board must set it.
+      (the old SoC dtsi sets 4): it is kept when the source node has it, otherwise the default below is written
+      (4 at the 60 MHz generator of both target boards = 15 MHz, ADC maximum 16 MHz).
     keep: [reg, interrupts, dmas, dma-names, "#io-channel-cells"]
     properties:
       prescaler: {transform: {hook: adc_prescaler}}
@@ -443,7 +444,10 @@ translations:
       num-channels: required, SoC value 23; no source counterpart
       nvm-calib: required, SoC phandle to the software calibration area; no source counterpart
       calib-mapping-names: SoC value; no source counterpart
-      prescaler: reminder, required on g1 and not set by the SoC dtsi; set it on the board when the source node did not carry one
+    default:
+      prescaler:
+        value: 4
+        note: required on g1 and not set by the SoC dtsi (the old SoC dtsi sets 4); the ADC clock (generator rate / prescaler) must stay <= 16 MHz, check it against the generator of the target board
   # ---- DAC ---------------------------------------------------------------------------------------
   - source: atmel,samd5x-dac
     target: microchip,dac-g1
@@ -451,8 +455,7 @@ translations:
     note: >
       The old SoC label dac0 is dac on g1 and the new driver reads the node through DT_NODELABEL(dac). The old
       children channel_0/channel_1 (no reg) become channel@0/channel@1 with reg, and the DAC node gets
-      #address-cells 1 / #size-cells 0; the translation writes the cells and the child properties, the child node
-      names and reg are the caller's part (reported).
+      #address-cells 1 / #size-cells 0; the children rules rename the nodes and write reg from the unit address.
     keep: [reg, interrupts, dmas, dma-names, "#io-channel-cells"]
     properties:
       reference: {derive: {hook: dac_reference}}
@@ -460,6 +463,7 @@ translations:
     children:
       - &dac_channel
         match: {name: channel_0}
+        rename: channel@0
         properties:
           oversampling: {transform: {map: dac_osr}, to: sampling-ratio}
           refresh-period: {transform: {hook: dac_refresh_us}}
@@ -467,6 +471,7 @@ translations:
           run-in-standby: {drop: "the g1 driver has no run-in-standby handling for the DAC"}
       - <<: *dac_channel
         match: {name: channel_1}
+        rename: channel@1
     target_only:
       ranges: base.yaml property added after v4.3.0, no source counterpart
       dma-coherent: base.yaml property added after v4.3.0, no source counterpart

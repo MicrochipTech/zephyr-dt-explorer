@@ -40,9 +40,12 @@ YAML schema (``schema_version: 1``)
         use: [<group>, ...]           # optional
         note: <free text>
         target_only: {<prop>: <note>} # target props that have no source counterpart
+        default:                      # optional; a target property that the source node may lack
+          <prop>: {value: <v>, note: <text>}      # used when no rule produced <prop>
         children:                     # optional; rules for child nodes (see below)
           - match: {compatible: <c>, name: <n>}   # one or both; a child matches when all given keys match
             target: <compatible>      # optional; the child's new compatible (default: unchanged)
+            rename: <name>[@<unit>]   # optional; the child's new node name; a unit address also sets reg
             drop_node: <reason>       # optional; the child has no counterpart and is not carried
             <rules>
         <rules>
@@ -63,18 +66,26 @@ Exactly one action per property:
 A property present in the input but not listed is reported and left out of the
 result; it is never dropped silently.
 
+``default:`` gives a target property a value when the source node has none (the result lacks it after
+all rules ran): the target requires it and the source's SoC description carried it, so a board-written
+node never lists it. The value is written with a report line. A value that a rule produced is never
+replaced.
+
 Child nodes
 -----------
 A draft node can carry child nodes (``draft.DraftChild``: bus devices, channels, a PHY).
 ``Translation.translate_children`` passes them through unchanged (a child's own compatible
 usually stays) unless a ``children:`` rule matches: then its properties are translated with
 the rule's ``<rules>`` (``reg`` and ``status`` are kept unless a rule says otherwise; a
-changed ``reg`` also changes the unit address) and its compatible becomes ``target``.
+changed ``reg`` also changes the unit address) and its compatible becomes ``target``. ``rename:
+name@unit`` gives the child that node name; a unit address also sets ``reg = <unit>`` (hex), so a child
+that had no ``reg`` gets one (DAC ``channel_0`` -> ``channel@0``, ``reg = <0>``).
 The same rules apply to the grandchildren.
 """
 from __future__ import annotations
 
 import importlib.util
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
@@ -88,8 +99,8 @@ SCHEMA_VERSION = 1
 _ACTIONS = ("rename", "transform", "drop", "derive")
 _TRANSFORMS = ("hook", "map", "const")
 _ENTRY_KEYS = {"source", "target", "no_target", "emit_compatible", "use", "note",
-               "target_only", "keep", "properties", "children"}
-_CHILD_KEYS = {"match", "target", "drop_node", "keep", "properties", "use"}
+               "target_only", "keep", "properties", "children", "default"}
+_CHILD_KEYS = {"match", "target", "drop_node", "keep", "properties", "use", "rename"}
 _MATCH_KEYS = {"compatible", "name"}
 _DOC_KEYS = {"schema_version", "name", "hooks", "tables", "groups", "translations"}
 
@@ -177,6 +188,7 @@ class ChildRule:
     target: str | None = None            # new compatible; None keeps the child's own
     drop_node: str | None = None         # reason; the child has no counterpart
     rules: dict[str, Rule] = field(default_factory=dict)
+    rename: str | None = None            # new node name, "name" or "name@unit" (a unit address sets reg)
 
     def matches(self, child: Any) -> bool:
         if "compatible" in self.match and self.match["compatible"] not in child.compatible:
@@ -206,7 +218,25 @@ def _parse_child_rules(entries: Any, groups: dict[str, dict[str, Rule]], where: 
                 raise TranslationError(f"{w}: unknown group {g!r}")
             rules.update(groups[g])
         rules.update(_parse_rules(e, w))
-        out.append(ChildRule(dict(m), e.get("target"), e.get("drop_node"), rules))
+        rn = e.get("rename")
+        if rn is not None:
+            name, at, unit = str(rn).partition("@")
+            if not name or (at and not re.fullmatch(r"[0-9a-fA-F]+", unit)):
+                raise TranslationError(f"{w}: 'rename' needs 'name' or 'name@hexunit', got {rn!r}")
+        out.append(ChildRule(dict(m), e.get("target"), e.get("drop_node"), rules, rn))
+    return out
+
+
+def _parse_defaults(spec: Any, where: str) -> dict[str, tuple[Any, str]]:
+    if spec is None:
+        return {}
+    if not isinstance(spec, dict):
+        raise TranslationError(f"{where}: 'default' must be a mapping")
+    out: dict[str, tuple[Any, str]] = {}
+    for prop, d in spec.items():
+        if not isinstance(d, dict) or "value" not in d or set(d) - {"value", "note"}:
+            raise TranslationError(f"{where}: default {prop!r} needs {{value, [note]}}")
+        out[prop] = (d["value"], str(d.get("note") or ""))
     return out
 
 
@@ -227,6 +257,7 @@ class Translation:
     tables: dict[str, Any] = field(default_factory=dict)
     hooks: dict[str, Callable] = field(default_factory=dict)
     child_rules: list[ChildRule] = field(default_factory=list)
+    defaults: dict[str, tuple[Any, str]] = field(default_factory=dict)   # target prop -> (value, note)
 
     def translate_children(self, children: list, ctx: dict | None = None) -> tuple[list, list[str]]:
         """Return (children of the target node, report lines).
@@ -253,10 +284,18 @@ class Translation:
                 lines += [f"child {c.node_name}: {x}" for x in extra]
                 unit = c.unit
                 reg = props.get("reg")
-                if (unit is not None and isinstance(reg, list) and reg and isinstance(reg[0], int)
+                if (not rule.rename and unit is not None and isinstance(reg, list) and reg and isinstance(reg[0], int)
                         and "reg" in rule.rules and rule.rules["reg"].action != "keep"):
                     unit = f"{int(reg[0]):x}"
-                kept = replace(c, props=props, unit=unit, labels=list(c.labels),
+                name = c.name
+                if rule.rename:
+                    name, at, new_unit = rule.rename.partition("@")
+                    unit = new_unit if at else None
+                    if at:
+                        props = {"reg": [int(new_unit, 16)], **{k: v for k, v in props.items() if k != "reg"}}
+                    lines.append(f"child {c.node_name} renamed {name}{'@' + unit if at else ''}"
+                                 + (f", reg = <{int(unit, 16):#x}>" if at else ""))
+                kept = replace(c, props=props, unit=unit, name=name, labels=list(c.labels),
                                compatible=[rule.target] if rule.target else list(c.compatible))
             sub, sub_lines = self.translate_children(kept.children, ctx)
             out.append(replace(kept, children=sub))
@@ -317,6 +356,11 @@ class Translation:
                 lines.extend(extra)
                 for k, v in new_props.items():
                     put(k, v, p)
+        for name, (value, note) in self.defaults.items():
+            if name not in out:
+                out[name] = value
+                lines.append(f"default '{name}' ({pair}): {render_property(name, value, False) or name} "
+                             f"- the source node has none" + (f"; {note}" if note else ""))
         return out, lines
 
     def _hook(self, name: str) -> Callable:
@@ -402,7 +446,8 @@ def translations_from_dict(doc: dict, base_dir: Path | None = None,
             emit_compatible=entry.get("emit_compatible", True),
             note=entry.get("note", ""), target_only=dict(entry.get("target_only") or {}),
             tables=tables, hooks=hook_fns,
-            child_rules=_parse_child_rules(entry.get("children"), groups, where))
+            child_rules=_parse_child_rules(entry.get("children"), groups, where),
+            defaults=_parse_defaults(entry.get("default"), where))
         for p, r in [*rules.items(), *(x for cr in t.child_rules for x in cr.rules.items())]:
             if r.action == "derive":
                 t._hook(r.arg)

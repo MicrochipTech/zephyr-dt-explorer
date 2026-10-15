@@ -859,17 +859,19 @@ def test_dac_value_transforms_without_workspace():
     out, lines = t.translate({"reference": "intref", "differential-mode": True, "#io-channel-cells": 1})
     assert out["refsel"] == "int_ref" and out["#address-cells"] == 1 and out["#size-cells"] == 0
     assert "reference" not in out and "differential-mode" not in out
-    assert any("DAC_MCHP_G1_DIFFERENTIAL" in l for l in lines) and any("channel@0" in l for l in lines)
+    assert any("DAC_MCHP_G1_DIFFERENTIAL" in l for l in lines)
     for old, new in (("vrefau", "vref_au"), ("vddana", "vdd_ana"), ("vrefab", "vref_ab")):
         assert t.translate({"reference": old})[0]["refsel"] == new
     assert "refsel" not in t.translate({"reference": "bogus"})[0]
     kid = DraftChild("channel_0", None, [], [], {"oversampling": "OSR_16", "refresh-period": 3,
                                                   "current-control": "CC12M", "run-in-standby": True})
     kids, kl = t.translate_children([kid])
-    assert kids[0].props == {"sampling-ratio": 16, "refresh-period": 90, "rate": 1000}
+    assert kids[0].props == {"reg": [0], "sampling-ratio": 16, "refresh-period": 90, "rate": 1000}
+    assert (kids[0].name, kids[0].unit, kids[0].node_name) == ("channel", "0", "channel@0")
     assert any("run-in-standby" in l and "dropped" in l for l in kl)
+    assert any("channel_0 renamed channel@0, reg = <0x0>" in l for l in kl)
     k1, _ = t.translate_children([DraftChild("channel_1", None, [], [], {"current-control": "CC100K"})])
-    assert k1[0].props == {"rate": 100}
+    assert k1[0].props == {"reg": [1], "rate": 100} and k1[0].node_name == "channel@1"
 
 
 def test_gmac_mdio_phy_without_workspace():
@@ -988,7 +990,7 @@ def _render_kids(kids, indent: str = "\t") -> str:
 
 
 def _p810_load(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path, label, source, target, *, status="okay", drop=(),
-               add=None, pre="", post_children=None, extra=""):
+               add=None, pre="", post_children=None, extra="", drop_out=()):
     """Translate lab1's `label` node, load it with Zephyr main's edtlib on the pic32cx_sg41 SoC.
     Returns (source props, translated props, report lines, edt node, overlay text)."""
     builtin.register_all()
@@ -998,7 +1000,7 @@ def _p810_load(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path, label, source,
         src.pop(d, None)
     src.update(add or {})
     out, lines = t.translate(src)
-    out = dict(out)
+    out = {k: v for k, v in out.items() if k not in drop_out}
     out["status"] = status
     tlabel = {"dac0": "dac", "wdog": "wdt"}.get(label, label)                  # labels renamed by the new SoC dtsi
     node_text = tr.render_node(f"&{tlabel}", out, symbolic=False)
@@ -1097,7 +1099,15 @@ def test_lab1_adc0_with_channel_children_accepted_by_main_edtlib(rtos4_ws, main_
 def test_negative_adc_without_prescaler_makes_main_edtlib_fail(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path):
     with pytest.raises(main_edtlib.EDTError, match="prescaler"):
         _p810_load(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path, "adc0", "atmel,sam0-adc", "microchip,adc-g1",
-                   drop=("prescaler",))
+                   drop=("prescaler",), drop_out=("prescaler",))                   # what the translation gave before P8.10b
+
+
+def test_lab1_adc0_without_a_source_prescaler_gets_the_default_and_loads(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path):
+    """The source node lacks prescaler (lab1: the old SoC dtsi sets it); the translation's default makes main's edtlib accept it."""
+    src, out, lines, node, _ = _p810_load(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path, "adc0", "atmel,sam0-adc",
+                                          "microchip,adc-g1", drop=("prescaler",))
+    assert "prescaler" not in src and out["prescaler"] == 4 and node.props["prescaler"].val == 4
+    assert any("default 'prescaler'" in x for x in lines)
 
 
 def test_lab1_dac0_translates_and_loads_with_renamed_children(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path, capsys):
@@ -1108,17 +1118,21 @@ def test_lab1_dac0_translates_and_loads_with_renamed_children(rtos4_ws, main_ws,
     old = [DraftChild("channel_0", None, [], [], {"oversampling": "OSR_1", "refresh-period": 1, "current-control": "CC1M"}),
            DraftChild("channel_1", None, [], [], {"oversampling": "OSR_1", "refresh-period": 1, "current-control": "CC1M"})]
     kids, kl = t.translate_children(old)
-    assert [c.props for c in kids] == [{"sampling-ratio": 1, "refresh-period": 30, "rate": 500}] * 2
-    # the caller's part: node names channel@N with reg (see the report line of the DAC node)
-    named = [DraftChild("channel", str(i), [], [], {"reg": [i], **c.props}) for i, c in enumerate(kids)]
+    assert [{k: v for k, v in c.props.items() if k != "reg"} for c in kids] == [
+        {"sampling-ratio": 1, "refresh-period": 30, "rate": 500}] * 2
+    assert [c.node_name for c in kids] == ["channel@0", "channel@1"] and [c.props["reg"] for c in kids] == [[0], [1]]
+    named = kids                                                      # the translation renamed them and wrote reg
     src, out, lines, node, _ = _p810_load(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path, "dac0",
                                           "atmel,samd5x-dac", "microchip,dac-g1", drop=("pinctrl-0", "pinctrl-names"),
                                           post_children="\n" + _render_kids(named))
     assert node.matching_compat == "microchip,dac-g1" and node.props["refsel"].val == "int_ref"
     assert sorted(c.props["rate"].val for c in node.children.values()) == [500, 500]
     assert {c.props["sampling-ratio"].val for c in node.children.values()} == {1}
+    assert sorted(node.children) == ["channel@0", "channel@1"]                       # named by the translation
+    assert sorted(c.regs[0].addr for c in node.children.values()) == [0, 1]
     _show(capsys, "lab1 dac0 (atmel,samd5x-dac) with the board's channel_0/channel_1", src, out, lines, node,
-          [l for l in kl] + [f"(caller) child {c.node_name}: reg = <{c.unit}> added, name channel@{c.unit}" for c in named])
+          [l for l in kl] + [f"edtlib children of &dac: {sorted(node.children)}, "
+                             f"reg {sorted(c.regs[0].addr for c in node.children.values())}"])
 
 
 def test_negative_dac_without_refsel_makes_main_edtlib_fail(rtos4_ws, main_ws, old_edt, main_edtlib, tmp_path):
@@ -1203,3 +1217,54 @@ def test_rtc_counter_variant_loads_with_max_bit_width(rtos4_ws, main_ws, old_edt
                                           "microchip,rtc-g1-counter", add={"counter-mode": "count-32"})
     assert node.matching_compat == "microchip,rtc-g1-counter" and node.props["max-bit-width"].val == 32
     _show(capsys, "lab1 rtc as counter (counter-mode count-32)", src, out, lines, node)
+
+
+# ---- P8.10b: child rename with reg, defaults for missing source properties -------------------------------------------
+def test_child_rule_renames_the_child_and_writes_reg_from_the_unit_address():
+    from dt_explorer.core.draft import DraftChild
+    t = _one({"source": "a,b", "target": "c,d", "children": [
+        {"match": {"name": "chan_0"}, "rename": "channel@0", "keep": ["gain"]},
+        {"match": {"name": "chan_x"}, "rename": "channel@1f", "keep": ["gain"], "properties": {"reg": {"drop": "own"}}},
+        {"match": {"name": "plain"}, "rename": "renamed"}]})
+    kids = [DraftChild("chan_0", None, [], ["l0"], {"gain": 1}), DraftChild("chan_x", None, [], [], {"gain": 2}),
+            DraftChild("plain", "3", [], [], {"reg": [3]})]
+    out, lines = t.translate_children(kids)
+    assert [c.node_name for c in out] == ["channel@0", "channel@1f", "renamed"]
+    assert out[0].props == {"reg": [0], "gain": 1} and out[0].labels == ["l0"]       # reg first, labels kept
+    assert out[1].props["reg"] == [0x1f]                                              # the name decides, not the rules
+    assert out[2].unit is None                                                        # no unit address in the new name
+    assert any("child chan_0 renamed channel@0, reg = <0x0>" in x for x in lines)
+    assert kids[0].name == "chan_0" and kids[0].props == {"gain": 1}                  # the draft's child is untouched
+
+
+@pytest.mark.parametrize("bad", ["@5", "channel@", "channel@zz", ""])
+def test_malformed_child_rename_is_rejected(bad):
+    with pytest.raises(tr.TranslationError, match="rename"):
+        _one({"source": "a,b", "target": "c,d", "children": [{"match": {"name": "n"}, "rename": bad}]})
+
+
+def test_default_fills_a_property_that_the_source_lacks_and_never_replaces_one():
+    t = _one({"source": "a,b", "target": "c,d", "keep": ["k", "p"],
+              "default": {"p": {"value": 4, "note": "required in the target"}, "q": {"value": [1, 2]}}})
+    out, lines = t.translate({"k": 1})
+    assert out == {"compatible": ["c,d"], "k": 1, "p": 4, "q": [1, 2]}
+    assert any("default 'p'" in x and "p = <4>;" in x and "required in the target" in x for x in lines)
+    assert any("default 'q'" in x and "q = <1 2>;" in x for x in lines)
+    out, lines = t.translate({"k": 1, "p": 8})
+    assert out["p"] == 8 and not any("default 'p'" in x for x in lines)               # the source value wins
+
+
+@pytest.mark.parametrize("bad", [[], {"p": 4}, {"p": {"note": "x"}}, {"p": {"value": 1, "bogus": 2}}])
+def test_malformed_default_is_rejected(bad):
+    with pytest.raises(tr.TranslationError, match="default"):
+        _one({"source": "a,b", "target": "c,d", "default": bad})
+
+
+def test_adc_prescaler_is_defaulted_when_the_source_node_has_none():
+    builtin.register_all()
+    t = plugins.get_translation("atmel,sam0-adc", "microchip,adc-g1")
+    out, lines = t.translate({"#io-channel-cells": 1})
+    assert out["prescaler"] == 4 and any("default 'prescaler'" in x and "prescaler = <4>;" in x for x in lines)
+    assert "prescaler" not in t.target_only                                          # no longer only a reminder
+    out, lines = t.translate({"prescaler": 8})
+    assert out["prescaler"] == 8 and not any("default 'prescaler'" in x for x in lines)
