@@ -265,15 +265,19 @@ def _instance_name(device, node, fallback: str | None) -> str | None:
     return fallback
 
 
-def _translation_for(compat: str, target_node_compats: list[str]) -> Translation | None:
+def _translation_for(compat: str, target_node_compats: list[str],
+                     has_binding=lambda compat: True) -> Translation | None:
+    """Translation for a source compatible. One whose target binding the target workspace lacks
+    loses against a ``no_target`` entry for the same source (e.g. an older Zephyr)."""
     cands = [t for t in plugins.translations() if getattr(t, "source", None) == compat]
     if not cands:
         return None
     for t in cands:
-        if getattr(t, "target", None) in target_node_compats:
+        if getattr(t, "target", None) in target_node_compats and has_binding(t.target):
             return t
-    withtarget = [t for t in cands if getattr(t, "target", None)]
-    return (withtarget or cands)[0]
+    withtarget = [t for t in cands if getattr(t, "target", None) and has_binding(t.target)]
+    notarget = [t for t in cands if getattr(t, "no_target", None) is not None]
+    return (withtarget or notarget or cands)[0]
 
 
 def _edt_phandles(prop) -> list[list]:
@@ -748,7 +752,8 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             continue
         res.target_path = tnode.path
         tlabel = _label(tnode) or dn.label
-        t = _translation_for(dn.compatible or "", list(tnode.compats))
+        t = _translation_for(dn.compatible or "", list(tnode.compats),
+                             has_binding=lambda c: tgt_index.find(c) is not None)
         if t is None:
             res.status = "no_translation"
             res.lines.append(f"no translation registered for {dn.compatible}; node not ported")

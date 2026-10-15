@@ -381,7 +381,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.0 | done | 8b37419 → master |
 | P5.1 | done | 11a02eb → master |
 | P5.2 | done | adf5271 → master |
-| P5.2b | running | |
+| P5.2b | done | deffa6b |
 | P5.3 | done | cb820bd → master |
 | P5.4 | done | edbbc04 |
 | P5.4b | done | 0d1cdb6 |
@@ -622,4 +622,5 @@ surprising, and anything you were unsure about.
 | P3.7 | [P3.7.md](evidence/P3.7.md) | header one row at 1500 px (chips moved into a "Legend" menu), I2C dialog without sq-size/cq-size (deny list: in v4.3.0 they are declared in i2c-controller.yaml itself) |
 | P5.4c | [P5.4c.md](evidence/P5.4c.md) | README/GUI.md: Legend, Edit pins…, Port to board…, Verify with west, Write to app (grep PASS in both); wrap known-issue removed; 8 new, 27 regenerated images; west-running shots reused from evidence |
 | P5.4b | [P5.4b.md](evidence/P5.4b.md) | lab1 → sam_e54_xpro overlay carries `my_led0` verbatim; FULL build of a lab1 copy links (98 s), `__device_dts_ord_3` (my_led) in nm; lab3: `mytemp0` not carried (bus sercom3 `no_target`), `my_http0` not carried (references mytemp0, root cause named). **For P5.5/P5.6/P6.2:** the labs set `ZEPHYR_EXTRA_MODULES` relative (`${CMAKE_SOURCE_DIR}/../../modules/led`) → copies need the same relative layout (`<tmp>/apps/labN` + `<tmp>/modules/led`); scripts must call `dt_explorer.app.load_plugins()` or the port is silently empty. 327 passed |
+| P5.2b | [P5.2b.md](evidence/P5.2b.md) | lab1 sercom4 SPI / sercom7 I2C translate and load in main's edtlib against pic32cx_sg41 dtsi; v4.3.0 still `no_target`; counts sam0-i2c 39/39, sam0-spi 41/41, g1-i2c 37+5 target-only, g1-spi 39+3; dipo/dopo identical on both sides. 355 passed. Builder follow-up: `port_report._translation_for` prefers a `no_target` entry when the target workspace lacks the binding (v4.3.0 dtsi names `sercom-g1-i2c` without YAML); lab1 → sam_e54_xpro again: sercom4/sercom7 `no_target`, no g1-i2c/spi in the overlay |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |
