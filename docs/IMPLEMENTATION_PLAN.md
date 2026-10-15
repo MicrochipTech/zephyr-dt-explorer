@@ -316,7 +316,7 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P3.4 | done | cc9b28a |
 | P3.5 | done | b0d4f98 |
 | P3.6 | done | ac29235 → master |
-| P3.7 | open | |
+| P3.7 | done | 4f0a2d7 → master |
 
 **P3.1 Intent-based draft.**
 - Dep: P1.2. Scope: `dt_explorer/core/draft.py`.
@@ -382,7 +382,9 @@ Status values: `open`, `running`, `done`, `blocked`.
 | P5.1 | done | 11a02eb → master |
 | P5.2 | done | adf5271 → master |
 | P5.3 | done | cb820bd → master |
-| P5.4 | open | |
+| P5.4 | done | edbbc04 |
+| P5.4b | open | |
+| P5.4c | open | |
 | P5.6 | open | |
 | P5.7 | done | fcea955 → master |
 | P5.5 | open | |
@@ -419,8 +421,24 @@ Status values: `open`, `running`, `done`, `blocked`.
   `DT_NODELABEL` references in `src/` with suggested `DT_ALIAS`/`DT_CHOSEN` and the matching aliases
   in the target overlay.
 
+**P5.4b Carry app-defined nodes over.**
+- Dep: P5.4. Scope: `dt_explorer/core/port_report.py`, `tests/test_port_report.py`.
+- Do: per the decision *App-defined nodes when porting* in CONFIGURATOR.md: nodes the app overlay defines or
+  modifies (origin kind `overlay`, no translation) go verbatim into the target overlay (source text from the app
+  overlay, macros as written), when all referenced labels/phandles exist in the target; bus children only when their
+  bus is ported and enabled; everything else is reported with the reason.
+- Accept: lab1 → sam_e54_xpro: the target overlay contains `my_led0: my_led@41008000 { … }`; a FULL build
+  (`west build -b sam_e54_xpro`, not cmake-only) of a copy of lab1 in %TEMP% with that overlay as
+  `EXTRA_DTC_OVERLAY_FILE` links and `__device_dts_ord_*` of my_led is in `nm zephyr.elf`; lab3: `mytemp0` is reported
+  (bus sercom3 I2C has no target in v4.3.0), `my_http0` handled per the rule; suite green.
+
+**P5.4c Docs for port dialog and compact header.** *light*
+- Dep: P5.4, P3.7. Scope: `README.md`, `docs/GUI.md`, `docs/make_screenshots.py`, `docs/img/*.png`.
+- Accept: README row and GUI.md section for "Port to board…" and the "Legend" menu (header section no longer describes
+  the chip row / wrap issue); element grep in both files; regenerated header and port screenshots.
+
 **P5.6 "Apply to app".**
-- Dep: P5.4, P4.1. Scope: `dt_explorer/core/apply.py`, `dt_explorer/ui/port.py`.
+- Dep: P5.4b, P4.1. Scope: `dt_explorer/core/apply.py`, `dt_explorer/ui/port.py`.
 - Do: on a button press, write the port result into the app as the files Zephyr picks up for the
   target board: `<app>/boards/<target board>.overlay` and `<app>/boards/<target board>.conf`.
   **Only new files:** if a target file already exists, write nothing, show a diff against it and let
@@ -574,4 +592,6 @@ surprising, and anything you were unsure about.
 | P5.7 | [P5.7.md](evidence/P5.7.md) | lab1 console SERCOM2 moved PB25/PB24 → PA09/PA08 (PA12/13 taken by GMAC); validate 0 errors; west cmake-only rc 0, scratch zephyr.dts `pinctrl-0 = <&sercom2_uart_edit>` with pinmux 0x3290/0x3280, board group unused. Override: group renamed `<label>_<cls>_edit` in ui/configure.py (render.py unchanged). **Finding:** parallel agents shared `apps\lab1\.dt_explorer` (one agent's draft broke another's validate) → evidence runs must redirect drafts to scratch. Builder re-run 21 passed |
 | P3.6 | [P3.6.md](evidence/P3.6.md) | README + GUI.md sections for Pins, Package, New build…, Full build, Configure…, Draft/check (element grep PASS in both files); make_screenshots.py got `--port` and Playwright shots; 6 new, ~25 regenerated images (header got taller). Incident: an accidental Full build on lab1 during development; builder checked lab1 `edt.pickle`/`zephyr.elf` still dated 2026-10-13. Header wrap and `sq-size`/`cq-size` → P3.7 |
 | P4.1 | [P4.1.md](evidence/P4.1.md) | valid draft (SERCOM1 I2C PC22/PC23) rc 0 in 28.7 s (UI 45.5 s); typo `clock-frequncy` → rc 1 with Zephyr's "devicetree error: … is not declared in 'properties:'" shown in the UI; lab1 build folder identical before/after (416 files, same content hash). Board from `CONFIG_BOARD_TARGET`; scratch in %TEMP%\dt_explorer_verify. Full suite 308 passed, 0 skipped |
+| P5.4 | [P5.4.md](evidence/P5.4.md) | lab1/lab3 → sam_e54_xpro: target cmake-only builds ok; overlay empty (target board already sets SERCOM2 console identically), conf comments only; verify rc 0 (28 s / 33 s); report: sercom4 SPI / sercom7 I2C `no_target`, my_led/eeprom/mytemp/http not ported, all 10 lab3 code refs listed; P5.7's moved console ports to a `sercom2_uart_edit` override, rc 0. Gaps: `&clock { gclkperiph … }` children not emitted for SERCOMs the target does not configure (report note only); app-defined overlay nodes not carried → builder decision + card P5.4b; docs → P5.4c |
+| P3.7 | [P3.7.md](evidence/P3.7.md) | header one row at 1500 px (chips moved into a "Legend" menu), I2C dialog without sq-size/cq-size (deny list: in v4.3.0 they are declared in i2c-controller.yaml itself) |
 | P0.2 | [P0.2.md](evidence/P0.2.md) | 10 tests; skips with reasons; builder re-run: 9 passed, 1 skipped (DTX_MAIN_WS) |

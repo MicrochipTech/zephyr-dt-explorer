@@ -864,6 +864,7 @@ is changed.
 | Draft location | App folder: `<app>/.dt_explorer/<build folder name>.draft.json` |
 | Kconfig suggestions | Both: recipe table where one exists, otherwise derived with kconfiglib; the recipe wins |
 | IOSET violation | Warning, not an error, until the datasheet wording is checked |
+| App-defined nodes when porting (builder, 2026-10-15) | Nodes that the app's own overlay defines or modifies and that no translation covers (custom bindings such as `myvendor,mygpio-led`) are copied verbatim into the target overlay when every label/phandle they reference exists in the target devicetree; otherwise they are listed in the report. Bus children follow their bus: copied only if the bus node is ported and enabled on the target. |
 | HC-2 (2026-10-15) | Read-only pin map and package view accepted as the base for the configurator, no changes requested |
 | Board for phase 5 | `sam_e54_xpro` (same hardware as `same54_xpro`, `microchip,port-g1-pinctrl`) |
 | Other vendors | Not implemented, but possible through plugins (provider, formatter, recipe); the core never reads a vendor file |
