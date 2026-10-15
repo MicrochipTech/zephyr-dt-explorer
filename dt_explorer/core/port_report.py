@@ -33,6 +33,7 @@ import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from . import board_desc
 from . import pins as pins_mod
 from . import plugins
 from .build import BuildModel, origin_kind
@@ -130,6 +131,7 @@ class PortReport:
     carried: list[Carried] = field(default_factory=list)
     not_carried: list[NotCarried] = field(default_factory=list)
     findings: list[Finding] | None = None
+    connector_roles: list[str] | None = None     # None: section not computed
     notes: list[str] = field(default_factory=list)
 
     def sections(self) -> list[tuple[str, list[str]]]:
@@ -179,6 +181,8 @@ class PortReport:
         if self.findings is not None:
             fs = [f"{f.severity}: {f.kind}: {f.message}" for f in self.findings]
             out.append(("6. Fast check on the target build", fs or ["no findings"]))
+        if self.connector_roles is not None:
+            out.append(("7. Connector roles of the used pads", self.connector_roles or ["none"]))
         if self.notes:
             out.append(("Notes", list(self.notes)))
         return out
@@ -988,6 +992,9 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
             conf_lines.append(f"{k}={v}")
     rep.conf_diffs = _conf_diffs(src, tgt, src_cfg, tgt_cfg)
 
+    # ---- connector roles ----------------------------------------------------------------------------------
+    rep.connector_roles = connector_role_lines(src_info.board, tgt_info.board, src_usage, tgt_usage)
+
     # ---- fast check -------------------------------------------------------------------------------------
     overlay = "".join(p + "\n" for p in pieces).rstrip() + "\n" if pieces else ""
     header = (f"/* Port of {src.build.name} ({rep.source_board}) to {rep.target_board}\n"
@@ -1000,6 +1007,53 @@ def port_build(source: Path | str | BuildModel, target: Path | str | BuildModel,
         with _check_lock:
             rep.findings = validate(tgt.build, overlay)
     return PortResult(overlay=overlay, conf=conf, report=rep, draft=ported_draft)
+
+
+def connector_role_lines(src_board: str | None, tgt_board: str | None, src_usage, tgt_usage,
+                         dirs: list[Path] | None = None) -> list[str] | None:
+    """Report section 7: every used pad that sits on a connector pin, moved by connector role.
+
+    One line per used connector pin of the source board, in connector and pin order::
+
+        <connector> pin <n> (<role>): <source pad> on <source board> -> <target pad> on <target board>
+
+    The target pad is the one at the same pin of the same connector (same name and type) on the target
+    board. Without a pad there, the line says why (no such connector, no pad behind the pin). A target pad
+    that the target build already uses is named. Both boards need a board description (``board_desc``);
+    if only one is missing, a single line says which; if both are missing the section is left out (None). `*_usage` are ``pins.PinUsage`` (or anything with a
+    ``uses`` mapping pad -> list of uses having ``node``).
+    """
+    src = board_desc.load_board(src_board, dirs)
+    tgt = board_desc.load_board(tgt_board, dirs)
+    if src is None and tgt is None:
+        return None
+    if src is None or tgt is None:
+        missing = [f"{n or '?'}" for n, d in ((src_board, src), (tgt_board, tgt)) if d is None]
+        return [f"no board description for {', '.join(missing)}: connector roles not reported"]
+    out: list[str] = []
+    for conn in src.connectors:
+        tconn = next((c for c in tgt.connectors if c.name == conn.name and c.type == conn.type), None)
+        for key, pin in conn.pins.items():
+            if not pin.pad or pin.pad not in src_usage.uses:
+                continue
+            users = list(dict.fromkeys(u.node.rsplit("/", 1)[-1] for u in src_usage.uses[pin.pad]))
+            head = f"{conn.name} pin {key}" + (f" ({board_desc.short_role(pin.role)})" if pin.role else "")
+            left = f"{pin.pad} on {src.title}"
+            if tconn is None:
+                right = f"no such connector ({conn.name}, {conn.type}) on {tgt.title}"
+            else:
+                tp = tconn.pins.get(key)
+                if tp is None or not tp.pad:
+                    why = (f"net {tp.net} does not reach the SoC" if tp and tp.net and board_desc.is_signal_role(tp.role)
+                           else "no SoC pad behind this pin")
+                    right = f"not available on {tgt.title} ({why})"
+                else:
+                    right = f"{tp.pad} on {tgt.title}"
+                    taken = list(dict.fromkeys(u.node.rsplit("/", 1)[-1] for u in tgt_usage.uses.get(tp.pad, [])))
+                    if taken:
+                        right += f"  (already used in the target build by {', '.join(taken)})"
+            out.append(f"{head}: {left} → {right}  [used by {', '.join(users)}]")
+    return out
 
 
 _PRJ_LINE = re.compile(r'^\s*(CONFIG_\w+)\s*=\s*("[^"]*"|[^\s#]+)')
