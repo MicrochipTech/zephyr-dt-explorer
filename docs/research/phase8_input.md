@@ -27,3 +27,22 @@ both workspaces' SoC dtsi and `drivers/`. The builder decides split and order.
    to SG41.
 8. **Backlog entry "Draft tab Apply to app"** (commit 683e37d) belongs with these cards; depends on
    `core/apply.py` from P5.6.
+
+## Addendum 2026-10-15 (user request via dt-explorer-c7)
+
+Plan these into phase 8 instead of leaving them in §10:
+
+9. Draft tab "Apply to app" (backlog entry from 683e37d).
+10. Generated device module `dtx_devices/` (backlog entry and decision from af3631b).
+11. Importer: mikroBUS (and Arduino Uno R3) headers, so the SG41 Curiosity Ultra board view shows
+    J900/J901 (already traced, CONFIGURATOR.md "Checked with real design files").
+
+Target scenario of the user (phase 8 acceptance should cover it): open a `pic32cx_sg41_cult` blinky,
+add a UART, an I2C/SPI sensor or actuator on the mikroBUS socket, and Ethernet (GMAC + 100BASE-TX
+PHY on MDIO), then get `prj.conf` lines and `dtx_` modules written into the app. TCP/IP and TLS stay
+in menuconfig.
+
+Decide in phase 8: GMAC + PHY child as its own recipe (RMII pin roles, `phy-handle`/mdio child) or
+generic form. The user prefers it usable without hand-picking every RMII pin.
+
+The Kconfig view (7f94422 entry) may stay in the backlog.
