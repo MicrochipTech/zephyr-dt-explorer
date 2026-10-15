@@ -20,7 +20,7 @@ def _recipe():
 
 
 def test_dt_has_symbol_name():
-    assert dt_has_symbol("atmel,sam0-adc") == "DT_HAS_ATMEL_SAM0_ADC_ENABLED"
+    assert dt_has_symbol("atmel,sam0-watchdog") == "DT_HAS_ATMEL_SAM0_WATCHDOG_ENABLED"
     assert dt_has_symbol("gpio-leds") == "DT_HAS_GPIO_LEDS_ENABLED"
     assert dt_has_symbol("zephyr,cdc-acm-uart") == "DT_HAS_ZEPHYR_CDC_ACM_UART_ENABLED"
 
@@ -32,14 +32,14 @@ def test_recipe_table_wins_without_any_build():
 
 
 def test_no_recipe_no_build_gives_symbol_name_and_note():
-    s = suggest_kconfig("atmel,sam0-adc")
+    s = suggest_kconfig("atmel,sam0-watchdog")
     assert s.source == "none" and s.symbols == {}
-    assert s.dt_symbol == "DT_HAS_ATMEL_SAM0_ADC_ENABLED"
+    assert s.dt_symbol == "DT_HAS_ATMEL_SAM0_WATCHDOG_ENABLED"
     assert any("by hand" in n for n in s.notes)
 
 
 def test_unloadable_build_falls_back_with_reason(tmp_path):
-    s = suggest_kconfig("atmel,sam0-adc", tmp_path)
+    s = suggest_kconfig("atmel,sam0-watchdog", tmp_path)
     assert s.source == "none" and any("CMakeCache.txt" in n for n in s.notes)
 
 
@@ -51,10 +51,10 @@ def test_recipe_still_wins_with_a_build(rtos4_build):
 
 def test_derived_without_recipe(rtos4_build):
     env_before, path_before = dict(os.environ), list(sys.path)
-    s = suggest_kconfig("atmel,sam0-adc", rtos4_build(BUILD))
+    s = suggest_kconfig("atmel,sam0-watchdog", rtos4_build(BUILD))
     assert s.source == "kconfiglib"
-    assert s.symbols == {"CONFIG_ADC": "y", "CONFIG_ADC_SAM0": "y"}
-    assert s.chain == ["DT_HAS_ATMEL_SAM0_ADC_ENABLED -> ADC_SAM0 -> ADC"]
+    assert s.symbols == {"CONFIG_WATCHDOG": "y", "CONFIG_WDT_SAM0": "y"}
+    assert s.chain == ["DT_HAS_ATMEL_SAM0_WATCHDOG_ENABLED -> WDT_SAM0 -> WATCHDOG"]
     assert dict(os.environ) == env_before and sys.path == path_before
 
 

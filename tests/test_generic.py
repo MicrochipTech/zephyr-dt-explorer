@@ -193,20 +193,34 @@ def leer_session(rtos4_build):
     from dt_explorer.app import load_plugins
     from dt_explorer.core.build import BuildModel
     from dt_explorer.ui import configure as C
+    import sys
     load_plugins()
-    return C.ConfigSession(BuildModel(rtos4_build("_soltest/apps/lab1_leer/build_same54_xpro")))
+    saved = {k: v for k, v in sys.modules.items() if k == "devicetree" or k.startswith("devicetree.")}
+    path = list(sys.path)
+    yield C.ConfigSession(BuildModel(rtos4_build("_soltest/apps/lab1_leer/build_same54_xpro")))
+    # check() imports this workspace's edtlib into the process; later tests (GMAC, main workspace) need theirs
+    for k in [k for k in sys.modules if k == "devicetree" or k.startswith("devicetree.")]:
+        del sys.modules[k]
+    sys.modules.update(saved)
+    sys.path[:] = path
 
 
 def test_real_nodes_have_the_generic_form(leer_session):
     from dt_explorer.ui import configure as C
     from dt_explorer.ui.generic_form import form_state, generic_available
     s = leer_session
-    tc0, wdog, sercom1 = (s.node_for_label(x) for x in ("tc0", "wdog", "sercom1"))
-    assert generic_available(s, tc0) and generic_available(s, wdog) and not generic_available(s, sercom1)
-    assert C.can_configure(s, tc0) and C.can_configure(s, sercom1)
+    can0, wdog, sercom1, tc0 = (s.node_for_label(x) for x in ("can0", "wdog", "sercom1", "tc0"))
+    assert generic_available(s, can0) and generic_available(s, wdog) and not generic_available(s, sercom1)
+    assert C.can_configure(s, can0) and C.can_configure(s, sercom1)
     assert not C.can_configure(s, wdog)                         # enabled: no Configure... button
-    compat, specs, roles, notes = form_state(s, tc0)
-    assert compat == "atmel,sam0-tc32"
+    compat, specs, roles, notes = form_state(s, can0)
+    assert compat == "atmel,sam0-can"
+    f = next(x for x in specs if x.name == "divider")
+    assert (f.type, f.required) == ("int", True) and "RX" in roles and "TX" in roles
+    # a timer: the recipe covers PWM, the counter mode is the generic form (other compatible)
+    assert not generic_available(s, tc0) and C.can_configure(s, tc0)
+    assert s.alternatives_for(tc0) == ["atmel,sam0-tc32"] and s.alternatives_for(sercom1) == []
+    compat, specs, roles, notes = form_state(s, tc0, "atmel,sam0-tc32")
     f = specs[0]
     assert (f.name, f.type, f.required, f.enum) == ("prescaler", "int", False, [1, 2, 4, 8, 16, 64, 256, 1024])
     assert roles == ["WO0", "WO1"] and "atmel,assigned-clocks" in notes

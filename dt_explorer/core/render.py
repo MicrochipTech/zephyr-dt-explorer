@@ -103,6 +103,12 @@ def _signals(node: DraftNode, ctx: RenderContext) -> list[tuple[str, Signal]]:
         if not hits:
             raise RenderError(f"{role}: pad {pad} is not a signal of {inst.name}")
         if len(hits) > 1:
+            # several signals share the pad (e.g. analog inputs that also serve a touch controller): the
+            # one whose signal role is the requested role wins; otherwise the choice is really ambiguous
+            same = [h for h in hits if h.role == role]
+            if len(same) == 1:
+                hits = same
+        if len(hits) > 1:
             raise RenderError(f"{role}: pad {pad} offers {len(hits)} signals on {inst.name} "
                               f"({', '.join(str(s.mux) + '/' + s.role for s in hits)})")
         sig = copy(hits[0])

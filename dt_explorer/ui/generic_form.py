@@ -40,10 +40,14 @@ def generic_available(session, node) -> bool:
     return bool(generic_compatible(session, node)) and not session.options_for(node)
 
 
-def form_state(session, node) -> tuple[str, list, list[str], list[str]]:
-    """(compatible, fields, pin roles, notes) of a node's generic form (no NiceGUI)."""
-    compat = generic_compatible(session, node)
-    specs = G.form_spec(compat, session.index, current_values(node))
+def form_state(session, node, compat: str | None = None) -> tuple[str, list, list[str], list[str]]:
+    """(compatible, fields, pin roles, notes) of a node's generic form (no NiceGUI).
+
+    `compat`: another compatible of the peripheral (a mode the recipe does not cover); default: the node's own.
+    ``#...-cells`` properties are fixed by the binding and not fields.
+    """
+    compat = compat or generic_compatible(session, node)
+    specs = [f for f in G.form_spec(compat, session.index, current_values(node)) if not C.is_cells_prop(f.name)]
     inst = session.instance_of(node)
     roles = G.pin_roles(inst) if inst is not None and G.has_pinctrl(compat, session.index) else []
     return compat, specs, roles, G.form_notes(compat, session.index)
@@ -53,10 +57,10 @@ def _text(value) -> str:
     return "" if value is None else str(value)
 
 
-def open_generic(session, node, on_saved: Callable[[DraftNode], None]) -> None:
+def open_generic(session, node, on_saved: Callable[[DraftNode], None], compat: str | None = None) -> None:
     from nicegui import ui
 
-    compat, specs, roles, notes = form_state(session, node)
+    compat, specs, roles, notes = form_state(session, node, compat)
     inst = session.instance_of(node)
     label = node.labels[0] if node.labels else node.name
     existing = session.draft_node(label)

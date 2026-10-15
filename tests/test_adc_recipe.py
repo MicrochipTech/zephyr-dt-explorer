@@ -168,13 +168,16 @@ def test_render_adc_node_with_two_channels():
     assert text.count('zephyr,gain = "ADC_GAIN_1";') == 2 and text.count("zephyr,vref-mv = <3300>;") == 2
 
 
-def test_render_refuses_a_pad_with_several_signals_on_the_instance():
-    """ADC0: every AIN pad also carries the PTC signals X/Y (same mux). The core renderer refuses such a pad."""
+def test_render_picks_the_signal_of_the_requested_role_on_a_shared_pad():
+    """ADC0: every AIN pad also carries the PTC signals X/Y (same mux). The signal named like the role wins."""
     inst = Instance("ADC0", "ADC", 0, [Signal("AIN12", "PB00", "B"), Signal("X30", "PB00", "B"),
                                         Signal("Y30", "PB00", "B")])
     ctx = RenderContext(device=DeviceModel("acme", [], {"ADC0": inst}, []), formatter=_Fmt())
     node = DraftNode(cls="adc", roles=["AIN12"], instance="ADC0", pins={"AIN12": "PB00"},
                      compatible="atmel,sam0-adc", label="adc0")
+    assert "pinmux = <PB00B_ADC0_AIN12>;" in render_overlay(node, ctx)
+    node.pins = {"AIN7": "PB00"}                       # no signal of that name on the pad: still ambiguous
+    node.roles = ["AIN7"]
     with pytest.raises(RenderError, match="offers 3 signals"):
         render_overlay(node, ctx)
 
@@ -255,3 +258,36 @@ def test_lift_of_the_main_sg41_build():
                                "AIN14": "PB02", "AIN15": "PB03"}
     assert by["adc1"].pins == {"AIN0": "PB08", "AIN1": "PB09", "AIN5": "PC03", "AIN8": "PB06", "AIN9": "PB07"}
     assert by["adc1"].vendor_props == {"prescaler": 4}
+
+
+def test_adc0_of_same54_renders_and_validates_with_pads_shared_with_the_touch_signals(rtos4_build):
+    """ADC0 pads carry X/Y/VREF next to AIN: render picks the AIN signal, validate finds no error (P8.8b)."""
+    from dt_explorer.app import load_plugins
+    from dt_explorer.core.build import BuildModel
+    from dt_explorer.ui import configure as C
+    load_plugins()
+    s = C.ConfigSession(BuildModel(rtos4_build(SAME54_LAB1)))
+    n = s.node_for_label("adc0")
+    inst = s.instance_of(n)
+    opt = C.ClassOption("adc", "atmel,sam0-adc", plugins.get_recipe("atmel,sam0-adc"))
+    pins = {"AIN12": "PB00", "AIN13": "PB01"}
+    roles = C.option_roles(opt, inst)
+    props, problem = C.derive_props(opt, inst, pins, roles)
+    assert (props, problem) == ({}, None)
+    node = C.build_node(option=opt, instance=inst, label="adc0", pins=pins, roles_order=roles)
+    node.children = mod.channels_for(node.pins)
+    s.upsert(node)
+    text = s.overlay()
+    assert "PB0B_ADC0_AIN12" in text and "PB1B_ADC0_AIN13" in text
+    assert "channel@c" in text and "channel@d" in text and "zephyr,input-positive = <12>;" in text
+    import sys
+    saved = {k: v for k, v in sys.modules.items() if k == "devicetree" or k.startswith("devicetree.")}
+    path = list(sys.path)
+    try:
+        errors = [f for f in s.check() if f.severity == "error"]
+    finally:        # validate() imports this workspace's edtlib into the process; later tests use another one
+        for k in [k for k in sys.modules if k == "devicetree" or k.startswith("devicetree.")]:
+            del sys.modules[k]
+        sys.modules.update(saved)
+        sys.path[:] = path
+    assert errors == []

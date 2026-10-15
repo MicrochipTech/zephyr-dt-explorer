@@ -266,3 +266,46 @@ def test_lift_of_the_main_sg41_build():
     assert by["tcc0"].props == {"#pwm-cells": 3} and by["tcc0"].vendor_props["prescaler"] == 8
     assert (by["tc5"].compatible, by["tc5"].pins) == ("microchip,tc-g1-pwm", {"WO0": "PB14", "WO1": "PB15"})
     assert by["tc5"].props == {"#pwm-cells": 3}
+
+
+# ---- integration into the configurator (P8.8b) ---------------------------------------------------------
+def _session(rel_or_path, rtos4_build=None):
+    from dt_explorer.app import load_plugins
+    from dt_explorer.core.build import BuildModel
+    from dt_explorer.ui import configure as C
+    load_plugins()
+    build = rtos4_build(rel_or_path) if rtos4_build else rel_or_path
+    return C.ConfigSession(BuildModel(build))
+
+
+def test_options_prefer_the_family_of_the_node_old_port(rtos4_build):
+    s = _session(SAME54_LAB1, rtos4_build)
+    assert [o.compatible for o in s.options_for(s.node_for_label("tcc1"))] == ["atmel,sam0-tcc-pwm"]
+    assert [o.compatible for o in s.options_for(s.node_for_label("tc2"))] == ["atmel,sam0-tc-pwm"]
+    assert s.options_for(s.node_for_label("sercom1"))[0].compatible == "atmel,sam0-uart"
+    assert s.alternatives_for(s.node_for_label("tc2")) == ["atmel,sam0-tc32"]       # counter mode: generic form
+    assert s.alternatives_for(s.node_for_label("tcc1")) == [] and s.alternatives_for(s.node_for_label("sercom1")) == []
+
+
+def test_options_prefer_the_family_of_the_node_new_port():
+    build = Path(tempfile.gettempdir()) / "dtx_main_sg41"
+    if not (build / "zephyr" / "edt.pickle").is_file():
+        pytest.skip(f"no main build at {build} (recreate per P6.0)")
+    s = _session(build)
+    assert [o.compatible for o in s.options_for(s.node_for_label("tcc2"))] == ["microchip,tcc-g1-pwm"]
+    assert [o.compatible for o in s.options_for(s.node_for_label("tc1"))] == ["microchip,tc-g1-pwm"]
+    assert [o.compatible for o in s.options_for(s.node_for_label("adc1"))] == ["microchip,adc-g1"]
+    assert {o.compatible for o in s.options_for(s.node_for_label("sercom1"))} <= {
+        "microchip,sercom-g1-uart", "microchip,sercom-g1-i2c", "microchip,sercom-g1-spi"}
+    assert s.alternatives_for(s.node_for_label("tc1")) == ["microchip,tc-g1-counter"]
+
+
+def test_cells_properties_are_no_editable_fields(rtos4_build):
+    from dt_explorer.ui import configure as C
+    from dt_explorer.ui.generic_form import form_state
+    assert C.is_cells_prop("#pwm-cells") and C.is_cells_prop("#io-channel-cells") and not C.is_cells_prop("prescaler")
+    s = _session(SAME54_LAB1, rtos4_build)
+    opt = s.options_for(s.node_for_label("tcc1"))[0]
+    assert not [x for x in C.neutral_specs(opt, s.index) if x.name.startswith("#")]
+    _c, specs, _r, _n = form_state(s, s.node_for_label("tc2"), "atmel,sam0-tc32")
+    assert not [f for f in specs if f.name.startswith("#")]

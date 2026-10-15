@@ -1,8 +1,9 @@
 """Generic binding form (P8.5): Configure... on nodes without a recipe.
 
 Simulated tests (no browser) on a COPY of _soltest/apps/lab1_leer under %TEMP%; one Playwright smoke test
-with screenshots. tc0 (`atmel,sam0-tc32`, disabled) has an enum property and optional pin roles; adc1
-(`atmel,sam0-adc`, disabled) has the required property `prescaler`, which the SoC dtsi sets.
+with screenshots. tc0 (`atmel,sam0-tc32`, disabled; its recipe covers the PWM mode, so the generic form is the
+"other compatible" button of the recipe dialog) has an enum property and optional pin roles; can0
+(`atmel,sam0-can`, disabled, no recipe) has the required property `divider`, which the SoC dtsi sets.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.ui
 
 BUILD = "build_same54_xpro"
 TC0 = "/soc/tc@40003800"
-ADC1 = "/soc/adc@43002000"
+CAN0 = "/soc/can@42000000"
 WDOG = "/soc/watchdog@40002000"
 
 
@@ -31,7 +32,9 @@ def test_generic_form_for_tc0(lab1_leer_copy, rtos4_ws, ui_run):
     async def scenario():
         async with simulated_app(app) as user:
             await user.open(f"/?build={BUILD}&node={TC0}")
-            click(user, "cfg-open")                               # no recipe, but Configure... is offered
+            click(user, "cfg-open")                               # the recipe dialog (TC as PWM) ...
+            assert el(user, "cfg-alt-compat").value == "atmel,sam0-tc32"
+            click(user, "cfg-open-generic-alt")                   # ... and the other mode: the generic form
             dialog = page_text(user, "cfg-dialog")
             assert "Configure &tc0" in dialog and "atmel,sam0-tc32" in dialog and "generic form" in dialog
             # the form: one field with type, enum and description; pin roles from the provider (optional)
@@ -64,19 +67,19 @@ def test_required_property_left_empty_is_flagged(lab1_leer_copy, ui_run):
 
     async def scenario():
         async with simulated_app(app) as user:
-            await user.open(f"/?build={BUILD}&node={ADC1}")
+            await user.open(f"/?build={BUILD}&node={CAN0}")
             click(user, "cfg-open")
             dialog = page_text(user, "cfg-dialog")
-            assert "Configure &adc1" in dialog and "prescaler *" in dialog and "[required, int]" in dialog
-            assert el(user, "gen-prop-prescaler").value == "4"        # prefilled from the SoC dtsi
+            assert "Configure &can0" in dialog and "divider *" in dialog and "[required, int]" in dialog
+            assert el(user, "gen-prop-divider").value == "1"        # prefilled from the SoC dtsi
             assert el(user, "gen-problems").text == "" and el(user, "gen-save").enabled
-            select_value(user, "gen-prop-prescaler", "")              # the user empties the required field
-            assert el(user, "gen-problems").text == "To fix: prescaler: required"
-            assert el(user, "gen-prop-prescaler").error == "required" and el(user, "gen-prop-prescaler").props["error"]
+            select_value(user, "gen-prop-divider", "")              # the user empties the required field
+            assert el(user, "gen-problems").text == "To fix: divider: required"
+            assert el(user, "gen-prop-divider").error == "required" and el(user, "gen-prop-divider").props["error"]
             assert not el(user, "gen-save").enabled
-            select_value(user, "gen-prop-prescaler", "abc")
-            assert el(user, "gen-problems").text == "To fix: prescaler: not a number"
-            select_value(user, "gen-prop-prescaler", "8")
+            select_value(user, "gen-prop-divider", "abc")
+            assert el(user, "gen-problems").text == "To fix: divider: not a number"
+            select_value(user, "gen-prop-divider", "8")
             assert el(user, "gen-problems").text == "" and el(user, "gen-save").enabled
             click_button(user, "Cancel")
             assert not by_id(user, "cfg-dialog") and el(user, "draft-badge").text == "0"
@@ -105,7 +108,7 @@ BROWSER_FLOW = r'''
 import json, sys
 from playwright.sync_api import sync_playwright
 
-base, shots, build, tc0, adc1 = sys.argv[1:6]
+base, shots, build, tc0, can0 = sys.argv[1:6]
 out = {}
 with sync_playwright() as pw:
     try:
@@ -125,6 +128,7 @@ with sync_playwright() as pw:
 
     page.goto(f"{base}/?build={build}&node={tc0}")
     page.click("#cfg-open")
+    page.click("#cfg-open-generic-alt")
     page.wait_for_selector("#gen-prop-prescaler")
     page.click("#gen-prop-prescaler")
     page.get_by_role("option", name="64", exact=True).click()
@@ -139,14 +143,14 @@ with sync_playwright() as pw:
     out["snippet"] = page.inner_text("#draft-snippet")
     shot("P8.5_generic_draft_tc0")
 
-    page.goto(f"{base}/?build={build}&node={adc1}")
-    page.get_by_text("/soc/adc@43002000").first.wait_for()
+    page.goto(f"{base}/?build={build}&node={can0}")
+    page.get_by_text("/soc/can@42000000").first.wait_for()
     page.click("#cfg-open")
     page.wait_for_selector("#cfg-dialog")
-    page.get_by_label("prescaler *").fill("")               # the id= prop is not on the native input
+    page.get_by_label("divider *").fill("")               # the id= prop is not on the native input
     page.wait_for_function("document.querySelector('#gen-problems')?.innerText.includes('required')")
     shot("P8.5_generic_form_required")
-    page.get_by_label("prescaler *").scroll_into_view_if_needed()
+    page.get_by_label("divider *").scroll_into_view_if_needed()
     page.wait_for_timeout(300)
     shot("P8.5_generic_form_required_field")
     out["save_disabled"] = page.is_disabled("#gen-save")
@@ -168,7 +172,7 @@ def test_smoke_generic_form(lab1_leer_copy, serve):
     base = serve(app, drafts=app)
     shots = Path(tempfile.gettempdir()) / "dtx_ui_shots"
     shots.mkdir(exist_ok=True)
-    proc = subprocess.run([sys.executable, "-c", BROWSER_FLOW, base, str(shots), BUILD, TC0, ADC1],
+    proc = subprocess.run([sys.executable, "-c", BROWSER_FLOW, base, str(shots), BUILD, TC0, CAN0],
                           capture_output=True, text=True, timeout=240)
     assert proc.returncode == 0, proc.stderr[-800:]
     print(proc.stdout)
@@ -177,5 +181,5 @@ def test_smoke_generic_form(lab1_leer_copy, serve):
         pytest.skip(f"Chrome cannot be started through Playwright: {out['skip']}")
     assert out["wo0"] != "" and "prescaler = <64>;" in out["snippet"]
     assert "pinctrl-0 = <&tc0_generic_default>;" in out["snippet"]
-    assert out["problems"] == "To fix: prescaler: required" and out["save_disabled"] is True
+    assert out["problems"] == "To fix: divider: required" and out["save_disabled"] is True
     assert out["console_errors"] == [], out["console_errors"]

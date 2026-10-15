@@ -74,19 +74,60 @@ def find_instance(device, addresses=(), labels=()):
     return next((i for n, i in device.instances.items() if n.lower() in wanted), None)
 
 
-def class_options(instance, index: BindingIndex, recipes=None) -> list[ClassOption]:
-    """Classes the registered recipes offer for `instance`, one option per class."""
+def _family(compat: str) -> str:
+    """Vendor prefix of a compatible (text before the first comma)."""
+    return compat.split(",", 1)[0]
+
+
+def class_options(instance, index: BindingIndex, recipes=None, prefer=()) -> list[ClassOption]:
+    """Classes the registered recipes offer for `instance`, one option per class.
+
+    `prefer`: compatibles the node already has. Within a recipe, the compatibles of the same family (vendor
+    prefix) as one of them come first, so a node of the new port gets the new-port compatible and a node of
+    the old port the old one; without a hint the recipe's own order stands.
+    """
     out: list[ClassOption] = []
+    fams = {_family(c) for c in prefer}
     for recipe in (plugins.recipes() if recipes is None else recipes):
         try:
             if not recipe.pin_roles(instance):
                 continue
         except Exception:                                   # noqa: BLE001 - a broken recipe offers nothing
             continue
-        for compat in recipe.compatibles:
+        compats = sorted(recipe.compatibles, key=lambda c: _family(c) not in fams)   # stable
+        for compat in compats:
             cls, _chain = detect_class(compat, index)
             if cls and all(o.cls != cls for o in out):
                 out.append(ClassOption(cls, compat, recipe))
+    return out
+
+
+def generic_alternatives(session, node) -> list[str]:
+    """Compatibles of the same peripheral that no recipe covers but whose binding exists: other modes.
+
+    The node's own compatibles and the bindings that include the binding of one of them (a counter mode
+    ``...-counter`` next to the PWM mode of the same timer); compatibles of a registered recipe are left out.
+    """
+    covered = {c for r in plugins.recipes() for c in r.compatibles}
+    idx = session.index
+    own = {c: idx.find(c) for c in node.compats}
+    own_files = {p.name for p in own.values() if p is not None}
+    # a base binding that the recipes' bindings include (``tc-g1`` under ``tc-g1-pwm``) is no mode of its own
+    bases: set[str] = set()
+    for c in covered:
+        f = idx.find(c)
+        if f is not None:
+            bases |= set(idx.include_names(idx.load(f)))
+    out: list[str] = []
+    for c in node.compats:
+        if own[c] is not None and c not in covered and own[c].name not in bases and c not in out:
+            out.append(c)
+    for p in idx.by_name.values():
+        raw = idx.load(p)
+        c = raw.get("compatible")
+        if (isinstance(c, str) and c not in covered and c not in out
+                and own_files & set(idx.include_names(raw))):
+            out.append(c)
     return out
 
 
@@ -158,7 +199,7 @@ def derive_props(option: ClassOption, instance, pins: dict[str, str],
         prs = pad_roles(instance, pad)
         if not prs:
             return {}, f"{role}: pad {pad} is not on {instance.name}"
-        assignment[role] = prs[0]
+        assignment[role] = role if role in prs else prs[0]     # the signal of that name wins if the pad has several
     try:
         return dict(option.recipe.derived_props(assignment)), None
     except ValueError as exc:
@@ -168,6 +209,11 @@ def derive_props(option: ClassOption, instance, pins: dict[str, str],
 # Base-binding properties that are no peripheral setting, hidden in the dialog. Zephyr declares them in
 # i2c-controller.yaml itself (v4.3.0), so a "only the class base file" rule does not remove them.
 NOISE_PROPS = frozenset({"sq-size", "cq-size"})     # RTIO submission/completion queue sizes
+
+
+def is_cells_prop(name: str) -> bool:
+    """``#pwm-cells``, ``#io-channel-cells`` ...: specifier sizes, fixed by the binding, never a user setting."""
+    return name.startswith("#") and name.endswith("-cells")
 
 
 def neutral_specs(option: ClassOption, index: BindingIndex) -> list[PropSpec]:
@@ -182,7 +228,7 @@ def neutral_specs(option: ClassOption, index: BindingIndex) -> list[PropSpec]:
         if not isinstance(item, Path) or item in generic:
             continue
         for name, spec in (index.load(item).get("properties") or {}).items():
-            if (not isinstance(spec, dict) or "const" in spec or name in out or name in NOISE_PROPS
+            if (not isinstance(spec, dict) or "const" in spec or name in out or name in NOISE_PROPS or is_cells_prop(name)
                     or spec.get("type") not in ("int", "string", "boolean")):
                 continue
             out[name] = PropSpec(name, spec["type"], spec.get("enum"), spec.get("default"),
@@ -284,7 +330,17 @@ class ConfigSession:
 
     def options_for(self, node) -> list[ClassOption]:
         inst = self.instance_of(node)
-        return class_options(inst, self.index) if inst is not None else []
+        return class_options(inst, self.index, prefer=tuple(node.compats)) if inst is not None else []
+
+    def alternatives_for(self, node) -> list[str]:
+        """Other compatibles of the node's peripheral for the generic form (counter mode of a PWM timer)."""
+        if not self.options_for(node):
+            return []
+        from ..core import generic as G
+        # only a mode that has something to configure (a bare base binding such as a bus controller has not)
+        return [c for c in generic_alternatives(self, node)
+                if any(not is_cells_prop(f.name) for f in G.form_spec(c, self.index, {}))
+                or G.has_pinctrl(c, self.index)]
 
     def draft_node(self, label: str) -> DraftNode | None:
         return next((n for n in self.draft.nodes if n.label == label), None)
@@ -498,6 +554,11 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
         ui.label(f"{node.path}  -  instance {inst.name}").classes("text-xs text-grey-5 font-mono")
         cls_toggle = ui.toggle({o.cls: o.cls.upper() for o in options}, value=st["opt"].cls) \
             .props("id=cfg-class")
+        alts = session.alternatives_for(node)
+        if alts:                                    # the recipe covers one mode; other modes use the generic form
+            with ui.row().classes("w-full items-center gap-2"):
+                alt_sel = ui.select(alts, value=alts[0], label="Other compatible (generic form)")                     .props("dense outlined id=cfg-alt-compat").classes("grow")
+                ui.button("Use generic form", icon="tune").props("no-caps flat dense id=cfg-open-generic-alt")                     .on_click(lambda: _to_generic(alt_sel.value))
         ui.label("Pads").classes("font-bold")
         roles_box = ui.column().classes("w-full gap-1")
         derived = ui.label().classes("text-sm font-mono").props("id=cfg-derived")
@@ -586,6 +647,11 @@ def open_configure(session: ConfigSession, node, on_saved: Callable[[DraftNode],
                    cs_len=len(st["cs"]), taken=taken_pads, on_added=on_child_added)
 
     add_child_btn.on_click(open_child_dialog)
+
+    def _to_generic(compat: str) -> None:
+        from .generic_form import open_generic
+        dlg.close()
+        open_generic(session, node, on_saved, compat=compat)
 
     def current_pins() -> dict[str, str]:
         return {r: s.value for r, s in selects.items() if s.value}

@@ -219,6 +219,11 @@ def strip_node(text: str, label: str, names: list[str], uses: list[str], groups:
     return "\n".join(result) + "\n"
 
 
+def SERCOM(draft):
+    """The bus nodes (uart, i2c, spi) of a draft: this compare serves the SERCOM recipe (PWM/ADC: their own tests)."""
+    return [n for n in draft.nodes if n.cls in ("uart", "i2c", "spi")]
+
+
 def _prepare(rtos4_ws, rtos4_build, rel):
     from dt_explorer.core.build import BuildModel
     from dt_explorer.core.buildinfo import read_build_info
@@ -260,7 +265,8 @@ def test_lift_renders_back_to_original_nodes(rtos4_ws, rtos4_build, tmp_path, re
         for n in draft.nodes:
             print(n)
         print("\n--- per node compare (apply the node's rendered overlay to zephyr.dts without its board settings) ---")
-        for node in draft.nodes:
+        bus_nodes = SERCOM(draft)
+        for node in bus_nodes:
             path, names, uses, groups = _strip_args(model, node)
             aliases = list(node.use.aliases)
             base = strip_node(zdts, node.label, names, uses, groups, "atmel,sam0-sercom")
@@ -298,13 +304,13 @@ def test_lift_renders_back_to_original_nodes(rtos4_ws, rtos4_build, tmp_path, re
 
         print("\n--- whole draft at once ---")
         base = zdts
-        for node in draft.nodes:
+        for node in bus_nodes:
             path, names, uses, groups = _strip_args(model, node)
             base = strip_node(base, node.label, names, uses, groups, "atmel,sam0-sercom")
             base = _strip_aliases(base, list(node.use.aliases))
-        overlay = render_overlay(draft, ctx)
+        overlay = render_overlay(Draft(build=draft.build, nodes=bus_nodes), ctx)
         edt = compile_edt(model, PINCTRL_INCLUDE + base + "\n" + overlay, tmp_path)
-        for node in draft.nodes:
+        for node in bus_nodes:
             path, names, _u, _g = _strip_args(model, node)
             names_all = names + ["compatible", "status"]
             same = (summary(edt, model, node.label, names_all, set(report.children))
